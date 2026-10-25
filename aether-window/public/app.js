@@ -11,6 +11,7 @@ const DEFAULTS = {
   fPx: 0,              // 摄像头焦距（像素），0 = 按 hfov 估算；用 D 校准
   hfovDeg: 62,         // 常见笔电摄像头水平视场
   irisCm: 1.17,        // 人类虹膜直径近似常数
+  ipdCm: 6.3,          // 两眼瞳距，D 校准时按本人更新；测距主要靠它（比虹膜稳定得多）
   camAboveCm: 0.8,     // 摄像头在屏幕上沿之上的距离
   floatMaxCm: 4.0,     // 漂浮上限：总纲定理 3，40 cm 观看距离下 <43 mm 时调节误差 <0.3 D
   roomDepthCm: 24,
@@ -151,33 +152,42 @@ class OneEuro {   // 低速时强平滑，快速移动时低延迟
     return this.x;
   }
 }
-const filt = { lx: new OneEuro(), ly: new OneEuro(), lz: new OneEuro(), rx: new OneEuro(), ry: new OneEuro(), rz: new OneEuro() };
+// x/y 要跟手快；z（距离）噪声大，平滑更强，否则物体会“呼吸”
+const filt = { cx: new OneEuro(1.0, 0.05), cy: new OneEuro(1.0, 0.05), cz: new OneEuro(0.4, 0.01) };
 const view = { mode: 'mouse', stereo: false, left: new THREE.Vector3(-3.2, 0, 50), right: new THREE.Vector3(3.2, 0, 50),
-  faceSeen: 0, lastIrisPx: 0 };
+  faceSeen: 0, lastIrisPx: 0, lastIpdPx: 0 };
 let mouse = { x: innerWidth / 2, y: innerHeight / 2 };
 addEventListener('pointermove', (e) => { mouse = { x: e.clientX, y: e.clientY }; });
 
 function focalPx(videoW) { return cfg.fPx || (videoW / 2) / Math.tan(THREE.MathUtils.degToRad(cfg.hfovDeg / 2)); }
 
-// 从虹膜估计每只眼的 3D 位置（厘米）。虹膜直径近似常数，所以像素直径给出距离。
-function eyesFromFace(lm, vw, vh, t) {
+// 估计双眼的 3D 位置（厘米）。
+// 距离主要用瞳距：两眼中心相距约 65 像素，1 像素误差只有 1.5%；虹膜直径只有约 12 像素，1 像素误差就是 8%（物体会前后晃）。
+// 转头会让瞳距在画面里变短，用头部姿态矩阵的偏航角修正。
+function eyesFromFace(lm, vw, vh, t, mat) {
   const px = (i) => ({ x: lm[i].x * vw, y: lm[i].y * vh });
   const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const irisA = d(px(469), px(471)), irisB = d(px(474), px(476));
-  const irisPx = (irisA + irisB) / 2;
-  if (irisPx < 2) return false;
-  view.lastIrisPx = irisPx;
+  const irisPx = (d(px(469), px(471)) + d(px(474), px(476))) / 2;
+  const cA = px(468), cB = px(473);
+  const ipdPx = d(cA, cB);
+  if (ipdPx < 10) return false;
+  view.lastIrisPx = irisPx; view.lastIpdPx = ipdPx;
+  let yawCos = 1;
+  if (mat) {   // 列主序 4x4，第三列是脸的朝向
+    const fx = mat[8], fz = mat[10];
+    yawCos = THREE.MathUtils.clamp(Math.abs(fz) / Math.hypot(fx, fz), 0.6, 1);
+  }
   const f = focalPx(vw);
-  const z = f * cfg.irisCm / irisPx;
+  const zIpd = f * cfg.ipdCm * yawCos / ipdPx;
+  const zIris = irisPx > 2 ? f * cfg.irisCm / irisPx : zIpd;
+  const z = 0.85 * zIpd + 0.15 * zIris;
   const { H } = screenSizeCm();
-  const toWorld = (c) => new THREE.Vector3(
-    -(c.x - vw / 2) * z / f,                             // 摄像头画面左右与观看者相反
-    -(c.y - vh / 2) * z / f + H / 2 + cfg.camAboveCm,    // 摄像头在屏幕上沿
-    z);
-  const a = toWorld(px(468)), b = toWorld(px(473));
-  const [L, R] = a.x < b.x ? [a, b] : [b, a];
-  view.left.set(filt.lx.filter(L.x, t), filt.ly.filter(L.y, t), filt.lz.filter(L.z, t));
-  view.right.set(filt.rx.filter(R.x, t), filt.ry.filter(R.y, t), filt.rz.filter(R.z, t));
+  const c = { x: (cA.x + cB.x) / 2, y: (cA.y + cB.y) / 2 };
+  const cx = filt.cx.filter(-(c.x - vw / 2) * z / f, t);                         // 摄像头画面左右与观看者相反
+  const cy = filt.cy.filter(-(c.y - vh / 2) * z / f + H / 2 + cfg.camAboveCm, t);  // 摄像头在屏幕上沿
+  const cz = filt.cz.filter(z, t);
+  const half = cfg.ipdCm / 2;
+  view.left.set(cx - half, cy, cz); view.right.set(cx + half, cy, cz);
   return true;
 }
 
@@ -188,60 +198,85 @@ function eyesFromMouse() {
 }
 
 // ---------- 手势 ----------
-const hands = { pinch: [false, false], cursor: [null, null], lastPinch: null, twoStart: null, hover: null };
+// 手感要点：每只手固定槽位（按左右手），光标做 One Euro 平滑，捏合用 3D 距离 + 迟滞 + 连续帧确认，松手后旋转带惯性。
+const mkHand = () => ({ pinch: false, pinchFrames: 0, openFrames: 0, cursor: null, fx: new OneEuro(1.5, 0.3), fy: new OneEuro(1.5, 0.3), seen: 0 });
+const hands = { slot: [mkHand(), mkHand()], lastPinch: null, twoStart: null, hover: null, vel: { x: 0, y: 0 } };
 const cursorMeshes = [0, 1].map(() => {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.5, 32),
     new THREE.MeshBasicMaterial({ color: 0x5fd0ff, transparent: true, opacity: 0.9, depthTest: false }));
   m.renderOrder = 10; m.visible = false; scene.add(m); return m;
 });
 const raycaster = new THREE.Raycaster();
+const ROT_GAIN = 5.0;   // 手横跨整个画面 ≈ 转 5 弧度（约 290°）
 
-function handToScreen(p) {   // 手在画面中的位置 → 屏幕平面坐标（厘米），带 1.6 倍增益方便够到边角
+function handToScreen(x, y) {   // 手在画面中的位置（0~1）→ 屏幕平面坐标（厘米），带 1.6 倍增益方便够到边角
   const { W, H } = screenSizeCm();
-  return new THREE.Vector3(-(p.x - 0.5) * W * 1.6, -(p.y - 0.5) * H * 1.6, 0.05);
+  return new THREE.Vector3(-(x - 0.5) * W * 1.6, -(y - 0.5) * H * 1.6, 0.05);
 }
 
-function processHands(result) {
+function assignSlots(result) {   // MediaPipe 每帧返回的手顺序会变，按左右手固定槽位，避免两只手“串台”
   const list = result?.landmarks || [];
+  const out = [null, null];
+  list.forEach((lm, i) => {
+    const label = result.handednesses?.[i]?.[0]?.categoryName;
+    let k = label === 'Left' ? 1 : 0;
+    if (out[k]) k = 1 - k;
+    out[k] = lm;
+  });
+  return out;
+}
+
+function processHands(result, t) {
+  const slots = assignSlots(result);
   const pinchPts = [];
   for (let i = 0; i < 2; i++) {
-    const lm = list[i];
-    const mesh = cursorMeshes[i];
-    if (!lm) { hands.pinch[i] = false; mesh.visible = false; hands.cursor[i] = null; continue; }
-    const size = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y);
-    const ratio = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y) / size;
-    hands.pinch[i] = hands.pinch[i] ? ratio < 0.45 : ratio < 0.3;     // 迟滞，避免抖动
-    const mid = { x: (lm[4].x + lm[8].x) / 2, y: (lm[4].y + lm[8].y) / 2 };
-    const c = handToScreen(hands.pinch[i] ? mid : lm[8]);
-    hands.cursor[i] = c;
-    mesh.position.copy(c); mesh.visible = true;
-    mesh.material.color.set(hands.pinch[i] ? 0xffb84d : 0x5fd0ff);
-    if (hands.pinch[i]) pinchPts.push(c);
+    const lm = slots[i], h = hands.slot[i], mesh = cursorMeshes[i];
+    if (!lm) {
+      if (t - h.seen > 150) { h.pinch = false; h.cursor = null; mesh.visible = false; h.fx = new OneEuro(1.5, 0.3); h.fy = new OneEuro(1.5, 0.3); }
+      if (h.pinch && h.cursor) pinchPts.push(h.cursor);   // 短暂丢失时保持状态，不打断拖动
+      continue;
+    }
+    h.seen = t;
+    const d3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, (a.z - b.z) * 0.5);
+    const size = d3(lm[0], lm[9]);
+    const ratio = d3(lm[4], lm[8]) / size;
+    if (ratio < 0.28) { h.pinchFrames++; h.openFrames = 0; } else if (ratio > 0.42) { h.openFrames++; h.pinchFrames = 0; }
+    if (!h.pinch && h.pinchFrames >= 2) h.pinch = true;      // 连续 2 帧才算捏合
+    if (h.pinch && h.openFrames >= 3) h.pinch = false;       // 连续 3 帧才算松开
+    const src = h.pinch ? { x: (lm[4].x + lm[8].x) / 2, y: (lm[4].y + lm[8].y) / 2 } : lm[8];
+    const sx = h.fx.filter(src.x, t), sy = h.fy.filter(src.y, t);
+    h.cursor = handToScreen(sx, sy); h.cursor.userData = { nx: sx, ny: sy };
+    mesh.position.copy(h.cursor); mesh.visible = true;
+    mesh.material.color.set(h.pinch ? 0xffb84d : 0x5fd0ff);
+    mesh.scale.setScalar(h.pinch ? 0.8 : 1);
+    if (h.pinch) pinchPts.push(h.cursor);
   }
 
   if (pinchPts.length === 2) {            // 双手捏合拉开 = 拆解
     const d = pinchPts[0].distanceTo(pinchPts[1]);
     if (!hands.twoStart) hands.twoStart = { d, explode: state.explodeTarget };
     state.explodeTarget = THREE.MathUtils.clamp(hands.twoStart.explode + (d - hands.twoStart.d) / 15, 0, 1);
-    hands.lastPinch = null;
+    hands.lastPinch = null; hands.vel = { x: 0, y: 0 };
   } else {
     hands.twoStart = null;
-    if (pinchPts.length === 1) {          // 单手捏合拖动 = 旋转
-      const p = pinchPts[0];
+    if (pinchPts.length === 1) {          // 单手捏合拖动 = 旋转（直接跟手）
+      const p = pinchPts[0].userData;
       if (hands.lastPinch) {
-        state.rotYT += (p.x - hands.lastPinch.x) * 0.25;
-        state.rotXT -= (p.y - hands.lastPinch.y) * 0.25;
+        const dx = (hands.lastPinch.nx - p.nx) * ROT_GAIN, dy = (p.ny - hands.lastPinch.ny) * ROT_GAIN;
+        state.rotYT += dx; state.rotXT = THREE.MathUtils.clamp(state.rotXT + dy, -1.4, 1.4);
+        const dt = Math.max((t - hands.lastPinch.t) / 1000, 1 / 120);
+        hands.vel = { x: 0.6 * hands.vel.x + 0.4 * dx / dt, y: 0.6 * hands.vel.y + 0.4 * dy / dt };
       }
-      hands.lastPinch = p.clone();
-    } else hands.lastPinch = null;
+      hands.lastPinch = { nx: p.nx, ny: p.ny, t };
+    } else hands.lastPinch = null;        // 松手后由主循环按 vel 继续转（惯性）
   }
 
   // 食指指向 = 从眼睛穿过屏幕上的光标做射线，命中的零件高亮
-  const pointer = !hands.pinch[0] && hands.cursor[0];
+  const ptr = hands.slot.find((h) => h.cursor && !h.pinch);
   let hit = null;
-  if (pointer && current) {
+  if (ptr && current && pinchPts.length === 0) {
     const eye = view.left.clone().add(view.right).multiplyScalar(0.5);
-    raycaster.set(eye, pointer.clone().sub(eye).normalize());
+    raycaster.set(eye, ptr.cursor.clone().sub(eye).normalize());
     const meshes = [];
     pivot.traverse((o) => { if (o.isMesh && o.userData.part) meshes.push(o); });
     hit = raycaster.intersectObjects(meshes, false)[0]?.object.userData.part || null;
@@ -283,7 +318,7 @@ function applyActions(actions = []) {
       case 'clear_select': if (state.selected) setHighlight(state.selected, false); state.selected = null; ui.hover.textContent = ''; break;
       case 'load_scene': loadScene(a.target); break;
       case 'run': state.running = Number(a.amount) > 0; break;
-      case 'reset': Object.assign(state, { explodeTarget: 0, rotXT: 0, rotYT: 0, running: false }); applyActions([{ type: 'clear_select' }]); break;
+      case 'reset': Object.assign(state, { explodeTarget: 0, rotXT: 0, rotYT: 0, running: false }); hands.vel = { x: 0, y: 0 }; applyActions([{ type: 'clear_select' }]); break;
     }
   }
 }
@@ -363,7 +398,11 @@ addEventListener('keydown', (e) => {
     case 'f': document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); break;
     case 'c': ui.cardCal.hidden = false; drawCard(); break;
     case 'd':
-      if (view.lastIrisPx) { cfg.fPx = 50 * view.lastIrisPx / cfg.irisCm; saveCfg(); say('距离已按 50 厘米校准。', false); }
+      if (view.lastIrisPx) {
+        cfg.fPx = 50 * view.lastIrisPx / cfg.irisCm;
+        if (view.lastIpdPx) cfg.ipdCm = THREE.MathUtils.clamp(view.lastIpdPx * 50 / cfg.fPx, 5.2, 7.4);   // 记住本人的瞳距
+        saveCfg(); say('距离已按 50 厘米校准。', false);
+      }
       break;
     case 'm': view.mode = view.mode === 'mouse' ? 'face' : 'mouse'; break;
     case 's': view.stereo = !view.stereo; break;
@@ -386,14 +425,15 @@ function drawCard() {   // ISO/IEC 7810 ID-1：85.60 × 53.98 mm，也正是 AET
 let face = null, hand = null;
 async function initTracking() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720, facingMode: 'user' } });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 60 }, facingMode: 'user' } });
     ui.cam.srcObject = stream;
     await ui.cam.play();
     const fileset = await FilesetResolver.forVisionTasks('/vendor/mediapipe/wasm');
     const faceLm = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: '/models/face_landmarker.task', delegate: 'GPU' }, runningMode: 'VIDEO', numFaces: 1 });
+      baseOptions: { modelAssetPath: '/models/face_landmarker.task', delegate: 'GPU' }, runningMode: 'VIDEO', numFaces: 1, outputFacialTransformationMatrixes: true });
     const handLm = await HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: '/models/hand_landmarker.task', delegate: 'GPU' }, runningMode: 'VIDEO', numHands: 2 });
+      baseOptions: { modelAssetPath: '/models/hand_landmarker.task', delegate: 'GPU' }, runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: 0.6, minHandPresenceConfidence: 0.6, minTrackingConfidence: 0.5 });
     face = faceLm; hand = handLm;   // 两个都就绪后再启用，避免追踪循环拿到一半
     view.mode = 'face';
     ui.status.textContent = '追踪就绪';
@@ -402,14 +442,15 @@ async function initTracking() {
   }
 }
 
-let frame = 0, lastVideoTime = -1;
+let lastVideoTime = -1;
 function track(now) {
   const v = ui.cam;
   if (!face || v.readyState < 2 || v.currentTime === lastVideoTime) return;
   lastVideoTime = v.currentTime;
   const fr = face.detectForVideo(v, now);
-  if (fr.faceLandmarks?.[0] && eyesFromFace(fr.faceLandmarks[0], v.videoWidth, v.videoHeight, now)) view.faceSeen = now;
-  if (frame++ % 2 === 0) processHands(hand.detectForVideo(v, now));   // 手势隔帧跑，省算力给头部追踪
+  const mat = fr.facialTransformationMatrixes?.[0]?.data;
+  if (fr.faceLandmarks?.[0] && eyesFromFace(fr.faceLandmarks[0], v.videoWidth, v.videoHeight, now, mat)) view.faceSeen = now;
+  processHands(hand.detectForVideo(v, now), now);   // 手势每帧都跑：隔帧会让光标一顿一顿
 }
 
 // ---------- 主循环 ----------
@@ -421,13 +462,19 @@ function loop(now) {
   if (!faceOk) eyesFromMouse();
 
   // 平滑动画
-  state.explode += (state.explodeTarget - state.explode) * 0.12;
-  state.rotX += (state.rotXT - state.rotX) * 0.15;
-  state.rotY += (state.rotYT - state.rotY) * 0.15;
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (!hands.lastPinch && !hands.twoStart && (Math.abs(hands.vel.x) > 0.02 || Math.abs(hands.vel.y) > 0.02)) {   // 松手后的惯性
+    state.rotYT += hands.vel.x * dt; state.rotXT = THREE.MathUtils.clamp(state.rotXT + hands.vel.y * dt, -1.4, 1.4);
+    const decay = Math.exp(-dt * 3.5); hands.vel.x *= decay; hands.vel.y *= decay;
+  }
+  const k = (rate) => 1 - Math.exp(-dt * rate);   // 与帧率无关的平滑
+  state.explode += (state.explodeTarget - state.explode) * k(8);
+  state.rotX += (state.rotXT - state.rotX) * k(18);
+  state.rotY += (state.rotYT - state.rotY) * k(18);
   pivot.rotation.set(state.rotX, state.rotY, 0);
   if (current) {
     if (!current.skipExplode) for (const p of current.parts) p.object.position.copy(p.base).addScaledVector(p.dir, state.explode);
-    current.update(clock.getElapsedTime(), state);
+    current.update(clock.elapsedTime, state);
   }
 
   const mid = view.left.clone().add(view.right).multiplyScalar(0.5);
@@ -449,4 +496,4 @@ loadScene('engine');
 say('AETHER Window：移动你的头，或者按 H 看帮助。', false);
 requestAnimationFrame(loop);
 initTracking();
-window.aether = { state, view, cfg, runCommand, applyActions, localParse };   // 方便调试
+window.aether = { state, view, cfg, hands, runCommand, applyActions, localParse, processHands };   // 方便调试
