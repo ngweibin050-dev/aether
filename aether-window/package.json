@@ -1,0 +1,15 @@
+{
+  "name": "aether-window",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AETHER Window: head-tracked off-axis 3D + hand gestures + AI commands (hackathon build)",
+  "scripts": {
+    "setup": "node scripts/fetch-models.mjs",
+    "start": "node server.mjs"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "1.3.0"
+  }
+}

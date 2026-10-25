@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AETHER Window</title>
+<link rel="stylesheet" href="/style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "/vendor/three/three.module.js",
+  "@mediapipe/tasks-vision": "/vendor/mediapipe/vision_bundle.mjs"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud">
+  <div id="status">正在启动摄像头…</div>
+  <div id="eye"></div>
+  <div id="hover"></div>
+</div>
+
+<div id="card-cal" hidden>
+  <div id="card-box"><span>把一张银行卡/身份卡贴在屏幕上，用 [ 和 ] 调到和卡一样大，按 Enter 确认</span></div>
+</div>
+
+<div id="help" hidden>
+  <h2>AETHER Window</h2>
+  <p>F 全屏 · C 卡片校准屏幕尺寸 · D 在 50 cm 处校准距离 · M 鼠标模拟视点 · S 红蓝立体 · V 摄像头预览</p>
+  <p>1 发动机 · 2 太阳系 · 3 DNA · R 重置 · 空格 按住说话 · H 关闭帮助</p>
+  <p>手势：捏合拇指和食指拖动＝旋转；两只手同时捏合再拉开＝拆解；食指指向零件＝高亮</p>
+</div>
+
+<form id="ask">
+  <button type="button" id="mic" title="按住说话（空格）">🎙</button>
+  <input id="q" autocomplete="off" placeholder="对 AETHER 说：把发动机拆开 / 活塞是干什么的 / 换成太阳系">
+</form>
+<div id="reply"></div>
+
+<video id="cam" playsinline muted></video>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
