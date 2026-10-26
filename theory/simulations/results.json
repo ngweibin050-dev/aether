@@ -1,0 +1,136 @@
+{
+ "S1": {
+  "sigma_m2": 5.164312961829304e-31,
+  "beta_per_m": 1.3153505113779236e-05,
+  "mean_free_path_km": 76.02536292417058,
+  "frac_scattered_per_voxel": 6.576752556889618e-09,
+  "luminance_cd_m2_per_W": 0.943683298408237,
+  "power_for_100cdm2_W": 105.96775440306675,
+  "photon_photon_sigma_m2": 1.1805990243324252e-67
+ },
+ "S2": {
+  "E_pulse_uJ": 7.853981633974484,
+  "avg_power_W": 0.3141592653589793,
+  "ratio_to_class1": 785.3981633974482
+ },
+ "S3": {
+  "40kHz": {
+   "dn": 1.3718233407352602e-05,
+   "grating_deflection_rad": 6.204081632653062e-05,
+   "phase_over_30mm_rad": 4.86057533377094
+  },
+  "200kHz": {
+   "dn": 1.3718233407352602e-05,
+   "grating_deflection_rad": 0.0003102040816326531,
+   "phase_over_30mm_rad": 4.86057533377094
+  },
+  "1000kHz": {
+   "dn": 1.3718233407352602e-05,
+   "grating_deflection_rad": 0.0015510204081632655,
+   "phase_over_30mm_rad": 4.86057533377094
+  }
+ },
+ "S4": {
+  "h5mm": {
+   "hemisphere_fraction": 0.8633333470907932,
+   "half_angle_short_axis_deg": 79.50852298766841,
+   "half_angle_long_axis_deg": 83.33677037787938
+  },
+  "h15mm": {
+   "hemisphere_fraction": 0.6184913907249576,
+   "half_angle_short_axis_deg": 60.94539590092286,
+   "half_angle_long_axis_deg": 70.68610538280743
+  },
+  "h30mm": {
+   "hemisphere_fraction": 0.36964427905850283,
+   "half_angle_short_axis_deg": 41.98721249581666,
+   "half_angle_long_axis_deg": 54.972057687331095
+  }
+ },
+ "S5": {
+  "p0.5_d1.00": {
+   "lenslets": 18489.6,
+   "views_per_lenslet": 8100.0,
+   "subpixels": 149765760.0,
+   "subpixel_pitch_um": 5.555555555555556,
+   "blur_at_30mm_mm": 0.7246900474518645,
+   "raw_Tbps_60Hz_24bit": 0.2156626944,
+   "rays_per_pupil_at_500mm": 0.4583662361046586
+  },
+  "p0.3_d0.50": {
+   "lenslets": 51360.00000000001,
+   "views_per_lenslet": 32400.0,
+   "subpixels": 1664064000.0000002,
+   "subpixel_pitch_um": 1.6666666666666665,
+   "blur_at_30mm_mm": 0.40170821998459233,
+   "raw_Tbps_60Hz_24bit": 2.3962521600000004,
+   "rays_per_pupil_at_500mm": 0.9167324722093172
+  },
+  "p0.2_d0.25": {
+   "lenslets": 115559.99999999999,
+   "views_per_lenslet": 129600.0,
+   "subpixels": 14976575999.999998,
+   "subpixel_pitch_um": 0.5555555555555556,
+   "blur_at_30mm_mm": 0.251997806181904,
+   "raw_Tbps_60Hz_24bit": 21.566269439999996,
+   "rays_per_pupil_at_500mm": 1.8334649444186344
+  },
+  "coherent_holo": {
+   "pitch_um": 0.37618080759124334,
+   "pixels": 32664367686.132614
+  },
+  "eye_tracked_active_fraction": 0.0001234567901234568
+ },
+ "S6": {
+  "elements": 40,
+  "p_max_Pa": 3638.691660839015,
+  "SPL_dB": 162.1880052392237,
+  "bead_mass_ug": 53.01437602932776,
+  "weight_uN": 0.5200710288477053,
+  "F_lateral_uN": 11.910520488928755,
+  "F_axial_restore_uN": 1.375500710766402,
+  "lateral_over_weight": 22.90171885813037,
+  "a_lat_m_s2": 224.66586199825892,
+  "v_curve_R10mm": 0.9479786115693939,
+  "z_trap_mm": 23.400000000000016,
+  "voxels_per_frame_N1_v0.5": 25.0,
+  "voxels_per_frame_N1_v1.0": 50.0,
+  "voxels_per_frame_N1_v2.0": 100.0,
+  "voxels_per_frame_N4_v0.5": 100.0,
+  "voxels_per_frame_N4_v1.0": 200.0,
+  "voxels_per_frame_N4_v2.0": 400.0,
+  "voxels_per_frame_N16_v0.5": 400.0,
+  "voxels_per_frame_N16_v1.0": 800.0,
+  "voxels_per_frame_N16_v2.0": 1600.0
+ },
+ "S6_absorption_dB_per_m": {
+  "40kHz": 1.3182417376760844,
+  "100kHz": 3.2804335302709426,
+  "200kHz": 8.228221284183265,
+  "300kHz": 16.250813578574736,
+  "500kHz": 41.838933663949355
+ },
+ "S7": {
+  "lightfield_flux_lm": 1.106137347857243,
+  "lightfield_optical_power_W": 0.07374248985714953,
+  "lightfield_eyetracked_flux_lm": 0.0025832661282185108,
+  "lightfield_eyetracked_W": 0.00017221774188123405,
+  "bead_duty": 0.02,
+  "bead_luminance_needed": 5000.0,
+  "bead_illuminance_lux": 17453.292519943294,
+  "bead_illum_optical_W": 0.00041123351671205655
+ },
+ "S8": {
+  "dT10K_max_W": 1.4348,
+  "dT15K_max_W": 2.1522,
+  "dT20K_max_W": 2.8696,
+  "area_cm2": 114.78399999999999,
+  "battery_Wh_4mm": 12.018239999999999
+ },
+ "S9": {
+  "acoustic_W_per_element": 0.09330947191240778,
+  "acoustic_W_array": 3.7323788764963113,
+  "electrical_W_array_eta20": 18.661894382481556,
+  "note": "F/W 与小球尺寸无关，∝ p²/ρ_p；所需电功率 ∝ p² ∝ 加速度"
+ }
+}

@@ -1,0 +1,340 @@
+{
+ "S1": {
+  "h_vac_mm": {
+   "d300": 24.8,
+   "d400": 42.9,
+   "d500": 65.2,
+   "d700": 121.5
+  },
+  "focus_window": [
+   {
+    "d_mm": 300,
+    "p_mm": 0.1,
+    "h_focus_min_mm": 14.3,
+    "delta_max_mrad": 0.83,
+    "beamlet_etendue_1D_um": 0.633,
+    "beam_at_pupil_mm": 1.75
+   },
+   {
+    "d_mm": 300,
+    "p_mm": 0.15,
+    "h_focus_min_mm": 20.9,
+    "delta_max_mrad": 2.5,
+    "beamlet_etendue_1D_um": 0.925,
+    "beam_at_pupil_mm": 1.25
+   },
+   {
+    "d_mm": 300,
+    "p_mm": 0.2,
+    "h_focus_min_mm": 27.3,
+    "delta_max_mrad": 3.25,
+    "beamlet_etendue_1D_um": 1.2,
+    "beam_at_pupil_mm": 1.02
+   },
+   {
+    "d_mm": 300,
+    "p_mm": 0.25,
+    "h_focus_min_mm": 33.3,
+    "delta_max_mrad": 3.63,
+    "beamlet_etendue_1D_um": 1.458,
+    "beam_at_pupil_mm": 0.91
+   },
+   {
+    "d_mm": 300,
+    "p_mm": 0.3,
+    "h_focus_min_mm": 39.1,
+    "delta_max_mrad": 3.83,
+    "beamlet_etendue_1D_um": 1.7,
+    "beam_at_pupil_mm": 0.85
+   },
+   {
+    "d_mm": 400,
+    "p_mm": 0.1,
+    "h_focus_min_mm": 19.0,
+    "delta_max_mrad": null,
+    "beamlet_etendue_1D_um": null,
+    "beam_at_pupil_mm": 2.3
+   },
+   {
+    "d_mm": 400,
+    "p_mm": 0.15,
+    "h_focus_min_mm": 27.9,
+    "delta_max_mrad": 0.96,
+    "beamlet_etendue_1D_um": 0.694,
+    "beam_at_pupil_mm": 1.62
+   },
+   {
+    "d_mm": 400,
+    "p_mm": 0.2,
+    "h_focus_min_mm": 36.4,
+    "delta_max_mrad": 1.75,
+    "beamlet_etendue_1D_um": 0.9,
+    "beam_at_pupil_mm": 1.3
+   },
+   {
+    "d_mm": 400,
+    "p_mm": 0.25,
+    "h_focus_min_mm": 44.4,
+    "delta_max_mrad": 2.17,
+    "beamlet_etendue_1D_um": 1.094,
+    "beam_at_pupil_mm": 1.13
+   },
+   {
+    "d_mm": 400,
+    "p_mm": 0.3,
+    "h_focus_min_mm": 52.2,
+    "delta_max_mrad": 2.42,
+    "beamlet_etendue_1D_um": 1.275,
+    "beam_at_pupil_mm": 1.03
+   },
+   {
+    "d_mm": 500,
+    "p_mm": 0.1,
+    "h_focus_min_mm": 23.8,
+    "delta_max_mrad": null,
+    "beamlet_etendue_1D_um": null,
+    "beam_at_pupil_mm": 2.85
+   },
+   {
+    "d_mm": 500,
+    "p_mm": 0.15,
+    "h_focus_min_mm": 34.9,
+    "delta_max_mrad": 0.03,
+    "beamlet_etendue_1D_um": 0.555,
+    "beam_at_pupil_mm": 1.98
+   },
+   {
+    "d_mm": 500,
+    "p_mm": 0.2,
+    "h_focus_min_mm": 45.5,
+    "delta_max_mrad": 0.85,
+    "beamlet_etendue_1D_um": 0.72,
+    "beam_at_pupil_mm": 1.57
+   },
+   {
+    "d_mm": 500,
+    "p_mm": 0.25,
+    "h_focus_min_mm": 55.6,
+    "delta_max_mrad": 1.3,
+    "beamlet_etendue_1D_um": 0.875,
+    "beam_at_pupil_mm": 1.35
+   },
+   {
+    "d_mm": 500,
+    "p_mm": 0.3,
+    "h_focus_min_mm": 65.2,
+    "delta_max_mrad": 1.57,
+    "beamlet_etendue_1D_um": 1.02,
+    "beam_at_pupil_mm": 1.22
+   }
+  ],
+  "frustum_h_max_mm": {
+   "r5_th10": 124.8,
+   "r5_th15": 82.1,
+   "r5_th20": 60.4,
+   "r5_th25": 47.2,
+   "r10_th10": 96.4,
+   "r10_th15": 63.4,
+   "r10_th20": 46.7,
+   "r10_th25": 36.5
+  },
+  "retina_d400": {
+   "h20": {
+    "voxel_D": 2.632,
+    "gen1_best_D": 2.5,
+    "smv_best_D": 2.625
+   },
+   "h60": {
+    "voxel_D": 2.941,
+    "gen1_best_D": 2.5,
+    "smv_best_D": 2.85
+   },
+   "h90": {
+    "voxel_D": 3.226,
+    "gen1_best_D": 2.5,
+    "smv_best_D": 3.15
+   }
+  }
+ },
+ "S2": {
+  "biases_sin": [
+   -0.6345,
+   -0.2115,
+   0.2115,
+   0.6345
+  ],
+  "Lambda_um": {
+   "stage1": 2.6,
+   "stage2": 1.3
+  },
+  "max_angle_deg": {
+   "第一代透镜 4.9° + 白光 CF（60 nm）": 41.0,
+   "第一代透镜 4.9° + 量子点（30 nm）": 50.0,
+   "双片透镜 3.0° + 量子点（30 nm）": 62.0,
+   "双片透镜 3.0° + 微LED（20 nm）": 64.0
+  },
+  "flat_float_h_mm_r5": {
+   "th30": {
+    "short": 38.1,
+    "long": 65.5
+   },
+   "th45": {
+    "short": 22.0,
+    "long": 37.8
+   },
+   "th55": {
+    "short": 15.4,
+    "long": 26.5
+   }
+  },
+  "efficiency": {
+   "PG_per_stage": 0.95,
+   "stages": 2,
+   "HWP_FLC": 0.98,
+   "total": 0.867,
+   "zero_order_leak_per_stage": 0.01
+  }
+ },
+ "S3": {
+  "etendue_dividend": 286.0,
+  "rows": [
+   {
+    "scene": "室内 500 lx",
+    "variant": "第一代",
+    "target_cd_m2": 250,
+    "bg_cd_m2": 0.8,
+    "ACR": 315.2,
+    "emitter_peak_cd_m2": 18518,
+    "OLED_ok(<25k)": true,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "室内 500 lx",
+    "variant": "+方向保持偏振回收 ×1.6",
+    "target_cd_m2": 250,
+    "bg_cd_m2": 0.8,
+    "ACR": 315.2,
+    "emitter_peak_cd_m2": 11574,
+    "OLED_ok(<25k)": true,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "明亮室内 10 klx",
+    "variant": "第一代",
+    "target_cd_m2": 600,
+    "bg_cd_m2": 15.9,
+    "ACR": 38.7,
+    "emitter_peak_cd_m2": 44444,
+    "OLED_ok(<25k)": false,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "明亮室内 10 klx",
+    "variant": "+方向保持偏振回收 ×1.6",
+    "target_cd_m2": 600,
+    "bg_cd_m2": 15.9,
+    "ACR": 38.7,
+    "emitter_peak_cd_m2": 27778,
+    "OLED_ok(<25k)": false,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "户外阴天 30 klx",
+    "variant": "第一代",
+    "target_cd_m2": 1200,
+    "bg_cd_m2": 47.7,
+    "ACR": 26.1,
+    "emitter_peak_cd_m2": 88889,
+    "OLED_ok(<25k)": false,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "户外阴天 30 klx",
+    "variant": "+方向保持偏振回收 ×1.6",
+    "target_cd_m2": 1200,
+    "bg_cd_m2": 47.7,
+    "ACR": 26.1,
+    "emitter_peak_cd_m2": 55556,
+    "OLED_ok(<25k)": false,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "直射阳光 100 klx",
+    "variant": "第一代",
+    "target_cd_m2": 2000,
+    "bg_cd_m2": 159.2,
+    "ACR": 13.6,
+    "emitter_peak_cd_m2": 148148,
+    "OLED_ok(<25k)": false,
+    "uLED_ok(<1e6)": true
+   },
+   {
+    "scene": "直射阳光 100 klx",
+    "variant": "+方向保持偏振回收 ×1.6",
+    "target_cd_m2": 2000,
+    "bg_cd_m2": 159.2,
+    "ACR": 13.6,
+    "emitter_peak_cd_m2": 92592,
+    "OLED_ok(<25k)": false,
+    "uLED_ok(<1e6)": true
+   }
+  ],
+  "recycle_gain": 1.72,
+  "emit_power_W": {
+   "白光 OLED（50 lm/W）@250": 0.013,
+   "白光 OLED（50 lm/W）@600": 0.032,
+   "白光 OLED（50 lm/W）@2000": 0.108,
+   "小尺寸微LED（20 lm/W）@250": 0.034,
+   "小尺寸微LED（20 lm/W）@600": 0.081,
+   "小尺寸微LED（20 lm/W）@2000": 0.269
+  }
+ },
+ "S4": {
+  "rows": [
+   {
+    "modulator": "LCD 240 Hz（第一代）",
+    "eyes_max": 4,
+    "viewers_max": 2
+   },
+   {
+    "modulator": "快速 LCD 480 Hz",
+    "eyes_max": 8,
+    "viewers_max": 4
+   },
+   {
+    "modulator": "双层 LCD 因式分解 240 Hz",
+    "eyes_max": 8,
+    "viewers_max": 4
+   },
+   {
+    "modulator": "双层 LCD 480 Hz",
+    "eyes_max": 16,
+    "viewers_max": 8
+   },
+   {
+    "modulator": "铁电 LC 3 kHz 位平面（8 位灰度）",
+    "eyes_max": 6,
+    "viewers_max": 3
+   }
+  ],
+  "gen3_emissive": "自由度 = 1.5e8 个发光点，同时服务所有眼睛；上限变为功率（每增加一人 +2 份光通量）"
+ },
+ "S5": {
+  "gen1_W": 1.92,
+  "gen2_indoor_W": 2.19,
+  "gen2_outdoor_W": 2.45,
+  "thermal_limit_W_dT15": 2.15,
+  "gen2_adaptive_le2viewers_W": 1.96,
+  "sun_absorbed_W": 4.16,
+  "heat_capacity_J_per_K": 54.0,
+  "gen2_budget": {
+   "方向层发光（微LED，室内 250）": 0.034,
+   "方向层驱动（微LED 稀疏点亮）": 0.25,
+   "LCD+驱动 480 Hz": 0.35,
+   "偏振光栅 FLC 半波片 ×2": 0.02,
+   "红外相机+照明（广角）": 0.35,
+   "SoC 追踪+8 路渲染": 0.8,
+   "无线": 0.15
+  }
+ }
+}

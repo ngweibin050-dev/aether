@@ -1,0 +1,44 @@
+{
+ "H1": {
+  "window_deg_at_40cm": [
+   12.2,
+   7.7
+  ],
+  "figure_1p7m_behind_card_m": 12.6
+ },
+ "steering_deg": {
+  "3.7um": 4.1,
+  "2um": 7.6,
+  "1um": 15.4,
+  "0.5um": 32.1
+ },
+ "card_SBP_pixels": 65300000000.0,
+ "superoscillation": {
+  "extra_cycles": 2264,
+  "log10_energy_fraction": -983
+ },
+ "H3": {
+  "N_tot_wall_modes": 848000000000000.0,
+  "eta_4k_SLM": 1e-08,
+  "eta_card_limit": 7.7e-05,
+  "image_lm": 113,
+  "card_must_emit_lm": 1500000.0,
+  "contrast_4k_M1e5": 69,
+  "laser_linewidth_max_MHz": 30
+ },
+ "screening": {
+  "photons_per_s": 4.6e+17,
+  "molecules": 3e+22,
+  "photons_per_molecule_per_s": 1.5e-05,
+  "hours_between_emissions": 18.0
+ },
+ "two_photon_ASSUMED_sigma2": {
+  "I_cw_W_cm2": 230000.0,
+  "I_peak_scan1e5_W_cm2": 73000000.0,
+  "below_plasma_1e13_factor": 140000.0
+ },
+ "N2A_quench_FROM_MEMORY": {
+  "n_O2_cm3": 5.2e+18,
+  "lifetime_ns": 77
+ }
+}

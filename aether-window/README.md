@@ -1,60 +1,86 @@
-# AETHER Window（hackathon 起步代码）
+# AETHER Window
 
-笔电或平板 + 自带摄像头：头部追踪逐眼离轴渲染，物体浮在屏幕前；手势抓取、旋转、拆解；中文语音/文字让 Claude 改场景。
+**Turn any laptop into a head-tracked 3D window you control with your hands, your voice and Meta's AI models.**
 
-## Windows 最快运行（推荐）
+AETHER Window is Phase 0 of AETHER (see `proposal/hackathon_ready/AETHER_Hackathon_Proposal.html` in the repository), a project to build true holography from first principles. A normal webcam tracks your eyes; the screen is rendered as a window into a 3D room, so objects float in front of the glass and stay fixed in space when you move your head. No glasses, no extra hardware.
 
-1. 电脑要有 Node.js（没有的话到 https://nodejs.org 装 LTS 版）。
-2. 双击 `start.bat`，浏览器会自动打开 http://localhost:8787 。
-3. 允许摄像头。不需要 npm install，所有依赖和模型都已经放在文件夹里，可以离线运行。
+> Honesty note: this is per-eye perspective rendering, not a true hologram. It is the software half of AETHER and the place where we test the interaction model. Phase 1 of the roadmap is a window-scale true hologram (laser + phase modulator + eye tracking).
 
-没有 API key 时，语音和文字指令用本地关键词兜底（例如“拆开”“太阳系”“重置”）。
+## Features
 
-## 运行（命令行，开发用）
+| | What it does |
+| --- | --- |
+| **Head-tracked window** | Off-axis (generalised perspective) projection from the viewer's real eye position, estimated from iris size with MediaPipe Face Landmarker and One-Euro filtering. |
+| **Hands** | Pinch and drag to rotate, pinch with both hands and pull apart to explode a model, point with your index finger to highlight a part. |
+| **Voice + AI** | Say "take the engine apart" or "what does the piston do?". A language model (Llama via the Meta Model API) turns speech into structured scene actions plus a spoken answer. Works offline with a keyword fallback. |
+| **360° scan to 3D model** | Press **P**, slowly turn an object one full circle in front of the camera, press **P** again. An object detector finds and names the object, hand landmarks cut your hand out of every frame, and the outlines from all angles are carved into a real 3D mesh (visual hull + surface nets) coloured from the photos. Press **E** to export it as `.obj`. Segmentation is pluggable: SAM 3.1 through the server, or MediaPipe's point-prompt segmenter locally. |
+| **Two viewers** | Press **T**: the screen splits into two windows, each rendered for one person's eyes. |
+| **Window Law demo** | Press **W**: a card-sized window appears with live numbers and a top-down light-cone diagram, showing why every true hologram is a window (Law H1). |
+| **Languages** | Press **L** to switch between English and Chinese (UI, speech recognition and voice). |
 
-```bash
-npm install
-npm run setup            # 下载 MediaPipe 人脸/手部模型到 models/（只需一次，之后可离线）
-export ANTHROPIC_API_KEY=sk-ant-...   # 可选；不设就用本地关键词兜底
-npm start                # 打开 http://localhost:8787 （必须是 localhost 或 https 才能用摄像头）
+## Quick start (Windows)
+
+1. Install [Node.js](https://nodejs.org) LTS if you don't have it.
+2. Double-click `start.bat`. The browser opens http://localhost:8787.
+3. Allow the camera. Everything (Three.js, MediaPipe, models) is bundled, so no `npm install` is needed and it runs offline.
+
+On macOS or Linux: `node server.mjs`, then open http://localhost:8787 in Chrome.
+
+### First-time calibration (30 seconds)
+
+1. Press **C**, hold a bank card against the screen and resize the frame with `[` and `]` until it matches. Press Enter. This gives the real screen size in centimetres.
+2. Sit 50 cm from the screen and press **D**. This calibrates the camera's focal length.
+3. Press **F** for full screen.
+
+## Connecting the AI models
+
+Edit `ai.config.json` (copy `ai.config.example.json` if it is missing), then restart `start.bat`.
+
+```json
+{
+  "chat":    { "provider": "meta", "apiKey": "YOUR_KEY", "model": "Llama-4-Maverick-17B-128E-Instruct-FP8", "baseUrl": "https://api.llama.com/compat/v1" },
+  "segment": { "provider": "http", "url": "https://your-sam-endpoint", "apiKey": "" }
+}
 ```
 
-用 Chrome。第一次打开先做两步校准：
+- `chat.provider`: `meta` (Llama API, OpenAI-compatible), `openai` (any OpenAI-compatible endpoint), `anthropic`, or `none`. Set the model name and base URL from the event's API docs.
+- `segment.provider`: `http` sends `{ image_base64, points, text_prompt }` to `url` and expects `{ mask_base64 }`. Adapt `callSegmenter()` in `server.mjs` to SAM 3.1's real request format; the browser side does not change.
+- `ai.config.json` is git-ignored, so keys stay on your machine. Environment variables `AETHER_PROVIDER`, `AETHER_API_KEY`, `AETHER_MODEL` and `AETHER_BASE_URL` override the file.
+- The top-left HUD shows which model is active.
 
-1. 按 **C**，把一张银行卡贴在屏幕上，用 `[` `]` 把蓝框调到和卡一样大，按 Enter。这一步给出屏幕的真实厘米尺寸。
-2. 用尺子量好眼睛到屏幕 50 cm，坐稳后按 **D**。这一步校准摄像头焦距。
+## Keys
 
-然后按 **F** 全屏。
-
-## 快捷键
-
-| 键 | 作用 |
+| Key | Action |
 | --- | --- |
-| F | 全屏 |
-| C / D | 屏幕尺寸校准 / 50 cm 距离校准 |
-| M | 鼠标模拟视点（录视频、摄像头坏了时用） |
-| S | 红蓝立体（左右眼各自离轴渲染，戴红蓝眼镜） |
-| V | 显示摄像头画面 |
-| 1 2 3 | 发动机 / 太阳系 / DNA |
-| R | 重置 |
-| 空格（按住） | 语音输入 |
-| H | 帮助 |
+| F | Full screen |
+| C / D | Screen size calibration / 50 cm distance calibration |
+| M | Mouse viewpoint (for recording, or if the camera fails) |
+| S | Red-cyan anaglyph stereo |
+| V | Camera preview |
+| W | Window Law (H1) demo |
+| T | Two viewers (split screen) |
+| P | 360° scan to 3D model (press again to finish) |
+| E | Export the scanned model as .obj |
+| L | English / 中文 |
+| 1 2 3 4 | Engine / solar system / DNA / captured object |
+| R | Reset |
+| Space (hold) | Talk |
+| H | Help |
 
-## 手势
+## How it works
 
-- 拇指和食指捏合后拖动：旋转
-- 两只手同时捏合再拉开：拆解（合拢就装回）
-- 食指指向零件：高亮并显示名字（射线从你的眼睛出发，穿过屏幕上的光标）
+- `public/app.js`: off-axis projection, iris ranging, gestures, two-viewer split, Window Law demo, AI command layer and local fallback, UI language.
+- `public/capture.js`: frame grab, object detection (EfficientDet-Lite0) to find and name the object, hand removal (Hand Landmarker), segmentation (server first, then MediaPipe Interactive Segmenter, then a colour fallback), loop closure, visual-hull carving on a 64³ grid, surface-nets meshing, per-vertex colour from the best-facing photos, and OBJ export.
+- `public/scenes.js`: the three demo scenes. Add a scene by writing a `buildXxx()` and registering it in `SCENES`.
+- `server.mjs`: static files, `/api/command` (language model to `{ say, actions[] }` with a fixed action schema), `/api/segment`, `/api/status`.
 
-## 文件
+The language model can only return these actions: `explode`, `rotate`, `select`, `clear_select`, `load_scene`, `run`, `reset`, `capture`. Unknown actions are dropped, so the model cannot break the scene.
 
-- `public/app.js`：离轴投影、虹膜测距、手势、AI 指令、本地兜底
-- `public/scenes.js`：三个演示场景，新增场景照着写一个 `buildXxx()` 加进 `SCENES`
-- `server.mjs`：静态文件 + `/api/command`，用结构化输出让 Claude 只返回 `{say, actions[]}`
-- `AETHER_MODEL` 环境变量可换模型，默认 `claude-opus-5-5`，effort 设为 low 以降低延迟
+## Known limits
 
-## 已知限制
-
-- 立体感只对被追踪的那一个人成立，旁观者看到的是“歪的”画面。演示时让评委本人坐下。
-- 漂浮深度被限制在屏幕前 4 cm 内（总纲定理 3 的调节舒适区），屏幕后方可以更深。
-- 语音识别用 Chrome 的 Web Speech API，需要联网；断网时用输入框打字。
+- Single-webcam hand tracking depends on lighting. Use mouse mode (M) as a fallback in live demos.
+- Head-tracked depth is correct only for the tracked viewer(s); bystanders see a skewed image.
+- Float depth in front of the screen is capped at 4 cm to stay in the eye's comfort zone; depth behind the screen can be larger.
+- Iris-based distance accuracy on real users has not been measured yet.
+- The 360° scan assumes the object is turned at a roughly even speed through one full circle. Visual hulls cannot see concave areas (the inside of a cup is filled in). A single-image-to-mesh model such as SAM 3D could plug into the same server later.
+- Speech recognition uses Chrome's Web Speech API and needs internet; type in the box when offline.
