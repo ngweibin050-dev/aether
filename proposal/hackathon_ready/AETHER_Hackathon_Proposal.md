@@ -151,14 +151,12 @@ AETHER Window needs nothing but a laptop and its webcam. It validates the intera
 
 | Folder | File | Contents |
 | --- | --- | --- |
-| proposal/hackathon_ready | AETHER_Hackathon_Proposal.md / .html | This document |
-| proposal/hackathon_ready | AETHER_报名表.md | Ready-to-paste form answers |
+| proposal/hackathon_ready | AETHER_Hackathon_Proposal.md | This document |
 | proposal/hackathon_ready | AETHER_Demo_Script.md | Three-minute demo recording script |
 | proposal | AETHER_Decision_Log.md | Our thought process: every discussion, cost and rejected direction, with reasons |
-| proposal/long_term | AETHER_Charter_v3.md (English) / AETHER_总纲_v3.html (Chinese) | Full long-term charter |
+| proposal/long_term | AETHER_Charter_v3.md (English)  | Full long-term charter |
 | theory | AETHER_Physics_Record.md | Every physics study in the project, in order: derivations, theorems, numbers |
 | theory/simulations | 5 Python scripts, results JSON, 19 figures | Reproducible simulations behind every number |
-| theory | AETHER_物理理论_v3.html | Current theory (Chinese) |
 | references | AETHER_References.md | Every competitor, paper and tool we studied, with links |
-| references | AETHER_前沿技术与竞品_v3.html, Looking Glass/Sony .docx | Earlier surveys (Chinese) |
+| references | Looking Glass/Sony .docx | Earlier surveys |
 | aether-window | start.bat | Runnable demo |
