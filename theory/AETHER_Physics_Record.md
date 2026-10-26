@@ -663,6 +663,8 @@ H1 and H3 hold for every linear, passive medium, so the only exit is for the air
 
 ### 8.5 Unified conclusion of stage 7
 
+> **Status note (26 Oct, after an external review).** H1 is an application of the known Kirchhoff–Helmholtz integral, so we now call it the *Window constraint* rather than a new law. H1, H3 and the superoscillation estimate are **candidate constraints**: the arithmetic is reproducible (`simulations/aether_holography_v3.py`), but the models have not been reviewed by a Fourier-optics or computational-holography expert. "Closed" below means "impractical under the stated assumptions", not proven impossible. The air-emission route is a research hypothesis. Next steps: state H1 as a formal theorem with explicit assumptions (real vs virtual image, pupil position, reconstruction method), and check H3 against the wavefront-shaping literature.
+
 1. **Window-scale true holography is feasible** (H1 + eye tracking): the physical basis of the Phase 1 product.
 2. **Room-scale true holography needs a new mechanism.** Pure optics is closed by H1, H3 and the superoscillation analysis.
 3. **The mechanism's location is known:** an energy pathway in air molecules. Molecule count and total intensity are not the limit; meeting "weak, local, visible, safe" at once is.

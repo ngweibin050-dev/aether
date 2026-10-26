@@ -155,6 +155,11 @@ This log is the "thought process" companion to the physics record (`theory/AETHE
 
 - Registration **approved** for the Meta Global AI Developer Hackathon (remote; build Tue 27 Oct 01:00 → Thu 5 Nov 10:00 MYT).
 - The founder asked for complete English records of the proposal, theory and references, "so judges can see our thought process", including discussions, costs and every rejection with reasons (this document).
+- The founder shared another AI's review of the C:\Aether folder (its ratings: vision 9, research organisation 8, software 6.5, scientific evidence 4.5, hardware 2, hackathon potential 7.5). The founder said its opinions are not binding and asked which suggestions are useful. We judged three useful and the founder accepted all three:
+  1. **Soften the claims.** "We proved a new law" became "we derived a candidate constraint and are testing its assumptions". H1 is now called an application of the known Kirchhoff–Helmholtz integral; H3 is new only after a literature check.
+  2. **State Meta integration honestly.** Llama and SAM are listed as not yet connected until they are demonstrated.
+  3. **Lead with the software.** The proposal now opens with AETHER Window, then the research direction, then the card as the long-term goal.
+  Not adopted: the numeric ratings (obvious or subjective) and "run experiments" (no budget). Instead, the candidate results point to reproducible simulation scripts.
 
 ---
 

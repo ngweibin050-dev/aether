@@ -13,7 +13,7 @@
 
 ## 1. 开场（0:00–0:20）
 
-"Every 'hologram' you have seen is a reflection, a fog screen or a light-field display. AETHER started from the wave equation instead, and asked what it would physically take to put a true hologram into a room. This is the first piece we can build today: AETHER Window."
+"This is AETHER Window: a normal laptop and webcam turned into a head-tracked 3D window you control with your hands and voice. To be clear, it is a rendering illusion, not a hologram. It is the software first step of a longer project that asks what it would physically take to put a true hologram into a room."
 
 【对着镜头，画面里是发动机】
 
@@ -33,13 +33,17 @@
 
 【活塞高亮，AETHER 读出解释】
 
-"The language model never touches the 3D scene directly. It can only return a fixed set of actions, like explode, rotate or select, so it cannot break anything. With the Meta Model API, Llama is the brain of the scene."
+"The language model never touches the 3D scene directly. It can only return a fixed set of actions, like explode, rotate or select, so it cannot break anything. Here Llama, through the Meta Model API, is the brain of the scene."
+
+【只有 Llama 真的接上后才说最后一句；没接上就改说："Today this runs on on-device keywords; Llama plugs into the same action layer."】
 
 ## 4. 真实物体变 3D（1:30–2:05）
 
 "Now a real object." 【按 P，把物体放进虚线框，等倒数】
 
-"The camera cuts it out and turns it into a 3D card inside the window. Segmentation is pluggable: SAM 3.1 runs here." 【捏合转一下，说 "take it apart" 看分层】
+"The camera cuts it out and turns it into a 3D card inside the window. Segmentation is pluggable: here it uses Meta's SAM."
+
+【只有 SAM 真的接上后才说最后一句；没接上就改说："Today it uses a local segmenter; SAM plugs into the same step."】 【捏合转一下，说 "take it apart" 看分层】
 
 ## 5. 两个人一起看（2:05–2:25）
 
@@ -49,15 +53,15 @@
 
 【按 W】
 
-"This is why AETHER is honest about what it is. We proved from first principles that a true hologram made by optics alone is always a window. You only see a point if the line from your eye through it passes through the device. Move your head, and the object is clipped exactly at the edge of the card."
+"This visualises the main constraint in our physics analysis. Applying the known Kirchhoff–Helmholtz integral, we derived that a true hologram from a small device behaves like a window: you only see a point if the line from your eye through it passes through the device. Move your head, and the object is clipped at the edge of the card. It is a candidate result we are still testing, and the scripts are in our repository."
 
 【慢慢移动头，让物体被裁掉，右上角的俯视图会变色】
 
-"So our product line is a window-scale true hologram in a bank card. And our research line is the one door physics leaves open: making the air itself emit light, at intensities far below today's plasma."
+"So our long-term product goal is a window-scale true hologram in a bank card. Our open research question is whether air itself could be made to emit light at intensities far below today's plasma. That is a hypothesis, not a result."
 
 ## 7. 结尾（2:55–3:00）
 
-"AETHER. True holography, from first principles."
+"AETHER. A 3D window today, a path toward true holography."
 
 ## 备用短句（出状况时用）
 
