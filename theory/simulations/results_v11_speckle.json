@@ -1,0 +1,73 @@
+{
+ "single_frame": {
+  "D3mm_pool1arcmin": {
+   "C": 0.39178820572108186,
+   "theory_lam_over_Dtheta": 0.6073352628386726
+  },
+  "D3mm_pool2arcmin": {
+   "C": 0.2044402884971333,
+   "theory_lam_over_Dtheta": 0.3036676314193363
+  },
+  "D3mm_pool3arcmin": {
+   "C": 0.1360430195690352,
+   "theory_lam_over_Dtheta": 0.20244508761289084
+  },
+  "D4mm_pool1arcmin": {
+   "C": 0.30335608633333394,
+   "theory_lam_over_Dtheta": 0.45550144712900453
+  },
+  "D4mm_pool2arcmin": {
+   "C": 0.1612256788532752,
+   "theory_lam_over_Dtheta": 0.22775072356450227
+  },
+  "D4mm_pool3arcmin": {
+   "C": 0.10824263449039882,
+   "theory_lam_over_Dtheta": 0.15183381570966814
+  },
+  "D6mm_pool1arcmin": {
+   "C": 0.19855881960289629,
+   "theory_lam_over_Dtheta": 0.3036676314193363
+  },
+  "D6mm_pool2arcmin": {
+   "C": 0.10580654193730064,
+   "theory_lam_over_Dtheta": 0.15183381570966814
+  },
+  "D6mm_pool3arcmin": {
+   "C": 0.06888647317106365,
+   "theory_lam_over_Dtheta": 0.10122254380644542
+  }
+ },
+ "card_subaperture": {
+  "one_view": 0.3564414937507874,
+  "two_views": 0.2552080355825643
+ },
+ "frames": {
+  "1": 0.3048991576522075,
+  "4": 0.14582279492453493,
+  "16": 0.0734844216260521,
+  "64": 0.03714146020479576
+ },
+ "spectral_thin_slm": {
+  "dlam_over_lam_0.0": 0.29062324746271506,
+  "dlam_over_lam_0.02": 0.2903995324196845,
+  "dlam_over_lam_0.06": 0.28862373411899317
+ },
+ "sparse_groups": {
+  "k1_G1": 0.2874255139463869,
+  "k2_G4": 0.0984830264185839,
+  "k3_G9": 0.04423399507741275,
+  "k4_G16": 0.038641202562442176
+ },
+ "focus_edge_0.5D": {
+  "incoherent_reference": 4.375,
+  "random_phase_32frames": 4.25,
+  "smooth_phase": 4.0,
+  "sparse_k2": 4.625,
+  "sparse_k3": 3.5
+ },
+ "sparse_defocus_speckle_0.5D": {
+  "k2": 0.15333370190998638,
+  "k3": 0.09214714511670787,
+  "k1": 0.2991436639692092
+ }
+}

@@ -1,0 +1,105 @@
+{
+ "TV_1D_k2 (C 0.06 focus / 0.07 at 0.5 D) @1/60s": {
+  "subframes_per_s_per_viewer": 360,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.96,
+   "nematic_heated_0.6ms": 1.54,
+   "MEMS_PLM_now": 4.0,
+   "MEMS_PLM_planned": 27.78,
+   "binary_FLC_6.3kHz": 17.5
+  }
+ },
+ "TV_1D_k2 (C 0.06 focus / 0.07 at 0.5 D) @1/30s": {
+  "subframes_per_s_per_viewer": 180,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 1.93,
+   "nematic_heated_0.6ms": 3.08,
+   "MEMS_PLM_now": 8.0,
+   "MEMS_PLM_planned": 55.56,
+   "binary_FLC_6.3kHz": 35.0
+  }
+ },
+ "TV_1D_k3 (C 0.027 / 0.05) @1/60s": {
+  "subframes_per_s_per_viewer": 540,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.64,
+   "nematic_heated_0.6ms": 1.03,
+   "MEMS_PLM_now": 2.67,
+   "MEMS_PLM_planned": 18.52,
+   "binary_FLC_6.3kHz": 11.67
+  }
+ },
+ "TV_1D_k3 (C 0.027 / 0.05) @1/30s": {
+  "subframes_per_s_per_viewer": 270,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 1.29,
+   "nematic_heated_0.6ms": 2.06,
+   "MEMS_PLM_now": 5.33,
+   "MEMS_PLM_planned": 37.04,
+   "binary_FLC_6.3kHz": 23.33
+  }
+ },
+ "card_k1 (C 0.24 / 0.26) @1/60s": {
+  "subframes_per_s_per_viewer": 360,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.96,
+   "nematic_heated_0.6ms": 1.54,
+   "MEMS_PLM_now": 4.0,
+   "MEMS_PLM_planned": 27.78,
+   "binary_FLC_6.3kHz": 17.5
+  }
+ },
+ "card_k1 (C 0.24 / 0.26) @1/30s": {
+  "subframes_per_s_per_viewer": 180,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 1.93,
+   "nematic_heated_0.6ms": 3.08,
+   "MEMS_PLM_now": 8.0,
+   "MEMS_PLM_planned": 55.56,
+   "binary_FLC_6.3kHz": 35.0
+  }
+ },
+ "card_k2 (C 0.073 / 0.12) @1/60s": {
+  "subframes_per_s_per_viewer": 1440,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.24,
+   "nematic_heated_0.6ms": 0.39,
+   "MEMS_PLM_now": 1.0,
+   "MEMS_PLM_planned": 6.94,
+   "binary_FLC_6.3kHz": 4.38
+  }
+ },
+ "card_k2 (C 0.073 / 0.12) @1/30s": {
+  "subframes_per_s_per_viewer": 720,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.48,
+   "nematic_heated_0.6ms": 0.77,
+   "MEMS_PLM_now": 2.0,
+   "MEMS_PLM_planned": 13.89,
+   "binary_FLC_6.3kHz": 8.75
+  }
+ },
+ "card_k3 (C 0.056 / 0.079) @1/60s": {
+  "subframes_per_s_per_viewer": 3240,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.11,
+   "nematic_heated_0.6ms": 0.17,
+   "MEMS_PLM_now": 0.44,
+   "MEMS_PLM_planned": 3.09,
+   "binary_FLC_6.3kHz": 1.94
+  }
+ },
+ "card_k3 (C 0.056 / 0.079) @1/30s": {
+  "subframes_per_s_per_viewer": 1620,
+  "viewers_or_ratio": {
+   "nematic_room_0.96ms": 0.21,
+   "nematic_heated_0.6ms": 0.34,
+   "MEMS_PLM_now": 0.89,
+   "MEMS_PLM_planned": 6.17,
+   "binary_FLC_6.3kHz": 3.89
+  }
+ },
+ "card_line_time_us_at_1440Hz": 0.23148148148148148,
+ "card_line_time_us_at_1620Hz": 0.205761316872428,
+ "card_line_time_us_at_3240Hz": 0.102880658436214
+}

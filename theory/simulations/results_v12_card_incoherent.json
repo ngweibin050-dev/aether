@@ -1,0 +1,46 @@
+{
+ "column_pitch_arcmin": 0.9110028942580088,
+ "card_incoh_2views_k1_dz0": 0.17791174947275684,
+ "card_incoh_2views_k2_dz0": 0.07085732242048913,
+ "card_incoh_2views_k3_dz0": 0.06338347379331596,
+ "card_incoh_2views_k1_dz0.5": 0.16402846513041777,
+ "card_incoh_2views_k2_dz0.5": 0.10828350444070448,
+ "card_incoh_2views_k3_dz0.5": 0.0808410924050229,
+ "h_sharpness_rel_ideal_face_7cm_behind": {
+  "2views_e2.00mm": 0.3921845142251166,
+  "3views_e1.33mm": 0.5396442530057258,
+  "4views_e1.00mm": 0.5160737087336452
+ },
+ "h_sharpness_rel_ideal_face_mid_plane_at_card_+-2.5cm": {
+  "2views_e2.00mm": 0.7827387742342656,
+  "3views_e1.33mm": 0.7087575724139994,
+  "4views_e1.00mm": 0.5984527127540571
+ },
+ "h_sharpness_rel_ideal_+-5cm": {
+  "2views_e2.00mm": 0.5795383240912491,
+  "3views_e1.33mm": 0.6251970912910804,
+  "4views_e1.00mm": 0.5584636779162763
+ },
+ "crosstalk_aperture_1.0x": {
+  "to_neighbour_view": 0.20774167257865556,
+  "horizontal_resolution_arcmin": 0.911002894258009
+ },
+ "crosstalk_aperture_1.5x": {
+  "to_neighbour_view": 0.1433999548179993,
+  "horizontal_resolution_arcmin": 1.3665043413870135
+ },
+ "crosstalk_aperture_2.0x": {
+  "to_neighbour_view": 0.10882684082856564,
+  "horizontal_resolution_arcmin": 1.822005788516018
+ },
+ "subframes_per_s_k2": {
+  "1/60s": 240,
+  "1/30s": 120,
+  "with_field_sequential_colour_1/60s": 720
+ },
+ "subframes_per_s_k3": {
+  "1/60s": 360,
+  "1/30s": 180,
+  "with_field_sequential_colour_1/60s": 1080
+ }
+}

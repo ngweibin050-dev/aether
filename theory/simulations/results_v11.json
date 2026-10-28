@@ -1,0 +1,70 @@
+{
+ "LC_room_temp": {
+  "v7 assumption (g1 0.15 Pa s for high-dn, dn 0.40)": {
+   "tau_ms": 0.7365727333085632,
+   "d_um": 0.79375,
+   "max_Hz_3tau": 452.5463925823795
+  },
+  "sourced: E7-class g1 0.15 Pa s, dn 0.35 (UCF terphenyls)": {
+   "tau_ms": 0.9620541822805725,
+   "d_um": 0.9071428571428571,
+   "max_Hz_3tau": 346.4808318208842
+  },
+  "sourced high-dn mixtures are more viscous (assume g1 0.22, dn 0.35)": {
+   "tau_ms": 1.4110128006781733,
+   "d_um": 0.9071428571428571,
+   "max_Hz_3tau": 236.23693078696647
+  }
+ },
+ "measured_anchor_ms": {
+  "Meadowlark_UHSP_532nm_heated": 0.6,
+  "4K2K_phase_LCoS_45C": [
+   1,
+   2
+  ]
+ },
+ "frame_Hz_at_tau_0.6ms": 555.5555555555555,
+ "frame_Hz_at_tau_1.0ms": 333.3333333333333,
+ "frame_Hz_at_tau_1.5ms": 222.2222222222222,
+ "card_tau_needed_ms": 0.9259259259259259,
+ "tv_viewers_LC_limited": {
+  "0.6": 3.0864197530864197,
+  "1.0": 1.8518518518518516
+ },
+ "usd_per_m2": {
+  "TV_65in_173usd": 148.531773066176,
+  "TV_55in_123usd": 147.49581840761476,
+  "monitor_27in_63usd": 313.4822799138054,
+  "notebook_14in_26.9usd": 497.8473321459116
+ },
+ "tv_hologram_panel_usd": [
+  197.49383634569742,
+  313.6438192519243
+ ],
+ "R_air_n2_3e-19": {
+  "1e+12": 2.2206609902451064e-05,
+  "2e+12": 0.00013879131189031908,
+  "1e+13": 0.0022206609902451053
+ },
+ "R_air_n2_8e-20": {
+  "1e+12": 1.5791367041742971e-06,
+  "2e+12": 9.869604401089356e-06,
+  "1e+13": 0.0001579136704174297
+ },
+ "intensity_factor_for_same_R": 3.75,
+ "classI_pump_needed_Wcm2": 9000000000000.0,
+ "patterns_needed_C0.05": 399.99999999999994,
+ "patterns_needed_C0.035": 816.3265306122448,
+ "v10_contrast_2views": [
+  0.14696938456699066,
+  0.19595917942265423
+ ],
+ "capture_tol_mm_stereo30": {
+  "tv_3m": 20.45307717180855,
+  "card_0.47m": 0.5020094163613898
+ },
+ "capture_tol_mm_stereo60": {
+  "tv_3m": 40.9061543436171,
+  "card_0.47m": 1.0040188327227797
+ }
+}

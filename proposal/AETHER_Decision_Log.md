@@ -161,6 +161,28 @@ This log is the "thought process" companion to the physics record (`theory/AETHE
   3. **Lead with the software.** The proposal now opens with AETHER Window, then the research direction, then the card as the long-term goal.
   Not adopted: the numeric ratings (obvious or subjective) and "run experiments" (no budget). Instead, the candidate results point to reproducible simulation scripts.
 
+
+---
+
+## 27–28 October: from "make the air glow" to the holographic window
+
+- Physics v4–v5: the founder asked for a first-principles investigation of true free-space holography. Result: a single card filling the room with a 360° image is closed (Theorems A, H); making air glow needs plasma by every pathway (Theorems G, G_n). The founder asked "绷不住，还要不要做全息?". Framing agreed: the dream (seeing distant family) only needs a true holographic **window**; life-size needs a big window, the card is a small one. The founder chose to pursue both the window (main line) and the air mirror (long-term research).
+- v6–v10: the window was worked to numbers (pixels, liquid-crystal speed, one-dimensional holography, tiling, cost, battery, focus simulation, views per pupil, tracking, viewers, capture). Founder rule: **"物理没有解决，什么东西我都不做"** (no building until the physics is solved).
+- 28 October: every constant from memory was checked online (master report). Changes: liquid crystal slower (0.6–1 ms), TV panel cost higher, speckle much more serious, air mirror harder, capture tolerance looser.
+- v11 speckle: Theorems S1 and S2; sparse point groups solve the TV; the card's v10 design would need a kilohertz chip that does not exist.
+- v12: a horizontally incoherent card design reaches about 4–5 % speckle on existing liquid crystal, at the cost of depth (face should straddle the card plane).
+- The founder declared the paper physics complete. The remaining unknowns (real-eye focus on 1D holograms, speckle averaging time, texture masking) need measurement.
+- The founder asked for a new long-term charter (v4) and a new hackathon proposal based on the theory. Hackathon entry changed from AETHER Window (pre-event code, which the rules forbid showing) to **AETHER Holo Lab**, written during the event: photo → 3D person (Meta SAM + 3D model) → real hologram → wave-optics eye simulation → Muse agent.
+
+
+---
+
+## 28 October (afternoon): purpose changed to a spatial computing platform
+
+- The founder rejected "seeing family" as the purpose: a video call already does that. AETHER must offer what no phone or call can. Direction: a Jarvis-style 3D design system, framed (after reading another AI's analysis the founder preferred) as a **spatial computing platform**: holographic hardware + hologram rendering + hand interaction + AI partner + developer ecosystem. First application 3D design; then medical imaging, science, education; games as the consumer entry.
+- Physics v13: hands need the image **in front of** the panel. With 1D holography the sharp zone of a 27″ desk at 70 cm is about ±10 cm around the surface (78–90 % of full 2D, focus error ≤ 0.10 D). Floating 25 cm above the desk needs full 2D and a kilohertz modulator (Desk 2). Hand shadow rule: interact from the front and sides.
+- Founder rule: the proposals must be feasible under our own theory. Charter v5 and Hackathon Proposal v5 (AETHER Forge) written accordingly; the Table viewer count corrected to 1–2.
+
 ---
 
 ## Standing rules that came out of these decisions

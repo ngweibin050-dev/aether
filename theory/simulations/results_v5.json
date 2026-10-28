@@ -1,0 +1,100 @@
+{
+ "check_O2_ionisation_prob_100fs_at_1e14": 0.6919192533770857,
+ "check_n2_GM": 0.3873056430902915,
+ "channels": [
+  {
+   "channel": "N2 B3Pg -> first positive red (via triplet, spin-forbidden)",
+   "pump_nm": 1550,
+   "n": 10,
+   "I_req_Wcm2": 577790874825709.1,
+   "note": "eta ~ quench(1e-3) x spin factor(1e-5)"
+  },
+  {
+   "channel": "N2 B3Pg -> first positive red (via triplet, spin-forbidden)",
+   "pump_nm": 1064,
+   "n": 7,
+   "I_req_Wcm2": 1726837339980614.2,
+   "note": "eta ~ quench(1e-3) x spin factor(1e-5)"
+  },
+  {
+   "channel": "N2 B3Pg -> first positive red (via triplet, spin-forbidden)",
+   "pump_nm": 800,
+   "n": 5,
+   "I_req_Wcm2": 6496083719571581.0,
+   "note": "eta ~ quench(1e-3) x spin factor(1e-5)"
+  },
+  {
+   "channel": "N2+ B -> 391/428 nm (needs ionisation)",
+   "pump_nm": 1550,
+   "n": 24,
+   "I_req_Wcm2": 134492003833749.69,
+   "note": "reached only through ionisation"
+  },
+  {
+   "channel": "N2+ B -> 391/428 nm (needs ionisation)",
+   "pump_nm": 1064,
+   "n": 17,
+   "I_req_Wcm2": 198141678125381.06,
+   "note": "reached only through ionisation"
+  },
+  {
+   "channel": "N2+ B -> 391/428 nm (needs ionisation)",
+   "pump_nm": 800,
+   "n": 13,
+   "I_req_Wcm2": 265795891108507.84,
+   "note": "reached only through ionisation"
+  },
+  {
+   "channel": "O(1S) 557.7 nm from O2 dissociation",
+   "pump_nm": 1550,
+   "n": 12,
+   "I_req_Wcm2": 296838347432899.75,
+   "note": "1S quenched in air"
+  },
+  {
+   "channel": "O(1S) 557.7 nm from O2 dissociation",
+   "pump_nm": 1064,
+   "n": 8,
+   "I_req_Wcm2": 671744873634720.8,
+   "note": "1S quenched in air"
+  },
+  {
+   "channel": "O(1S) 557.7 nm from O2 dissociation",
+   "pump_nm": 800,
+   "n": 7,
+   "I_req_Wcm2": 1117922452778342.2,
+   "note": "1S quenched in air"
+  },
+  {
+   "channel": "O2 b 762 nm, two-photon, spin-forbidden",
+   "pump_nm": 1550,
+   "n": 3,
+   "I_req_Wcm2": 1.5753882264961894e+17,
+   "note": "spin x luminous penalty"
+  },
+  {
+   "channel": "O2 b 762 nm, two-photon, spin-forbidden",
+   "pump_nm": 1064,
+   "n": 2,
+   "I_req_Wcm2": 1.3698805983539141e+20,
+   "note": "spin x luminous penalty"
+  },
+  {
+   "channel": "O2 b 762 nm, two-photon, spin-forbidden",
+   "pump_nm": 800,
+   "n": 2,
+   "I_req_Wcm2": 2.423181790428245e+20,
+   "note": "spin x luminous penalty"
+  }
+ ],
+ "DFWM_R_L1mm_I1e+11": 5.021563661586533e-07,
+ "DFWM_R_L1mm_I1e+12": 5.0215636615865336e-05,
+ "DFWM_R_L1mm_I1e+13": 0.005021563661586534,
+ "cone_beta_deg_h0.3": 8.119406856891173,
+ "DFWM_max_output_deg_h0.3": 16.238813713782346,
+ "cone_beta_deg_h1.0": 2.4507636245244546,
+ "DFWM_max_output_deg_h1.0": 4.901527249048909,
+ "probe_avg_W": 0.002290123311185234,
+ "rayleigh_into_pupil_W_per_m_at_1m": 3.9e-12,
+ "signal_per_voxel_W_M1e5": 1.15e-12
+}

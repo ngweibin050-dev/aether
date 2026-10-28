@@ -286,3 +286,7 @@ Pure reasoning repeatedly converged on known principles (integral imaging, eye-t
 - [ ] Original source of the πN/4 phase-conjugation focusing enhancement (Vellekoop & Mosk)
 - [ ] Re-link all v2 prior-art items in §7
 - [ ] Meta API model names and SAM availability once the event documentation is published
+
+- Constants check (28 Oct 2026): sourced values for LC speed and viscosity, Δn, thin-cell energy density, panel prices, laser thresholds, air n₂, depth of field, stereoacuity, latency and speckle thresholds. See section 2 "常数查证表" (verification table) and section 6 "主要来源" (main sources) of `../theory/AETHER_Physics_Master_Report_v4-v10_zh.md`.
+- Speckle sources (v11, 28 Oct 2026): Verschaffelt 2015 (Sci. Rep. 5, 14105); arXiv 2409.01289 (MEMS phase light modulator, 1.44 kHz); "Holographic femtosecond laser processing using 6.3 kHz pulse-to-pulse spatial light modulation with binary phase masks"; Takaki & Yokouchi 2011 (Opt. Express); Wang 2024; Williams 1985. See section 8 "来源" (sources) of `../theory/AETHER_Physics_v11_Speckle_zh.md`.
+- Card horizontally-incoherent option (v12, 28 Oct 2026): Verschaffelt 2015 (Sci. Rep. 5, 14105); van Cittert-Zernike theorem (Goodman, Statistical Optics); Takaki 2014. See section 8 "来源" (sources) of `../theory/AETHER_Physics_v12_Card_Incoherent_zh.md`.
