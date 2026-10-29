@@ -1,0 +1,44 @@
+Meta AI Builders Hackathon 2026
+
+Project Name : Aether
+By Ng Wei Bin
+
+Track : Indie Developer 
+Track Judgment : Creativity, Technical Ambition, Whether it works
+
+Theme : Push the Frontlier
+Theme Judgment : Use Meta’s Models to tackle challenges in software, robotics, manufacturing, energy, materials and beyond. Show us what becomes possible when these models meet the real world
+
+Rules :
+1.	Build it between Oct 26 and Nov 24 only
+2.	GitHub Repository must be public
+3.	Demo only what you built, judges must be able to tell what your team created during the event, or the project is disqualified.
+No these allowed :
+1.	AI-generated medical advice
+2.	Simple image analyzers
+3.	Dashboards as the main feature
+4.	AI job application screeners
+5.	Personality Analyzers
+6.	Basic RAG apps
+7.	Streamlit apps
+8.	“AI for education” chatbots
+9.	AI nutrition coaches
+10.	Sports analyzers or coaches
+
+Rubric :
+1.	Impact 30%
+a.	Real World potential, who benefits, and fit with a problem statement
+2.	Use of Meta AI tooling 25%
+a.	Creative use beyond a basic integration
+3.	Technical Depth 20%
+a.	Sound, refined engineering with real craft
+4.	Demo 25%
+a.	A working demo that holds up, and a demo video worth watching
+
+Tools I have obtained :
+1.	Meta API $150
+2.	BaseTan API $100
+3.	Modal API $100
+
+
+

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AETHER Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{"imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/"
+}}
+</script>
+</head>
+<body>
+<div class="bg-glow"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo"><span></span></div>
+    <div>
+      <div class="name">AETHER <em>Lab</em></div>
+      <div class="sub">Design real holograms by talking to them</div>
+    </div>
+  </div>
+  <div class="status">
+    <span class="chip"><i class="dot ok"></i>Muse Spark</span>
+    <span class="chip" id="compute"><i class="dot"></i>physics</span>
+    <span class="chip warn" title="Every number on this page comes from a wave-optics simulation">Simulation · not a built display</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="stage">
+    <div class="viewport glass">
+      <div id="three"></div>
+      <div class="hud top-left">
+        <div class="seg">
+          <button data-view="close" class="on">Close-up</button>
+          <button data-view="whole">Whole setup</button>
+        </div>
+      </div>
+      <div class="hud top-right" id="sceneinfo"></div>
+      <div class="hud bottom controls glass-strong">
+        <label><span>Distance</span><input id="z" type="range" min="20" max="100" step="1" value="50"><b id="zv">50 mm</b></label>
+        <label><span>Tilt</span><input id="tilt" type="range" min="0" max="80" step="5" value="0"><b id="tv">0°</b></label>
+        <label><span>Teeth</span><input id="teeth" type="range" min="6" max="24" step="1" value="12"><b id="nv">12</b></label>
+        <button id="calc" class="btn primary"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>Calculate hologram</button>
+      </div>
+    </div>
+
+    <div class="pair-panels">
+      <article class="panel glass">
+        <header><h3><span class="num">01</span>Hologram</h3><p>The light pattern the display must show</p></header>
+        <div class="imgbox"><img id="holo" alt=""><div class="empty">Press <b>&nbsp;Calculate hologram&nbsp;</b></div></div>
+      </article>
+      <article class="panel glass">
+        <header><h3><span class="num">02</span>What the eye sees</h3><p>Drag to refocus through the object</p></header>
+        <div class="imgbox"><img id="recon" alt=""><div class="empty">Reconstruction appears here</div>
+          <div class="depth-tag" id="depthtag" hidden></div></div>
+        <div class="focusbar">
+          <input id="sweep" type="range" min="0" max="0" value="0" disabled>
+          <button id="dosweep" class="btn ghost">Focus sweep</button>
+        </div>
+        <div class="spark" id="spark"></div>
+      </article>
+    </div>
+  </section>
+
+  <aside class="side">
+    <article class="panel glass assistant">
+      <header><h3><span class="num">AI</span>Ask AETHER</h3><p>Muse Spark plans the experiment and runs the tools</p></header>
+      <div id="log">
+        <div class="hello">
+          <p>Try asking:</p>
+          <div class="examples">
+            <button data-q="Put a 12-tooth gear 5 cm in front of the hologram, tilt it 60 degrees, and show me a focus sweep.">Tilt the gear and refocus</button>
+            <button data-q="Can AETHER Desk show this gear 10 cm in front of the screen, sharp enough to design with?">Can the Desk show it at 10 cm?</button>
+            <button data-q="Find the widest column that keeps the image at least 80% sharp at 10 cm on AETHER Desk.">Widest column at 10 cm</button>
+            <button data-q="How grainy is the light, and how much does averaging 16 frames help?">How grainy is it?</button>
+            <button data-q="Make a film hologram I can print for my laser pointer test.">Printable film</button>
+          </div>
+        </div>
+      </div>
+      <form id="ask">
+        <button type="button" id="mic" class="mic" title="Hold to talk"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <input id="q" autocomplete="off" placeholder="Ask, or hold the mic to talk…">
+        <button class="send" title="Send"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7-8-1z"/></svg></button>
+      </form>
+    </article>
+
+    <article class="panel glass">
+      <header><h3><span class="num">03</span>AETHER Desk check</h3><p>27″ holographic desk, viewer at 70 cm · eye-model simulation</p></header>
+      <div id="desk"><div class="empty-inline">How sharp the image stays above and below the panel.</div></div>
+      <button id="dodesk" class="btn ghost full">Run desk check</button>
+    </article>
+  </aside>
+</main>
+
+<div class="drawer glass-strong" id="extra" hidden>
+  <header><h3 id="extratitle"></h3><button id="closeextra" class="btn ghost">Close</button></header>
+  <div id="extrabody"></div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
