@@ -72,6 +72,35 @@ def test_eye_model_desk():
     assert near["relative"] > far["relative"]
 
 
+def test_wrp_matches_direct():
+    """5. Fast WRP hologram focuses a point as well as the direct method (same depth, same pixel)."""
+    z = 0.05
+    pts = np.array([[0.2e-3, -0.3e-3, z]])
+    rc = GRID.to_index(0.2e-3, -0.3e-3)
+    out = {}
+    for name, f in (("direct", optics.point_hologram), ("wrp", optics.wrp_hologram)):
+        holo = optics.phase_only(f(pts, GRID, phases=[0.0]))
+        zs = np.linspace(0.045, 0.055, 11)
+        z_best, _ = measure.best_depth(optics.focus_sweep(holo, zs, GRID), zs, rc)
+        out[name] = (z_best, measure.energy_near(optics.reconstruct(holo, z, GRID), rc, 2))
+    print(f"  direct: focus {out['direct'][0]*100:.2f} cm, {out['direct'][1]:.0%} in spot; "
+          f"wrp: focus {out['wrp'][0]*100:.2f} cm, {out['wrp'][1]:.0%} in spot")
+    assert abs(out["wrp"][0] - z) <= 0.0005 and out["wrp"][1] > 0.3
+
+
+def test_window_law_and_hand():
+    """6. Window Law: a point is visible only through the panel; a hand behind a point causes a depth conflict."""
+    from engine import window
+    eye = [0, 0, 700]
+    inside = window.window_mask(np.array([[100, 50, 80]]), eye, 598, 336)[0]
+    outside = window.window_mask(np.array([[400, 0, 100]]), eye, 598, 336)[0]
+    nat, con = window.hand_check(np.array([[0, 0, 80]]), eye, [[0, 0, 40]], 10)     # hand under the point
+    nat2, con2 = window.hand_check(np.array([[0, 0, 80]]), eye, [[0, 0, 150]], 10)  # hand above the point
+    print(f"  inside window: {inside}, outside: {outside}; hand behind point -> conflict {con[0]}, "
+          f"hand in front -> natural {nat2[0]}")
+    assert inside and not outside and con[0] and not nat[0] and nat2[0] and not con2[0]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

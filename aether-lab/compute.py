@@ -7,7 +7,7 @@ import os
 
 from engine import lab
 
-HEAVY = {"make_hologram", "propagate", "focus_sweep", "desk_check", "search_column_width"}
+HEAVY = lab.HEAVY
 _remote = None
 
 

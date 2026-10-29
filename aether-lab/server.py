@@ -29,10 +29,10 @@ from engine import lab  # noqa: E402
 import agent  # noqa: E402
 import compute  # noqa: E402
 
-WEB = ROOT / "web"
+WEB = ROOT / "ui" / "dist" if (ROOT / "ui" / "dist" / "index.html").exists() else ROOT / "web"
 OUT = ROOT / "output"
 OUT.mkdir(exist_ok=True)
-STATE = copy.deepcopy(lab.DEFAULT_STATE)
+STATE = lab.default_state()
 HISTORY = []
 LOCK = threading.Lock()
 
@@ -53,6 +53,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/api/state":
             return self._send(200, {"state": STATE, "compute": compute.where()})
+        if path == "/api/meshes":
+            return self._send(200, {"version": STATE["version"], "meshes": lab.meshes(STATE)})
         if path.startswith("/output/"):
             f = OUT / Path(path).name
         else:
@@ -85,9 +87,14 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == "/api/chat":
                     reply, trace, images, HISTORY = agent.chat(STATE, HISTORY, body["text"], str(OUT))
                     return self._send(200, {"reply": reply, "trace": trace, "images": images, "state": STATE})
+                if self.path == "/api/scene":          # undo / redo / bulk edits from the UI
+                    STATE["parts"] = body["parts"]
+                    STATE["selected"] = body.get("selected")
+                    STATE["version"] += 1
+                    return self._send(200, {"state": STATE})
                 if self.path == "/api/reset":
                     STATE.clear()
-                    STATE.update(copy.deepcopy(lab.DEFAULT_STATE))
+                    STATE.update(lab.default_state())
                     HISTORY = []
                     return self._send(200, {"state": STATE})
             self._send(404, {"error": "not found"})

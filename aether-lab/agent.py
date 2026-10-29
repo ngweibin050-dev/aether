@@ -7,53 +7,73 @@ import json
 import os
 import urllib.request
 
-from engine import lab
+import compute
+from engine import geometry, lab
 
 API = os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
 MODEL = os.environ.get("META_MODEL", "muse-spark-1.3")
 VOICE_MODEL = os.environ.get("META_VOICE_MODEL", "muse-voice-transcribe-1.0")
-MAX_STEPS = 8
+MAX_STEPS = 10
 
-SYSTEM = """You are the AETHER Lab assistant, running a computational holography lab.
-You control a 3D scene and a physics engine through tools. Rules:
+SYSTEM = """You are AETHER, the assistant inside a holographic 3D design desk (AETHER 2.0).
+You build and edit 3D scenes and run a wave-optics physics engine through tools. Rules:
 - Use tools for every number. Never invent measurements; quote tool results.
-- Distances: the hologram (display) is at z = 0; objects at z > 0 float in front of it.
-  Scene units are mm. The full wave simulation runs on a small lab hologram (lab_slm, ~8 mm wide).
-- Questions about AETHER Desk (a 27-inch eye-tracked 1D holographic desk from the user's
-  pre-event physics study) use desk_check and search_column_width (eye-model simulation).
-- After changing the scene, call make_hologram and then propagate or focus_sweep so the user
-  sees the new result.
+- Geometry: units mm. The hologram panel is the plane z = 0 (598 x 336 mm desk panel); parts float
+  in front of it at z > 0. Keep designs within about 0-120 mm height: the physics study says the
+  AETHER Desk is sharp within about +-100 mm of the panel.
+- Text-to-CAD: when asked to create an object or machine, call build_assembly with a list of
+  parametric parts (types: """ + ", ".join(f"{k}({v})" for k, v in geometry.PARAM_HELP.items()) + """).
+  Positions/rotations (deg, [x,y,z]) are relative to the assembly. Axis of round parts is local z.
+  Aim for 6-25 parts that capture the real structure. Say it is a simplified parametric model,
+  not manufacturer data.
+- After building or changing the scene, call make_hologram, then focus_sweep or eye_view so the
+  user sees the hologram. For "can the desk show it" use window_check and desk_check.
+- Speckle questions: speckle_compare. Hand questions: hand_check.
 - Say clearly that results are simulations, not measurements of a built display.
 - Answer in short, plain sentences, in the user's language."""
 
 _P = {"type": "number"}
 _V3 = {"type": "array", "items": _P, "minItems": 3, "maxItems": 3}
+_PART = {"type": "object", "properties": {
+    "name": {"type": "string"}, "type": {"type": "string", "enum": sorted(geometry.BUILDERS)},
+    "params": {"type": "object"}, "position": _V3, "rotation": _V3, "scale": _V3,
+    "parent": {"type": "string", "description": "name of another part in this assembly"}},
+    "required": ["name", "type", "params"]}
 SCHEMAS = [
-    ("set_scene", "Replace the scene with a list of gears.",
-     {"objects": {"type": "array", "items": {"type": "object", "properties": {
-         "type": {"type": "string", "enum": ["gear"]}, "teeth": {"type": "integer"},
-         "radius_mm": _P, "rotate_deg": _V3, "position_mm": _V3}}}}, ["objects"]),
-    ("move_object", "Move, rotate or reshape one object. rotate_deg is [x, y, z]; position_mm is [x, y, z].",
-     {"index": {"type": "integer"}, "position_mm": _V3, "rotate_deg": _V3,
-      "teeth": {"type": "integer"}, "radius_mm": _P}, []),
-    ("set_display", "Change display parameters or load a preset (lab_slm or aether_desk).",
-     {"preset": {"type": "string", "enum": ["lab_slm", "aether_desk"]}, "pitch_um": _P,
-      "wavelength_nm": _P, "samples": {"type": "integer"}, "column_width_um": _P,
-      "vertical_pitch_um": _P, "view_distance_cm": _P}, []),
-    ("make_hologram", "Calculate the phase hologram for the current scene.",
-     {"method": {"type": "string", "enum": ["points", "layers"]}}, []),
-    ("propagate", "Show the reconstructed light at distance z_mm from the hologram.",
-     {"z_mm": _P}, ["z_mm"]),
-    ("focus_sweep", "Reconstruct at several depths to show which parts are sharp where.",
-     {"z_start_mm": _P, "z_end_mm": _P, "steps": {"type": "integer"}}, []),
-    ("desk_check", "AETHER Desk: sharpness the eye gets at heights above/below the panel (cm).",
-     {"heights_cm": {"type": "array", "items": _P}, "column_width_um": _P,
-      "view_distance_cm": _P}, []),
-    ("search_column_width", "AETHER Desk: find the widest column that keeps an image sharp at a height.",
+    ("build_assembly", "Create a new assembly from parametric parts (text-to-CAD). Replaces the scene by default.",
+     {"name": {"type": "string"}, "parts": {"type": "array", "items": _PART}, "position": _V3,
+      "replace": {"type": "boolean"}}, ["name", "parts"]),
+    ("add_part", "Add one part.", {"type": {"type": "string", "enum": sorted(geometry.BUILDERS)},
+     "params": {"type": "object"}, "name": {"type": "string"}, "position": _V3, "rotation": _V3,
+     "scale": _V3, "parent": {"type": "string"}}, ["type"]),
+    ("update_part", "Move, rotate, scale, rename, hide or re-parameterise a part (id or name).",
+     {"id": {"type": "string"}, "position": _V3, "rotation": _V3, "scale": _V3, "params": {"type": "object"},
+      "name": {"type": "string"}, "visible": {"type": "boolean"}}, ["id"]),
+    ("delete_part", "Delete a part and its children.", {"id": {"type": "string"}}, ["id"]),
+    ("list_parts", "List all parts in the scene.", {}, []),
+    ("set_display", "Change the lab hologram (pitch_um, wavelength_nm, samples, distance_mm, points, method) "
+     "or AETHER Desk parameters (column_width_um, vertical_pitch_um, view_distance_mm).",
+     {"preset": {"type": "string", "enum": ["lab_slm", "aether_desk"]}, "pitch_um": _P, "wavelength_nm": _P,
+      "samples": {"type": "integer"}, "distance_mm": _P, "points": {"type": "integer"},
+      "method": {"type": "string", "enum": ["wrp", "points", "layers"]}, "column_width_um": _P,
+      "vertical_pitch_um": _P, "view_distance_mm": _P}, []),
+    ("set_eye", "Move the viewer's eye (mm, desk frame; default 0,0,700).",
+     {"x_mm": _P, "y_mm": _P, "z_mm": _P}, []),
+    ("make_hologram", "Calculate the phase hologram of the current scene (hidden surfaces removed).", {}, []),
+    ("propagate", "Reconstructed light at scene depth z_mm.", {"z_mm": _P}, []),
+    ("focus_sweep", "Reconstruct at several depths through the object.", {"steps": {"type": "integer"}}, []),
+    ("eye_view", "What an eye at (eye_x_mm, eye_y_mm) sees through its pupil, focused at focus_z_mm.",
+     {"eye_x_mm": _P, "eye_y_mm": _P, "focus_z_mm": _P}, []),
+    ("window_check", "Window Law at desk scale: % of each part the eye can see through the panel.",
+     {"eye_x_mm": _P, "eye_y_mm": _P}, []),
+    ("hand_check", "Check the tracked hand for occlusion depth conflicts.", {"hand_radius_mm": _P}, []),
+    ("desk_check", "AETHER Desk: eye-model sharpness at heights above/below the panel (cm).",
+     {"heights_cm": {"type": "array", "items": _P}, "column_width_um": _P, "view_distance_cm": _P}, []),
+    ("search_column_width", "AETHER Desk: widest column keeping >= min_sharpness_pct at height_cm.",
      {"height_cm": _P, "min_sharpness_pct": _P, "view_distance_cm": _P}, []),
-    ("measure_speckle", "Measure speckle (grainy light) for one frame vs averaged frames.",
-     {"frames": {"type": "integer"}}, []),
-    ("export_film", "Make a printable film hologram for the laser-pointer test.",
+    ("speckle_compare", "Speckle contrast: one frame vs k^2 random frames vs k x k sparse point groups.",
+     {"k": {"type": "integer"}}, []),
+    ("export_film", "Printable film hologram for the laser-pointer test.",
      {"dpi": {"type": "integer"}, "film_mm": _P, "wall_distance_m": _P, "wavelength_nm": _P}, []),
 ]
 TOOL_DEFS = [{"type": "function", "function": {
@@ -92,7 +112,7 @@ def chat(state, history, user_text, out_dir="."):
                 args = {}
             if name == "export_film":
                 args["out_dir"] = out_dir
-            res = lab.run(state, name, args)
+            res = compute.run(state, name, args)
             images.update(res.get("_images", {}))
             slim = lab.for_agent(res)
             trace.append({"tool": name, "args": args, "result": slim})

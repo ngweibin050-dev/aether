@@ -1,56 +1,41 @@
-# AETHER Lab
+# AETHER 2.0 — Holographic design desk
 
-**Design real holograms by talking to them.** Tell AETHER what 3D object to show. It calculates a real
-(computer-generated) hologram, simulates the light to show what your eye would see at each depth, and
-checks whether a holographic display design, AETHER Desk, can show it sharply.
+Design a 3D model with a mouse and keyboard, with your hands in the air, or by asking Muse Spark.
+AETHER calculates the real phase hologram for that model, simulates what your eye would see, and
+checks whether a no-headset holographic desk could show it sharply.
 
-Built for the Meta AI Builders Hackathon 2026 (Oct 26 – Nov 4). All code in this repo was written during the event.
-The AETHER Desk numbers come from my pre-event physics study and are labeled as such.
+Built for the Meta AI Builders Hackathon 2026 (Oct 26 – Nov 4). Every result is a wave-optics
+**simulation**. No physical holographic display has been built.
 
-## How it works
+- **Laptop mode**: a Blender-style gizmo (G / R / S, X/Y/Z axis lock), an outliner, numeric
+  properties, undo and redo, and GLB import with automatic decimation.
+- **Hand mode**: MediaPipe hand tracking. Pinch to grab and move, pinch with both hands to rotate
+  and scale, show both open palms to calculate the hologram. It shares the same scene state as
+  laptop mode.
+- **Text-to-CAD**: Muse Spark designs assemblies from a parametric part library (gears, tubes,
+  nozzles, coils, blade rings…).
+- **Physics**: point-cloud CGH with hidden surfaces removed, the Wavefront Recording Plane method,
+  the band-limited angular spectrum method, an eye view through the pupil, the Window Law, the
+  hand-occlusion depth-conflict check, the 1D-desk eye model, and sparse-group speckle analysis.
+  It runs on CuPy GPU (on Modal) or NumPy.
 
-```
-You (text or voice) → Muse Spark agent → tool calls → physics engine (local or Modal) → images + numbers → Muse Spark explains
-```
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and the equations.
 
-- **Muse Spark** (Meta Model API) plans multi-step experiments and calls the lab tools. It never makes up numbers: every number it quotes is a tool result, and the app shows the same number on screen.
-- **Physics engine** (`engine/`, NumPy):
-  - `optics.py`: point-source computer-generated hologram (anti-aliased per point), band-limited angular spectrum propagation (Matsushima 2009), phase-only encoding
-  - `eye.py`: wave-optics eye model (4 mm pupil, 15 cycles/degree) for judging a 1D-holographic desk display
-  - `film.py`: binary Fourier hologram for printing on film and testing with a laser pointer
-  - `lab.py`: the tools the agent can call
-- **Modal** runs the heavy tools in the cloud (`modal_app.py`); the app falls back to local compute if Modal is unavailable.
+## Run (Windows)
+1. Install Python 3.11+.
+2. Put your Meta key in `.env` (in this folder or the parent folder): `META_API=...`
+3. Double-click `start.bat`, or run `pip install -r requirements.txt` and then `python server.py`.
+4. Open http://localhost:8765 . The built UI is in `ui/dist`, so Node is not needed.
 
-### Agent tools
-`set_scene`, `move_object`, `set_display`, `make_hologram`, `propagate`, `focus_sweep`, `desk_check`,
-`search_column_width`, `measure_speckle`, `export_film`
+To change the UI, run `cd ui && npm install && npm run dev` (dev server on :5173, which proxies to :8765),
+then `npm run build`.
 
-## Physics checks
+Optional cloud GPU: `pip install modal`, `modal token new`, `modal deploy modal_app.py`, then add
+`AETHER_COMPUTE=modal` to `.env`.
 
-```
-python -m tests.test_physics
-```
+## Tests
+`python -m tests.test_physics` runs 6 physics checks (focus depth, two depths, pixel pitch and
+bend angle, eye model, WRP vs direct, Window Law and hand conflict).
 
-| Test | Result |
-|---|---|
-| A single light point refocuses at the right depth | focus at 5.00 cm (target 5.00), 49 % of light in a 5×5-pixel spot |
-| Two points at 4 cm and 7 cm are each sharp only at their own depth | 4.0 cm and 7.0 cm; point A keeps <0.1 % of its peak at B's depth |
-| Halving pixel size doubles the bend angle; past the limit light goes the wrong way | ratio 2.000; asked 1.52°: 8 µm pixels → 1.53°, 16 µm pixels → −0.38° (aliased) |
-| Eye model: full hologram reference; the 1D desk loses sharpness with height | 2D MTF 0.855; desk +5 cm 94 %, +15 cm 61 % |
-
-## Run it (Windows)
-
-1. Python 3.11+ installed.
-2. Put your Meta key in `.env` (this folder or the parent folder): `META_API=...`
-3. Double-click `start.bat`, or run `pip install -r requirements.txt` then `python server.py`.
-4. Open http://localhost:8765
-
-Cloud compute (optional): `pip install modal`, `modal token new`, `modal deploy modal_app.py`, then add `AETHER_COMPUTE=modal` to `.env`.
-
-## Honest limits
-
-- Everything shown is a **simulation** with established wave-optics methods. No physical holographic display was built.
-- The full wave simulation runs on a small lab-scale hologram (~8 mm). Desk-scale questions use the eye model, because a 27-inch hologram has ~30 million pixels.
-- The printed-film test (optional) shows a 2D picture on a wall. It proves the calculation controls real light; it does not prove the desk design.
-
-Laser safety: use only a Class 2 (<1 mW) red laser pointer, aim it at a wall, never into eyes.
+Laser safety for the optional printed-film test: use only a Class 2 (<1 mW) red laser and aim it
+at a wall.
