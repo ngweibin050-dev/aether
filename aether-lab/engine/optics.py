@@ -160,6 +160,43 @@ def layer_hologram(points, grid, n_layers=16, amps=None, rng=None):
     return u
 
 
+def image_hologram(intensity, depth_m, grid, k=2, n_layers=8, seed=0):
+    """Phase holograms of a rendered view (intensity + depth per pixel), one per sparse point group.
+
+    The view is cut into depth layers. Each layer is a diffuse field sqrt(I) * exp(i random) and is
+    back-propagated to the hologram plane by the angular spectrum method; the layers add up.
+    Sparse point groups (v11, Takaki): subframe g only lights pixels on a lattice of spacing k with
+    offset g, so points shown together are k cells apart and hardly interfere. The eye averages the
+    k*k subframes, which brings single-frame speckle (~0.3) down (v11: k=3 -> 0.044 in 2D).
+    Returns a list of k*k phase-only holograms.
+    """
+    rng = np.random.default_rng(seed)
+    I = np.asarray(intensity, float)
+    Z = np.asarray(depth_m, float)
+    ok = np.isfinite(Z) & (I > 0)
+    edges = np.linspace(Z[ok].min(), Z[ok].max() + 1e-12, n_layers + 1) if ok.any() else np.array([0, 1])
+    rows, cols = np.indices(I.shape)
+    amp = np.sqrt(np.where(ok, I, 0))
+    out = []
+    for gy in range(k):
+        for gx in range(k):
+            lat = (rows % k == gy) & (cols % k == gx)
+            u = xp.zeros(I.shape, complex)
+            for i in range(n_layers):
+                sel = ok & lat & (Z >= edges[i]) & (Z < edges[i + 1])
+                if not sel.any():
+                    continue
+                layer = np.where(sel, amp * np.exp(2j * np.pi * rng.random(I.shape)), 0)
+                u += angular_spectrum(layer, -float(Z[sel].mean()), grid, pad=False)
+            out.append(to_numpy(phase_only(u)))
+    return out
+
+
+def reconstruct_groups(phases, z, grid):
+    """What the eye integrates: the average intensity of all subframes at distance z."""
+    return sum(reconstruct(ph, z, grid) for ph in phases) / len(phases)
+
+
 def phase_only(u):
     """Encode a complex field as a phase-only hologram (what a phase SLM can show)."""
     return xp.angle(xp.asarray(u))

@@ -1,35 +1,209 @@
+// Hand mode: everything laptop mode can do, with a webcam and two hands.
+//   Air cursor  = point between thumb and index tip (works on every button, menu, slider and panel)
+//   Pinch       = click; pinch-hold = press and drag (sliders, panels, hold-to-talk mic)
+//   Pinch on a part = grab it (move in the view plane, push/pull by moving the hand toward/away from the camera)
+//   Pinch on empty space = orbit the view
+//   Two-hand pinch = rotate + scale the selected part, or (nothing selected) pull apart = explode the assembly
+//   Peace sign (index + middle up) held = hand menu (8 big actions, incl. search-all); fist held = deselect / close
+//   Both palms open = calculate the hologram
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 import { useStore } from "../store";
-import { objects } from "../scene/registry";
+import { objects, view } from "../scene/registry";
+import { pick } from "../scene/Interaction";
+import * as modal from "../scene/modal";
+import { explodeOffset } from "../scene/modal";
+import { cmd, run } from "../commands";
 
-// Interaction volume above the desk (mm). Camera image x -> desk x, image y -> height z,
-// apparent hand size -> desk y (closer to the camera = toward the user).
 const VOL = { x: 520, zMin: 0, zMax: 170, yNear: -160, yFar: 160 };
-const PINCH = 0.33;          // thumb-index distance / palm size
 const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
-
+const RAD = Math.PI / 180;
 const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function toDesk(lm) {
   const palm = d2(lm[0], lm[9]) || 0.1;
-  const depth = THREE.MathUtils.clamp((palm - 0.12) / 0.16, 0, 1);       // 0 far .. 1 near
-  return lm.map((p) => [
-    (0.5 - p.x) * VOL.x,                                               // mirrored like a selfie
-    VOL.yFar + (VOL.yNear - VOL.yFar) * depth,
-    VOL.zMin + (1 - p.y) * (VOL.zMax - VOL.zMin),
-  ]);
+  const depth = THREE.MathUtils.clamp((palm - 0.12) / 0.16, 0, 1);
+  return lm.map((p) => [(0.5 - p.x) * VOL.x, VOL.yFar + (VOL.yNear - VOL.yFar) * depth, VOL.zMin + (1 - p.y) * (VOL.zMax - VOL.zMin)]);
 }
 
-function gestureOf(lm) {
+function gestureOf(lm, wasPinch) {
   const palm = d2(lm[0], lm[9]) || 0.1;
-  const pinch = d2(lm[4], lm[8]) / palm < PINCH;
+  const r = d2(lm[4], lm[8]) / palm;
+  const pinch = wasPinch ? r < 0.42 : r < 0.27;                  // hysteresis: no flicker at the threshold
   const ext = (tip, pip) => d2(lm[tip], lm[0]) > d2(lm[pip], lm[0]) * 1.15;
   const fingers = [ext(8, 6), ext(12, 10), ext(16, 14), ext(20, 18)];
-  const open = fingers.every(Boolean) && !pinch;
-  const fist = fingers.every((f) => !f);
-  return { pinch, open, fist };
+  return { pinch, open: fingers.every(Boolean) && r > 0.5, fist: fingers.every((f) => !f) && !pinch, palm,
+           peace: fingers[0] && fingers[1] && !fingers[2] && !fingers[3] && !pinch };
+}
+
+const HAND_MENU = () => [
+  { id: "h.add", label: "Add part", icon: "plus", run: () => { const c = useStore.getState().handCursor; useStore.getState().setMenu({ kind: "add", x: c?.x, y: c?.y }); } },
+  { ...cmd("in.explode"), icon: "explode" },
+  { ...cmd("obj.delete"), icon: "trash" },
+  { ...cmd("in.secx"), label: "Section cut", icon: "section" },
+  { ...cmd("obj.dup"), label: "Duplicate", icon: "layers", run: () => useStore.getState().duplicate() },
+  { ...cmd("in.xray"), icon: "xray" },
+  { ...cmd("edit.search"), label: "All actions…", icon: "search", run: () => useStore.getState().setMenu({ kind: "search" }) },
+  { ...cmd("holo.calc"), label: "Hologram", icon: "holo" },
+];
+
+// ---- synthetic pointer events, so the air cursor can press anything in the UI ----
+function fire(type, el, x, y, buttons) {
+  if (!el) return;
+  const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0, buttons, pointerId: 77, pointerType: "pen", isPrimary: true };
+  el.dispatchEvent(new PointerEvent(type, init));
+  const m = { pointerdown: "mousedown", pointermove: "mousemove", pointerup: "mouseup" }[type];
+  if (m) el.dispatchEvent(new MouseEvent(m, init));
+}
+const under = (x, y) => document.elementFromPoint(x, y);
+
+export function createHandController() {
+  const st = useStore.getState;
+  const S = { cur: null, pinch: [false, false], press: null, two: null, holdOpen: 0, holdFist: 0, holdBoth: 0, lastSend: 0, palm0: 0 };
+
+  function step(hands, now = performance.now()) {
+    const g = hands.map((lm, i) => gestureOf(lm, S.pinch[i]));
+    S.pinch = [g[0]?.pinch || false, g[1]?.pinch || false];
+    const world = hands.map(toDesk);
+    st().setHandFrame(hands.length ? { world, pinch: g.map((x) => x.pinch) } : null);
+    if (!hands.length) { release(); st().handCursor && useStore.setState({ handCursor: null }); return ""; }
+
+    // air cursor from the first hand (thumb-index midpoint is stable while pinching)
+    const lm = hands[0];
+    const mx = 1 - (lm[4].x + lm[8].x) / 2, my = (lm[4].y + lm[8].y) / 2;
+    const tx = THREE.MathUtils.clamp((mx - 0.15) / 0.7, 0, 1) * innerWidth, ty = THREE.MathUtils.clamp((my - 0.12) / 0.62, 0, 1) * innerHeight;
+    S.cur = S.cur ? { x: S.cur.x + (tx - S.cur.x) * 0.4, y: S.cur.y + (ty - S.cur.y) * 0.4 } : { x: tx, y: ty };
+    const { x, y } = S.cur;
+    let label = "point";
+
+    // two hands pinching: rotate + scale the selection, or explode
+    if (hands.length === 2 && g[0].pinch && g[1].pinch) {
+      if (S.press) release();
+      const a = world[0][8], b = world[1][8];
+      const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), dist = Math.hypot(b[0] - a[0], b[2] - a[2], b[1] - a[1]);
+      const sel = st().state?.selected, obj = sel && objects.get(sel);
+      if (!S.two) S.two = { ang, dist, obj, rot: obj?.quaternion.clone(), scale: obj?.scale.clone(), explode: st().view.explode };
+      if (S.two.obj) {
+        const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), ang - S.two.ang);
+        S.two.obj.quaternion.copy(q.multiply(S.two.rot));
+        S.two.obj.scale.copy(S.two.scale).multiplyScalar(THREE.MathUtils.clamp(dist / S.two.dist, 0.3, 3));
+        S.two.obj.userData.dragging = true;
+        label = "rotate + scale";
+      } else {
+        st().setView({ explode: +THREE.MathUtils.clamp(S.two.explode + (dist - S.two.dist) / 220, 0, 1).toFixed(2) });
+        label = `pull apart · explode ${Math.round(st().view.explode * 100)}%`;
+      }
+      useStore.setState({ handCursor: { x, y, down: true, label } });
+      return label;
+    }
+    if (S.two) {
+      const o = S.two.obj;
+      if (o) {
+        o.userData.dragging = false;
+        const id = st().state.selected, r = o.rotation;
+        st().commitParts(st().state.parts.map((p) => p.id !== id ? p : { ...p,
+          rotation: [r.x, r.y, r.z].map((v) => +(v / RAD).toFixed(2)), scale: o.scale.toArray().map((v) => +v.toFixed(3)),
+          position: o.position.clone().sub(explodeOffset(id)).toArray().map((v) => +v.toFixed(2)) }));
+      }
+      S.two = null;
+    }
+
+    // one-hand pinch = press
+    const p = g[0].pinch;
+    if (p && !S.press) {
+      const el = under(x, y);
+      if (el === view.dom) {
+        const h = pick(x, y);
+        if (h?.id) {
+          if (!st().selection.includes(h.id)) st().select(h.id);
+          modal.begin("G", new THREE.Vector2(x, y));
+          S.press = { kind: "grab", palm0: g[0].palm, t: now };
+        } else S.press = { kind: "orbit", x, y, x0: x, y0: y, t: now };
+      } else {
+        fire("pointerdown", el, x, y, 1);
+        S.press = { kind: "ui", el, x0: x, y0: y, t: now };
+      }
+    } else if (p && S.press) {
+      if (S.press.kind === "grab") {
+        modal.setDepth((g[0].palm - S.press.palm0) * -900);       // hand toward the camera = toward the viewer
+        modal.update(new THREE.Vector2(x, y));
+        label = "grab · move";
+      } else if (S.press.kind === "orbit") {
+        view.nav?.orbit(-(x - S.press.x) * 0.006, -(y - S.press.y) * 0.006);
+        S.press.x = x; S.press.y = y;
+        label = "orbit view";
+      } else {
+        fire("pointermove", under(x, y) || document.body, x, y, 1);
+        label = "press";
+      }
+    } else if (!p && S.press) release();
+    else fire("pointermove", under(x, y) || document.body, x, y, 0);
+
+    // held poses
+    const both = hands.length === 2 && g.every((q) => q.open);
+    if (both) {
+      S.holdBoth ||= now;
+      label = "hold both palms → hologram";
+      if (now - S.holdBoth > 1000 && S.holdBoth !== -1) { S.holdBoth = -1; run("holo.calc"); }
+    } else S.holdBoth = 0;
+    if (!both && g[0].peace && !S.press) {
+      S.holdOpen ||= now;
+      const t = Math.min(1, (now - S.holdOpen) / 600);
+      label = "V-sign hold → hand menu";
+      if (t >= 1 && S.holdOpen !== -1 && !st().menu) { S.holdOpen = -1; st().setMenu({ kind: "hand", x, y, items: HAND_MENU() }); }
+      useStore.setState({ handCursor: { x, y, down: false, hold: S.holdOpen === -1 ? 0 : t, label } });
+      return label;
+    } else if (!g[0].peace) S.holdOpen = 0;
+    if (g[0].fist && !S.press) {
+      S.holdFist ||= now;
+      label = "fist → deselect";
+      if (now - S.holdFist > 800 && S.holdFist !== -1) { S.holdFist = -1; st().menu ? st().setMenu(null) : st().select(null); }
+    } else S.holdFist = 0;
+
+    // fingertips to the physics server for the v13 hand-shadow check, twice a second
+    if (now - S.lastSend > 500) {
+      S.lastSend = now;
+      st().tool("set_hands", { points: world.flatMap((w) => [w[0], w[4], w[8], w[12], w[16], w[20], w[9]]) }, { record: false, quiet: true }).catch(() => {});
+    }
+    useStore.setState({ handCursor: { x, y, down: !!S.press, label } });
+    return label;
+  }
+
+  function release() {
+    const pr = S.press;
+    if (!pr) return;
+    S.press = null;
+    const { x, y } = S.cur || { x: 0, y: 0 };
+    if (pr.kind === "grab") { modal.moved() ? modal.finish() : modal.cancel(); }
+    else if (pr.kind === "orbit") { if (Math.hypot(x - pr.x0, y - pr.y0) < 8) st().select(null); }
+    else {
+      const el = under(x, y);
+      fire("pointerup", el || pr.el, x, y, 0);
+      if (el && (el === pr.el || pr.el.contains(el) || el.contains(pr.el)) && Math.hypot(x - pr.x0, y - pr.y0) < 18) {
+        const target = el.closest("button, a, input, select, textarea, [data-hand-target]") || el;
+        if (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) target.focus();
+        target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+      }
+    }
+  }
+  return { step, release };
+}
+
+export function AirCursor() {
+  const c = useStore((s) => s.handCursor);
+  const mode = useStore((s) => s.mode);
+  if (mode !== "hand" || !c) return null;
+  const R = 15, circ = 2 * Math.PI * R;
+  return (
+    <div className="pointer-events-none fixed z-[70]" style={{ left: c.x, top: c.y }}>
+      <svg width="44" height="44" className="-translate-x-1/2 -translate-y-1/2" style={{ filter: "drop-shadow(0 0 8px rgba(95,225,255,.8))" }}>
+        <circle cx="22" cy="22" r={c.down ? 6 : 9} fill={c.down ? "#ff4fd8" : "rgba(95,225,255,.18)"} stroke="#5fe1ff" strokeWidth="1.6" />
+        {c.hold > 0 && <circle cx="22" cy="22" r={R} fill="none" stroke="#5fe1ff" strokeWidth="2.2" strokeDasharray={`${c.hold * circ} ${circ}`} transform="rotate(-90 22 22)" />}
+      </svg>
+      {c.label && <div className="absolute left-4 top-4 whitespace-nowrap rounded-md bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-cyan-50">{c.label}</div>}
+    </div>
+  );
 }
 
 export default function HandTracker() {
@@ -37,14 +211,12 @@ export default function HandTracker() {
   const video = useRef();
   const canvas = useRef();
   const [status, setStatus] = useState("starting camera…");
-  const [gesture, setGesture] = useState("");
 
   useEffect(() => {
     if (mode !== "hand") return;
     let stop = false, raf = 0, stream, landmarker;
-    let grab = null, two = null, holdOpen = 0, holdFist = 0, lastSend = 0;
-    const st = useStore.getState;
-
+    const ctl = createHandController();
+    window.__aetherHand = ctl;          // lets tests drive hand mode with recorded landmarks
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
@@ -67,125 +239,37 @@ export default function HandTracker() {
       for (const lm of hands) {
         ctx.strokeStyle = "rgba(95,225,255,.9)"; ctx.lineWidth = 2;
         for (const [a, b] of BONES) { ctx.beginPath(); ctx.moveTo((1 - lm[a].x) * c.width, lm[a].y * c.height); ctx.lineTo((1 - lm[b].x) * c.width, lm[b].y * c.height); ctx.stroke(); }
-        ctx.fillStyle = "#a78bfa";
-        for (const p of lm) { ctx.beginPath(); ctx.arc((1 - p.x) * c.width, p.y * c.height, 2.5, 0, 7); ctx.fill(); }
+        ctx.fillStyle = "#ff4fd8";
+        for (const p of lm) { ctx.beginPath(); ctx.arc((1 - p.x) * c.width, p.y * c.height, 2.4, 0, 7); ctx.fill(); }
       }
     }
-
-    function nearestPart(pt) {
-      let best = null, bd = 140;
-      const v = new THREE.Vector3();
-      for (const [id, o] of objects) {
-        if (!o) continue;
-        o.getWorldPosition(v);
-        const d = v.distanceTo(new THREE.Vector3(...pt));
-        if (d < bd) { bd = d; best = id; }
-      }
-      return best;
-    }
-
-    function commit(id, o) {
-      const r = o.rotation;
-      st().commitTransform(id, {
-        position: o.position.toArray().map((v) => +v.toFixed(2)),
-        rotation: [r.x, r.y, r.z].map((v) => +THREE.MathUtils.radToDeg(v).toFixed(2)),
-        scale: o.scale.toArray().map((v) => +v.toFixed(3)),
-      });
-    }
-
     function loop() {
       if (stop) return;
       raf = requestAnimationFrame(loop);
       const v = video.current;
       if (!landmarker || v.readyState < 2) return;
-      const res = landmarker.detectForVideo(v, performance.now());
-      const hands = res.landmarks || [];
+      const hands = landmarker.detectForVideo(v, performance.now()).landmarks || [];
       draw(hands);
-      const world = hands.map(toDesk);
-      const g = hands.map(gestureOf);
-      st().setHandFrame({ world, pinch: g.map((x) => x.pinch) });
-      const pinchPt = (i) => world[i].map((_, k) => (world[i][4][k] + world[i][8][k]) / 2);
-      const sel = st().state?.selected;
-      const obj = sel && objects.get(sel);
-
-      // two-hand pinch: rotate about the vertical axis + scale
-      if (hands.length === 2 && g[0].pinch && g[1].pinch && obj) {
-        const a = pinchPt(0), b = pinchPt(1);
-        const ang = Math.atan2(b[1] - a[1], b[0] - a[0]), dist = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-        if (!two) two = { ang, dist, rot: obj.rotation.z, scale: obj.scale.clone() };
-        obj.rotation.z = two.rot + (ang - two.ang);
-        obj.scale.copy(two.scale).multiplyScalar(THREE.MathUtils.clamp(dist / two.dist, 0.3, 3));
-        setGesture("rotate + scale");
-        grab = null;
-        return;
-      }
-      if (two && obj) { commit(sel, obj); two = null; }
-
-      // one-hand pinch: select nearest part, then drag it
-      const h = g.findIndex((x) => x.pinch);
-      if (h >= 0) {
-        const p = pinchPt(h);
-        if (!grab) {
-          const id = obj ? sel : nearestPart(p);
-          if (id && id !== sel) st().select(id);
-          const o = id && objects.get(id);
-          if (o) grab = { id, start: p, pos: o.position.clone() };
-        } else {
-          const o = objects.get(grab.id);
-          if (o) o.position.set(grab.pos.x + p[0] - grab.start[0], grab.pos.y + p[1] - grab.start[1], grab.pos.z + p[2] - grab.start[2]);
-          setGesture("grab · move");
-        }
-      } else if (grab) {
-        const o = objects.get(grab.id);
-        if (o) commit(grab.id, o);
-        grab = null;
-      }
-
-      // both palms open for 1 s -> calculate hologram; fist for 0.8 s -> deselect
-      const now = performance.now();
-      if (hands.length === 2 && g.every((x) => x.open)) {
-        holdOpen ||= now;
-        setGesture("hold open palms → hologram");
-        if (now - holdOpen > 1000) { holdOpen = Infinity; st().tool("make_hologram").then(() => st().tool("focus_sweep", { steps: 9 })); }
-      } else holdOpen = 0;
-      if (hands.length === 1 && g[0].fist && !grab) {
-        holdFist ||= now;
-        if (now - holdFist > 800) { st().select(null); holdFist = Infinity; setGesture("deselect"); }
-      } else holdFist = 0;
-      if (!hands.length) setGesture("");
-      else if (h < 0 && !g.some((x) => x.open) && !g.some((x) => x.fist)) setGesture("hover");
-
-      // fingertips to the physics server (hand occlusion check), 2x per second
-      if (now - lastSend > 500 && world.length) {
-        lastSend = now;
-        st().tool("set_hands", { points: world.flatMap((w) => [w[0], w[4], w[8], w[12], w[16], w[20], w[9]]) }, { record: false, quiet: true }).catch(() => {});
-      }
+      ctl.step(hands);
     }
-
     return () => {
       stop = true; cancelAnimationFrame(raf);
+      ctl.release();
       stream?.getTracks().forEach((t) => t.stop());
       landmarker?.close();
-      useStore.getState().setHandFrame(null);
+      useStore.setState({ handFrame: null, handCursor: null });
     };
   }, [mode]);
 
   if (mode !== "hand") return null;
   return (
-    <div className="glass pointer-events-auto absolute bottom-24 left-4 z-20 w-[300px] overflow-hidden p-2.5 animate-floatin">
+    <div className="glass pointer-events-auto absolute bottom-[78px] z-20 w-[232px] overflow-hidden p-1.5" style={{ left: 332 }}>
       <div className="relative overflow-hidden rounded-xl bg-black">
-        <video ref={video} className="aspect-[4/3] w-full -scale-x-100 object-cover opacity-60" muted playsInline />
+        <video ref={video} className="aspect-[4/3] w-full -scale-x-100 object-cover opacity-50" muted playsInline />
         <canvas ref={canvas} width={640} height={480} className="absolute inset-0 h-full w-full" />
-        <div className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-0.5 font-mono text-[10.5px] text-cyan-glow">{status}</div>
-        {gesture && <div className="absolute bottom-2 left-2 rounded-md bg-cyan-glow/20 px-2 py-0.5 font-mono text-[11px] text-white">{gesture}</div>}
+        <div className="absolute left-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[9.5px] text-cyan-glow">{status}</div>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-400">
-        <span><b className="text-slate-200">Pinch</b> grab / move</span>
-        <span><b className="text-slate-200">2-hand pinch</b> rotate · scale</span>
-        <span><b className="text-slate-200">Fist</b> deselect</span>
-        <span><b className="text-slate-200">Both palms</b> hologram</span>
-      </div>
-      <p className="mt-1.5 text-[10.5px] leading-snug text-slate-500">Work from the front and sides: on a real hologram a hand behind the object erases the parts in front of it.</p>
+      <p className="px-1 pt-1.5 text-[10px] leading-snug text-silver">Grab from the front or the sides: on a real hologram a hand behind the object erases the parts in front of it.</p>
     </div>
   );
 }

@@ -4,6 +4,8 @@ Each part: {"id", "name", "type", "params": {...}, "position": [x,y,z], "rotatio
             "scale": [sx,sy,sz], "parent": id|None, "visible": bool, "brightness": 0..1}
 Meshes are built in the part's local frame; `world_mesh` applies the transform chain.
 """
+import json
+
 import numpy as np
 
 # ---------------- primitive builders (local frame, z = axis of revolution) ----------------
@@ -111,17 +113,82 @@ def torus(radius=10, tube_radius=2, segments=48, sides=16):
     return V, np.asarray(F, int)
 
 
-def gear(teeth=12, radius=15, thickness=5, tooth_depth=None, bore=None, segments=None):
-    tooth_depth = tooth_depth or radius * 0.15
-    bore = radius * 0.3 if bore is None else bore
-    n = segments or max(96, teeth * 12)
-    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    tooth = np.clip(np.cos(teeth * t) * 3, -1, 1) * 0.5 + 0.5
-    r = radius - tooth_depth + tooth_depth * tooth
-    outer = np.c_[r * np.cos(t), r * np.sin(t)]
+STANDARD_MODULES = (0.5, 0.6, 0.8, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16, 20)   # ISO 54 series I
+
+
+def snap_module(m):
+    return min(STANDARD_MODULES, key=lambda s: abs(np.log(s / m)))
+
+
+def gear_profile(teeth=12, module=2.0, pressure_angle=20.0, phase=0.0, flank_pts=7):
+    """Involute spur gear outline (standard full-depth teeth, no profile shift), counter-clockwise.
+
+    Pitch radius r = m z / 2, base rb = r cos(alpha), tip ra = r + m, root rf = r - 1.25 m. Flank = involute of the
+    base circle; tooth half-angle at radius R: pi/(2z) + inv(alpha) - inv(alpha_R), inv(a) = tan a - a,
+    alpha_R = arccos(rb / R). Below the base circle (small tooth counts) the flank continues radially.
+    phase (deg): rotation of tooth 0, which is centred on the +x axis at phase 0."""
+    z = int(teeth)
+    m = float(module)
+    al = np.radians(pressure_angle)
+    r = m * z / 2
+    rb, ra, rf = r * np.cos(al), r + m, r - 1.25 * m
+
+    def inv(a):
+        return np.tan(a) - a
+
+    def half(R):
+        return np.pi / (2 * z) + inv(al) - inv(np.arccos(np.clip(rb / R, -1, 1)))
+
+    R = np.linspace(max(rb, rf), ra, flank_pts)
+    h = half(R)
+    pts = []
+    for k in range(z):
+        c = np.radians(phase) + 2 * np.pi * k / z
+        # root -> right flank up -> tip arc -> left flank down
+        if rf < rb:
+            pts.append((rf, c - h[0]))
+        pts += [(Ri, c - hi) for Ri, hi in zip(R, h)]
+        pts += [(ra, c + t) for t in np.linspace(-h[-1], h[-1], 4)[1:-1]]
+        pts += [(Ri, c + hi) for Ri, hi in zip(R[::-1], h[::-1])]
+        if rf < rb:
+            pts.append((rf, c + h[0]))
+        # root arc to the next tooth
+        a0, a1 = c + h[0], c + 2 * np.pi / z - h[0]
+        pts += [(rf, t) for t in np.linspace(a0, a1, 5)[1:-1]]
+    P = np.array([[Ri * np.cos(t), Ri * np.sin(t)] for Ri, t in pts])
+    return P, {"module": m, "teeth": z, "pitch_radius": r, "base_radius": rb, "tip_radius": ra, "root_radius": rf,
+               "pressure_angle": pressure_angle}
+
+
+def gear(teeth=12, radius=None, thickness=5, module=None, pressure_angle=20.0, bore=None, phase=0.0,
+         tooth_depth=None, segments=None):
+    """Involute spur gear, axis = local z. Give module (mm) or the old tip radius (module = 2 radius / (teeth + 2)).
+    tooth_depth / segments are accepted for old designs and ignored (the involute fixes the tooth shape)."""
+    z = max(6, int(round(teeth)))
+    if module is None:
+        module = 2 * float(radius if radius is not None else 15) / (z + 2)
+    outer, g = gear_profile(z, module, pressure_angle, phase)
+    bore = g["root_radius"] * 0.35 if bore is None else float(bore)
     if bore > 0:
-        return _extrude(outer, thickness, holes=[np.c_[bore * np.cos(t), bore * np.sin(t)]])
+        bore = min(bore, 0.8 * g["root_radius"])
+        ang = np.arctan2(outer[:, 1], outer[:, 0])          # star-shaped: bore points at the same angles
+        return _extrude(outer, thickness, holes=[np.c_[bore * np.cos(ang), bore * np.sin(ang)]])
     return _extrude(outer, thickness)
+
+
+def gear_mesh_check(z1, z2, module, centre_distance, pressure_angle=20.0):
+    """Two standard spur gears: ideal centre distance a = m (z1 + z2) / 2 and the contact ratio
+    eps = (sqrt(ra1^2 - rb1^2) + sqrt(ra2^2 - rb2^2) - a sin(alpha)) / (pi m cos(alpha)); needs eps >= 1.2."""
+    al = np.radians(pressure_angle)
+    a0 = module * (z1 + z2) / 2
+    r1, r2 = module * z1 / 2, module * z2 / 2
+    ra1, ra2 = r1 + module, r2 + module
+    rb1, rb2 = r1 * np.cos(al), r2 * np.cos(al)
+    a = float(centre_distance)
+    eps = (np.sqrt(ra1 ** 2 - rb1 ** 2) + np.sqrt(ra2 ** 2 - rb2 ** 2) - a * np.sin(al)) / (np.pi * module * np.cos(al))
+    return {"ideal_centre_distance_mm": round(a0, 3), "centre_distance_mm": round(a, 3),
+            "error_mm": round(a - a0, 3), "contact_ratio": round(float(eps), 3),
+            "ok": bool(abs(a - a0) <= 0.05 * module and eps >= 1.2)}
 
 
 def nozzle(throat=10, exit=30, length=60, chamber=18, chamber_length=30, segments=48):
@@ -170,16 +237,61 @@ def coil(radius=10, wire=1.2, turns=6, pitch=3, segments=12):
     return pipe(pts, wire, segments)
 
 
-BUILDERS = {"box": box, "cylinder": cylinder, "tube": tube, "cone": cone, "sphere": sphere,
+def profile(runs, cell=1.0, thickness=5.0, rows=0, cols=0):
+    """A flat cut-out (e.g. a part traced from a drawing) extruded to `thickness`, centred.
+    runs: [[row, col0, col1], ...] filled cells of a rows x cols grid (col1 exclusive), cell = mm per cell,
+    row 0 at the top. Runs that repeat on the next row are merged into one block."""
+    blocks = []                  # [row0, row1, c0, c1]
+    open_ = {}
+    for r, c0, c1 in sorted((int(a), int(b), int(c)) for a, b, c in runs):
+        k = (c0, c1)
+        if k in open_ and open_[k][1] == r:
+            open_[k][1] = r + 1
+        else:
+            if k in open_:
+                blocks.append(open_[k])
+            open_[k] = [r, r + 1, c0, c1]
+    blocks += list(open_.values())
+    rows = rows or max((b[1] for b in blocks), default=1)
+    cols = cols or max((b[3] for b in blocks), default=1)
+    Vs, Fs = [], []
+    for i, (r0, r1, c0, c1) in enumerate(blocks):
+        V, F = box((c1 - c0) * cell, (r1 - r0) * cell, thickness)
+        V[:, 0] += ((c0 + c1) / 2 - cols / 2) * cell
+        V[:, 1] += (rows / 2 - (r0 + r1) / 2) * cell
+        Vs.append(V)
+        Fs.append(F + 8 * i)
+    if not Vs:
+        return box(cell, cell, thickness)
+    return np.vstack(Vs), np.vstack(Fs)
+
+
+def outline(polygons, thickness=5.0):
+    """Closed solid of traced outlines (with real holes) extruded to `thickness`, centred on z = 0.
+    polygons: [{"outer": [[x, y], ...], "holes": [[[x, y], ...], ...]}, ...] in mm (y up)."""
+    from . import outline as ol
+    Vs, Fs, off = [], [], 0
+    for p in polygons:
+        V, F = ol.extrude(p["outer"], p.get("holes") or [], thickness)
+        Vs.append(V)
+        Fs.append(F + off)
+        off += len(V)
+    if not Vs:
+        return box(1, 1, thickness)
+    return np.vstack(Vs), np.vstack(Fs)
+
+
+BUILDERS = {"box": box, "profile": profile, "outline": outline, "cylinder": cylinder, "tube": tube, "cone": cone, "sphere": sphere,
             "torus": torus, "gear": gear, "nozzle": nozzle, "blade_ring": blade_ring,
             "pipe": pipe, "coil": coil}
 
 PARAM_HELP = {
     "box": "w, d, h", "cylinder": "radius, height", "tube": "outer, inner, height",
     "cone": "r_bottom, r_top, height", "sphere": "radius", "torus": "radius, tube_radius",
-    "gear": "teeth, radius, thickness, bore", "nozzle": "throat, exit, length, chamber, chamber_length",
+    "gear": "teeth, module (mm; or radius = tip radius), thickness, bore, phase (deg)", "nozzle": "throat, exit, length, chamber, chamber_length",
     "blade_ring": "count, inner, outer, thickness, height, twist", "pipe": "points [[x,y,z],...], radius",
     "coil": "radius, wire, turns, pitch",
+    "outline": "polygons [{outer: [[x,y],...], holes: [...]}], thickness",
 }
 
 # ---------------- transforms ----------------
@@ -229,7 +341,16 @@ def local_mesh(part, cache=None):
     if part["type"] == "group":
         return np.zeros((0, 3)), np.zeros((0, 3), int)
     fn = BUILDERS[part["type"]]
-    return fn(**part.get("params", {}))
+    key = (part["type"], json.dumps(part.get("params", {}), sort_keys=True))
+    if key not in _MESH:
+        if len(_MESH) > 512:
+            _MESH.clear()
+        _MESH[key] = fn(**part.get("params", {}))
+    V, F = _MESH[key]
+    return V.copy(), F
+
+
+_MESH = {}            # built meshes by (type, params): traced outlines and gears are costly to rebuild
 
 
 def world_mesh(part, by_id):
@@ -248,8 +369,9 @@ def scene_meshes(parts):
 # ---------------- surface sampling ----------------
 
 
-def sample_surface(parts, n_points=4000, seed=0):
-    """Area-weighted random points on all visible parts. Returns points (N,3), normals (N,3), part index."""
+def sample_surface(parts, n_points=4000, seed=0, xp=np):
+    """Area-weighted random points on all visible parts. Returns points (N,3), normals (N,3), part index.
+    xp=cupy draws the samples on the GPU (the triangle list is small; the samples are not)."""
     rng = np.random.default_rng(seed)
     tris, norms, owner, weight = [], [], [], []
     for k, (p, V, F) in enumerate(scene_meshes(parts)):
@@ -265,9 +387,12 @@ def sample_surface(parts, n_points=4000, seed=0):
         weight.append(area[ok] * p.get("brightness", 1.0))
     if not tris:
         return np.zeros((0, 3)), np.zeros((0, 3)), np.zeros(0, int)
-    T, N, O, W = np.vstack(tris), np.vstack(norms), np.concatenate(owner), np.concatenate(weight)
-    idx = rng.choice(len(T), size=n_points, p=W / W.sum())
-    u, v = rng.random(n_points), rng.random(n_points)
+    T, N, O, W = np.vstack(tris).astype(np.float32), np.vstack(norms).astype(np.float32), np.concatenate(owner), np.concatenate(weight)
+    if xp is not np:
+        T, N, O, W, rng = xp.asarray(T), xp.asarray(N), xp.asarray(O), xp.asarray(W), xp.random.default_rng(seed)
+    c = xp.cumsum(W)                                    # area-weighted pick (searchsorted: ~10x faster than choice(p=))
+    idx = xp.minimum(xp.searchsorted(c, rng.random(n_points) * c[-1], side="right"), len(T) - 1)
+    u, v = rng.random(n_points, dtype=xp.float32), rng.random(n_points, dtype=xp.float32)
     flip = u + v > 1
     u[flip], v[flip] = 1 - u[flip], 1 - v[flip]
     t = T[idx]

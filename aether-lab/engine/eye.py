@@ -73,3 +73,73 @@ def desk_sharpness(height, view_dist=0.7, column_width=150e-6, wavelength=530e-9
 def eye_box(vertical_pitch, view_dist=0.7, wavelength=530e-9):
     """Height of the viewing window a 1D hologram of this pitch can serve: e = lambda d / p."""
     return wavelength * view_dist / vertical_pitch
+
+
+# ---------------- per-point sharpness for the real (oblique) viewing geometry ----------------
+
+_REL = {}
+
+
+def _load_table():
+    """Precomputed relative_sharpness (0..1.5 D astigmatism, 0.4..1.3' column blur, 530 nm): same function, saved
+    once (sharpness_table.json) so a desk_score does not spend ~30 s filling the cache."""
+    import json
+    import os
+    f = os.path.join(os.path.dirname(__file__), "sharpness_table.json")
+    if os.path.exists(f):
+        try:
+            for k, v in json.load(open(f)).items():
+                a, b, lam = k.split("|")
+                _REL[(float(a), float(b), int(lam))] = float(v)
+        except (OSError, ValueError):
+            pass
+
+
+def _rel_key(astig, blur_angle, wavelength):
+    return (round(abs(float(astig)), 2), round(float(blur_angle) / ARCMIN, 1), round(float(wavelength) * 1e9))
+
+
+def relative_sharpness(d, D, column_width=150e-6, wavelength=530e-9):
+    """1D desk / full 2D hologram, each at the eye's best focus (the v9 / v13 definition).
+
+    d: eye -> panel along the line of sight through the point (m); D: eye -> point (m). Only the astigmatism
+    |1/D - 1/d| and the column blur w/d matter (diffraction-limited eye, best focus), so results are cached on
+    0.01 D and 0.1 arcmin steps. Both numbers come from the same psf() at the same wavelength."""
+    key = _rel_key(1 / D - 1 / d, column_width / d, wavelength)
+    if key not in _REL:
+        a, blur, lam = key[0], key[1] * ARCMIN, key[2] * 1e-9
+        Dm = 0.6                                     # any distance: only the dioptre difference matters
+        dm = 1 / (1 / Dm - a)
+        ref = mtf(psf(Dm, Dm, Dm, lam))
+        powers = np.linspace(min(1 / dm, 1 / Dm) - 0.05, max(1 / dm, 1 / Dm) + 0.05, 13)
+        one = max(mtf(psf(dm, Dm, 1 / p, lam, blur)) for p in powers)
+        _REL[key] = min(1.0, one / ref)
+    return _REL[key]
+
+
+_load_table()
+
+
+def line_of_sight(points_mm, eye_mm):
+    """Per point: D = eye -> point and d = eye -> panel (plane z = 0) along the same line, in metres.
+    ok is False where that line never reaches the panel (the point is level with or above the eye)."""
+    P = np.asarray(points_mm, float).reshape(-1, 3)
+    E = np.asarray(eye_mm, float)
+    dz = E[2] - P[:, 2]
+    ok = dz > 1e-6
+    t = np.where(ok, E[2] / np.where(ok, dz, 1), 1)  # E + t (P - E) is on the panel
+    D = np.linalg.norm(P - E, axis=1) * 1e-3
+    return D, D * t, ok
+
+
+def point_sharpness(points_mm, eye_mm, column_width=150e-6, wavelength=530e-9):
+    """1D-desk sharpness (0..1 of a full 2D hologram) of each point, seen from the real eye position."""
+    D, d, ok = line_of_sight(points_mm, eye_mm)
+    out = np.zeros(len(D))
+    keys = {}
+    for i in np.nonzero(ok)[0]:
+        k = (round(abs(1 / D[i] - 1 / d[i]), 2), round(d[i], 2))
+        if k not in keys:
+            keys[k] = relative_sharpness(d[i], D[i], column_width, wavelength)
+        out[i] = keys[k]
+    return out, ok

@@ -2,6 +2,9 @@ const P = {
   move: "M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3",
   rotate: "M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7",
   scale: "M4 20h7v-7M4 20 20 4M13 4h7v7",
+  select: "M5 3l13 8-6 1.5L9 19z",
+  cursor: "M12 3v5M12 16v5M3 12h5M16 12h5M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  ruler: "M3 17 17 3l4 4L7 21zM7 13l2 2M10 10l2 2M13 7l2 2",
   undo: "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3",
   redo: "m15 14 5-5-5-5M20 9H9a5 5 0 0 0 0 10h3",
   laptop: "M4 6h16v10H4zM2 19h20",
@@ -11,6 +14,7 @@ const P = {
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   plus: "M12 5v14M5 12h14",
   wave: "M2 12c2-4 4-4 6 0s4 4 6 0 4-4 6 0",
+  holo: "M12 2l8 4.5v9L12 20l-8-4.5v-9zM12 11l8-4.5M12 11 4 6.5M12 11v9",
   layers: "m12 3 9 5-9 5-9-5 9-5zM3 13l9 5 9-5",
   panel: "M4 4h16v16H4zM9 4v16",
   send: "M4 12l16-8-6 16-2-7-8-1z",
@@ -19,12 +23,27 @@ const P = {
   cube: "m12 2 9 5v10l-9 5-9-5V7zM3 7l9 5 9-5M12 12v10",
   chevron: "m9 6 6 6-6 6",
   close: "M6 6l12 12M18 6 6 18",
+  min: "M6 12h12",
   target: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   upload: "M12 15V3M7 8l5-5 5 5M4 17v3h16v-3",
+  film: "M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4",
+  section: "M4 20 20 4M5 5h6v6H5zM13 13h6v6h-6z",
+  explode: "M12 2v6M12 16v6M2 12h6M16 12h6M9 9l-4-4M15 9l4-4M9 15l-4 4M15 15l4 4",
+  xray: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18",
+  isolate: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM3 3h4M3 3v4M21 3h-4M21 3v4M3 21h4M3 21v-4M21 21h-4M21 21v-4",
+  search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
+  grip: "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
+  wire: "M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10M7.5 5 16.5 9M16.5 5 7.5 9",
+  solid: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
+  camera: "M3 8h4l2-3h6l2 3h4v11H3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  ortho: "M4 4h16v16H4zM4 4l16 16",
+  zoom: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5M8 11h6M11 8v6",
+  pan: "M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3",
+  flip: "M7 4v16M17 4v16M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3",
 };
-export default function Icon({ name, className = "w-4 h-4" }) {
+export default function Icon({ name, className = "w-4 h-4", fill = false }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8"
-      strokeLinecap="round" strokeLinejoin="round"><path d={P[name]} /></svg>
+    <svg viewBox="0 0 24 24" className={className} fill={fill ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.7"
+      strokeLinecap="round" strokeLinejoin="round"><path d={P[name] || P.cube} /></svg>
   );
 }
