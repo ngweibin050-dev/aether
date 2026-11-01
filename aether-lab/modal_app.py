@@ -11,6 +11,8 @@ import modal
 
 image = (modal.Image.from_registry("nvidia/cuda:12.4.1-runtime-ubuntu22.04", add_python="3.12")
          .pip_install("numpy", "pillow", "cupy-cuda12x[ctk]")   # [ctk]: CUDA headers, so CuPy can compile its kernels
+         # quadric mesh decimation for the three-view hull (MIT licence); only here on Modal, never needed locally
+         .pip_install("fast-simplification==0.1.13")
          .env({"CUPY_CACHE_DIR": "/cache/cupy"})
          .add_local_python_source("engine")
          # precomputed eye-model table (non-.py files are not copied by add_local_python_source)
@@ -20,7 +22,8 @@ app = modal.App("aether-lab", image=image)
 cache = modal.Volume.from_name("aether-cupy-cache", create_if_missing=True)
 
 # keep one container warm for 10 minutes after the last call (parameter names changed across Modal versions)
-_opts = {"gpu": "T4", "timeout": 600, "volumes": {"/cache": cache}}
+_opts = {"gpu": "T4", "timeout": 600, "volumes": {"/cache": cache},
+         "memory": 16384}                          # the three-view solid at 1 px per voxel peaks at ~3 GB
 _sig = inspect.signature(app.function).parameters
 for new, old, value in (("scaledown_window", "container_idle_timeout", 600), ("max_containers", "concurrency_limit", 1)):
     if new in _sig:
@@ -46,6 +49,23 @@ def run_tool(state, name, args):
     return res, state
 
 
+@app.function(**{k: v for k, v in _opts.items() if k not in ("gpu", "memory")}, cpu=4.0, memory=8192)
+def decimate(V, F, targets):
+    """Quadric mesh decimation (fast-simplification, MIT) of one mesh to several triangle counts. CPU only (no GPU):
+    the three-view hull's 1-px surface (~1.5 M triangles) -> 30-50 k for the UI. Returns {target: (V, F, seconds)}."""
+    import time
+    import numpy as np
+    import fast_simplification
+    V = np.asarray(V, np.float32)
+    F = np.asarray(F, np.int64)
+    out = {}
+    for n in targets:
+        t = time.time()
+        v, f = fast_simplification.simplify(V, F, target_reduction=float(max(0.0, 1 - n / len(F))))
+        out[int(n)] = (v.astype(np.float32), f.astype(np.int32), round(time.time() - t, 2))
+    return out
+
+
 _saved = {"n": -1}
 
 
@@ -63,8 +83,9 @@ def _save_kernels():
 
 @app.function(**_opts)
 def ping():
-    """Start (warm up) the GPU container; returns the backend in use."""
-    from engine import backend, retina
+    """Start (warm up) the GPU container; returns the backend in use and the fingerprint of the engine copy that was
+    deployed, so the local server can tell when Modal runs an older engine than this computer."""
+    from engine import backend, retina, version
     if backend.GPU:                              # compile the main kernels now, not on the user's first click
         import numpy as np
         retina.psf(0.6, 0.6, 0.6, 3e-4, 96, xp=backend.xp, col_blur=1e-4)
@@ -72,4 +93,4 @@ def ping():
         backend.scatter_add(backend.xp.zeros(8), backend.xp.arange(4), backend.xp.ones(4))
         backend.scatter_min(backend.xp.zeros(8, dtype=backend.xp.float32), backend.xp.arange(4), backend.xp.ones(4, dtype=backend.xp.float32))
         _save_kernels()
-    return backend.name()
+    return {"backend": backend.name(), "engine": version.fingerprint()}

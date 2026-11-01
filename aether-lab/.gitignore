@@ -3,3 +3,4 @@ __pycache__/
 output/
 *.pyc
 ui/node_modules/
+graphify-out/

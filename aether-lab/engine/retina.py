@@ -89,9 +89,40 @@ def camera(eye, target):
     return E, f, r, u
 
 
-def render(state, n=640, eye=None, light=(-0.35, -0.55, 0.76), samples=None):
+def _gap_mask(parts, E, f, r, u, dth, n, zb):
+    """Pixels covered by a front-facing seam line (parts' params.lines, in each part's own frame)."""
+    by_id = {p["id"]: p for p in parts}
+    pts = []
+    for p in parts:
+        Ls = (p.get("params") or {}).get("lines")
+        if not Ls or not p.get("visible", True):
+            continue
+        S = np.asarray(Ls, float).reshape(-1, 2, 3)
+        M = geometry.world_matrix(p, by_id)
+        t = np.linspace(0, 1, 5)[None, :, None]
+        Q = (S[:, :1] * (1 - t) + S[:, 1:] * t).reshape(-1, 3)
+        pts.append(Q @ M[:3, :3].T + M[:3, 3])
+    if not pts:
+        return None
+    P = np.concatenate(pts) - E
+    z = P @ f
+    ix = np.floor((P @ r) / z / dth + n / 2).astype(int)
+    iy = np.floor(n / 2 - (P @ u) / z / dth).astype(int)
+    ok = (ix >= 0) & (ix < n) & (iy >= 0) & (iy < n) & (z > 0)
+    ix, iy, z = ix[ok], iy[ok], z[ok]
+    front = z <= zb[iy, ix] + 0.8 + 2.5 * dth * z
+    g = np.zeros((n, n), bool)
+    g[iy[front], ix[front]] = True
+    return g
+
+
+def render(state, n=640, eye=None, light=(-0.35, -0.55, 0.76), samples=None, ss=2):
     """Pinhole view of the design from the eye. Returns intensity, distance (m), panel distance (m),
-    window mask, angular pixel size (rad) and the camera."""
+    window mask, angular pixel size (rad) and the camera. Rendered at ss x ss sub-pixels per pixel and averaged
+    (anti-aliased edges, no sampling grain); panel gaps (the design's seam lines) are real narrow grooves on a
+    body, so they are drawn as dark lines where they face the eye."""
+    n_out = n
+    n = n * ss
     parts = cutaway.view_parts(state)
     E = np.asarray(eye if eye is not None else state["eye"], float)
     lo, hi = geometry.bounds([p for p in parts if p.get("visible", True)])
@@ -103,7 +134,7 @@ def render(state, n=640, eye=None, light=(-0.35, -0.55, 0.76), samples=None):
     fov = 2 * ang * 1.18 + 1e-4
     dth = fov / n
     # dense surface samples splatted into a z-buffer (a few per visible pixel; holes are filled below)
-    m = samples or int(4.5 * n * n)
+    m = samples or int(3.0 * n * n)
     xp = backend.xp                                         # the whole splat runs on the GPU when there is one
     P, N, owner = geometry.sample_surface(parts, m, seed=1, xp=xp)
     keep = xp.asarray(cutaway.section_mask(backend.to_numpy(P), state)) if cutaway.view_of(state).get("section") else None
@@ -138,7 +169,7 @@ def render(state, n=640, eye=None, light=(-0.35, -0.55, 0.76), samples=None):
     rim = (1 - xp.abs(xp.sum(N * view, 1))) ** 2
     half = (L + view) / xp.linalg.norm(L + view, axis=1)[:, None]
     spec = xp.abs(xp.sum(N * half, 1)) ** 40
-    shade = (0.08 + 0.62 * nd ** 1.2 + 0.25 * rim + 0.35 * spec) * bright
+    shade = (0.06 + 0.72 * nd ** 1.4 + 0.12 * rim + 0.45 * spec) * bright
     kf = key[front]
     acc = xp.zeros(n * n)
     cnt = xp.zeros(n * n)
@@ -170,6 +201,19 @@ def render(state, n=640, eye=None, light=(-0.35, -0.55, 0.76), samples=None):
         pad_a = np.pad(A, ((1, 1), (1, 1), (0, 0)))
         sa = sum(pad_a[a:a + n, b:b + n] for a in range(3) for b in range(3))
         A[fill] = sa[fill] / sc[fill][:, None]
+    # panel gaps: the seam lines of each part, depth-tested against the surface, darken their pixels
+    gap = _gap_mask(parts, E, f, r, u, dth, n, zbuf.reshape(n, n))
+    if gap is not None:
+        I = I * np.where(gap, 0.2, 1.0)
+    # average the sub-pixels down to the output size
+    if ss > 1:
+        cov = np.isfinite(Z).astype(float)
+        pool = lambda a: a.reshape(n_out, ss, n_out, ss, *a.shape[2:]).sum((1, 3))
+        cnt_o = pool(cov)
+        I = pool(I) / (ss * ss)                                  # zeros outside the body: anti-aliased edges
+        A = pool(A * cov[..., None]) / np.maximum(cnt_o, 1)[..., None]
+        Z = np.where(cnt_o > 0, pool(np.nan_to_num(Z)) / np.maximum(cnt_o, 1), np.nan)
+        n, dth = n_out, dth * ss
     # per pixel: distance from the eye to the surface (D) and to the panel along the same ray (d)
     jj, ii = np.meshgrid(np.arange(n), np.arange(n))
     ray = (f[None, None] + ((jj + 0.5 - n / 2) * dth)[..., None] * r + ((n / 2 - ii - 0.5) * dth)[..., None] * u)
@@ -223,6 +267,13 @@ def mtf15(p, dth):
 _speckle_cache = {}
 
 
+def _periodic(n, dth, st, offset):
+    """Sparse-group rows on the n-pixel tile, evenly spaced so the pattern wraps without a seam (the texture is
+    tiled across the image: an uneven gap at the wrap showed as a faint horizontal line every tile)."""
+    count = max(1, int(round(n * dth / st)))
+    return (np.round(np.arange(count) * n / count + offset / dth).astype(int)) % n
+
+
 def speckle_texture(display, k, seed=0, lam=LAM):
     """Multiplicative speckle texture (mean 1) at 0.125'/px on a 512 tile, and its contrast."""
     LAM = lam
@@ -243,7 +294,7 @@ def speckle_texture(display, k, seed=0, lam=LAM):
         st = k * cell
         for oy in range(k):
             u = np.zeros((n, n), complex)
-            rows = ((np.arange(-n / 2 * dth, n / 2 * dth, st) + oy * cell) / dth + n / 2).round().astype(int) % n
+            rows = _periodic(n, dth, st, oy * cell)
             u[rows, :] = np.exp(2j * np.pi * rng.random((len(rows), n)))
             I += np.abs(np.fft.ifft(np.fft.fft(u, axis=0) * Py[:, None], axis=0)) ** 2
         # horizontal resolution of the column (incoherent) - smooth along x at the eye's 0.46' limit
@@ -253,8 +304,8 @@ def speckle_texture(display, k, seed=0, lam=LAM):
         for ox in range(k):
             for oy in range(k):
                 u = np.zeros((n, n), complex)
-                rows = ((np.arange(-n / 2 * dth, n / 2 * dth, st) + oy * cell) / dth + n / 2).round().astype(int) % n
-                cols = ((np.arange(-n / 2 * dth, n / 2 * dth, st) + ox * cell) / dth + n / 2).round().astype(int) % n
+                rows = _periodic(n, dth, st, oy * cell)
+                cols = _periodic(n, dth, st, ox * cell)
                 u[np.ix_(rows, cols)] = np.exp(2j * np.pi * rng.random((len(rows), len(cols))))
                 I += np.abs(np.fft.ifft2(np.fft.fft2(u) * P)) ** 2
     s = 1.0 / 2.355                                         # 1' FWHM pooling (v11)
@@ -357,7 +408,7 @@ def to_rgb_color(img, gamma=1 / 2.2):
     """R/G/B laser image -> sRGB. The three lasers are taken as the display primaries (their real gamut is wider)."""
     Y = img @ np.array([0.2126, 0.7152, 0.0722])
     hi = np.percentile(Y[Y > 0], 99.5) if (Y > 0).any() else 1.0
-    v = np.clip(img / (hi * 1.4), 0, 1) ** gamma
+    v = np.clip(img / (hi * 1.45), 0, 1) ** gamma
     return (v * 255).astype(np.uint8)
 
 
