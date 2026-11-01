@@ -12,7 +12,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 syst
 a { color: var(--accent); }
 header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--line); }
 header h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
-.rec { color: var(--warn); font: 600 12px ui-monospace, Consolas, monospace; border: 1px solid #ffb54766; border-radius: 999px; padding: 3px 10px; }
+.rec { color: var(--warn); font: 600 12px ui-monospace, Consolas, monospace; border: 1px solid #ffb54766; border-radius: 999px; padding: 6px 14px; }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .tabs button, .btn { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
 .tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -24,11 +24,12 @@ main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr)
 #view canvas { display: block; width: 100%; height: 100%; }
 #viewbar { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
 .label { color: var(--muted); font: 600 11px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+.sub { color: var(--muted); font: 600 12px ui-monospace, Consolas, monospace; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 8px 0; }
-.stat { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
 .stat b { display: block; font: 600 20px ui-monospace, Consolas, monospace; color: var(--accent); }
 table { width: 100%; border-collapse: collapse; font: 12.5px ui-monospace, Consolas, monospace; }
-td { padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 td.who { color: var(--accent); white-space: nowrap; } td.s { text-align: right; color: var(--muted); white-space: nowrap; }
 .note { color: var(--warn); font-size: 12.5px; }
 .muted { color: var(--muted); font-size: 13px; }
@@ -56,14 +57,15 @@ figcaption { color: var(--warn); font-size: 11px; line-height: 1.3; margin-top: 
   </section>
   <aside style="display:grid;gap:16px;align-content:start;min-width:0">
     <section class="card">
-      <div class="label" id="src"></div>
+      <div class="sub" id="src"></div>
       <h2 id="title" style="margin:4px 0 2px;font-size:20px"></h2>
       <div class="muted" id="meta"></div>
       <div class="stats" id="stats"></div>
       <div class="note" id="scale"></div>
     </section>
     <section class="card" id="explain" hidden>
-      <div class="label">Explain this machine · Muse Spark · every part and number checked against the built model</div>
+      <div class="label">Explain this machine</div>
+      <div class="sub">Muse Spark · every part and number checked against the built model</div>
       <div class="exrow">
         <div>
           <div class="muted" id="exstep"></div>
