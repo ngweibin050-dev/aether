@@ -18,7 +18,7 @@ const PROV = {
   user_confirmed: ["user", "text-violet-300", "Entered or confirmed by you"],
   external_reference: ["external", "text-slate-300", "From outside the drawing, with its source"],
 };
-const ST = { ok: "text-emerald-300", failed: "text-rose-400", blocked: "text-slate-500", stale: "text-amber-300" };
+const ST = { ok: "text-emerald-300", failed: "text-rose-400", failed_optional: "text-amber-300", blocked: "text-slate-500", stale: "text-amber-300" };
 
 function Num({ p, onCommit, busy }) {
   const [v, setV] = useState(String(+Number(p.value).toFixed(3)));
@@ -113,7 +113,7 @@ export default function CadPanel() {
               <div key={f.id} className="border-b border-white/[0.05] py-1" title={`${f.op}\ninputs: ${f.inputs.join(", ") || "-"}\nparameters: ${f.params.join(", ")}`}>
                 <div className="flex items-center gap-2"><span className={`font-mono text-[10px] ${ST[f.status] || "text-slate-400"}`}>●</span>
                   <span className="truncate text-slate-200">{f.label || f.id}</span></div>
-                <div className="pl-4 font-mono text-[9.5px] text-slate-500">{f.id} · {f.op}{f.error ? ` · ${f.error}` : ""}</div>
+                <div className="pl-4 font-mono text-[9.5px] text-slate-500">{f.id} · {f.op}{f.status === "failed_optional" ? " · NOT BUILT (optional)" : ""}{f.error ? ` · ${f.error}` : ""}</div>
               </div>))}
           </div>}
           {tab === "assumptions" && <div className="mt-2 space-y-1.5">

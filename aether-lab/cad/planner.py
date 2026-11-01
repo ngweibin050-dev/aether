@@ -277,7 +277,7 @@ def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6
             params["material"] = items[0]["value"]
             label = f"Imprint: {kind.replace('_', ' ')} outline ({len(items)} region(s), {view} view)"
         feats.append({"id": fid, "op": f"{op}_projection", "inputs": [last] + (["body.skin"] if op == "pocket" else []),
-                      "params": params, "component": "body",
+                      "params": params, "component": "body", "optional": op == "imprint",
                       "label": label, "region": {"kind": kind, "view": view, "material": params.get("material")}})
         last = fid
     if region_feats:

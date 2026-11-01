@@ -300,28 +300,51 @@ def op_imprint_projection(p, inputs, doc):
     if not sec.IsDone():
         raise K.KernelError(f"imprint {p.get('name')}: section failed")
     # imprint the section edges with the general splitter (solid = argument, edges = tools): edges cannot divide a
-    # volume, and the general fuse handles crossings with edges imprinted earlier (BRepFeat_SplitShape did not)
+    # volume, and the general fuse handles crossings with edges imprinted earlier (BRepFeat_SplitShape did not).
+    # Tolerance budget: where an outline's prism face grazes the surface, the splitter widens vertex / edge tolerances
+    # (4.2 mm measured on the headlights). If the result exceeds TOL_BUDGET, the grazing section edges (the loosest
+    # ones) are left out step by step; how many is recorded. If nothing fits the budget the feature fails.
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Splitter
     from OCP.TopTools import TopTools_ListOfShape
-    edges = TopTools_ListOfShape()
-    n = 0
+    from OCP.BRep import BRep_Tool
+    from cad.validate import check_solid
+    TOL_BUDGET = float(p.get("tol_budget", 0.2))
+    all_edges = []
     ex = TopExp_Explorer(sec.Shape(), TopAbs_EDGE)
     while ex.More():
-        edges.Append(ex.Current())
-        n += 1
+        e = TopoDS.Edge_s(ex.Current())
+        all_edges.append((BRep_Tool.Tolerance_s(e), e))
         ex.Next()
-    if not n:
+    if not all_edges:
         raise K.KernelError(f"imprint {p.get('name')}: the outline does not cross the body")
-    args = TopTools_ListOfShape()
-    args.Append(body)
-    sp = BRepAlgoAPI_Splitter()
-    sp.SetArguments(args)
-    sp.SetTools(edges)
-    sp.SetFuzzyValue(1e-5)
-    sp.Build()
-    if not sp.IsDone():
-        raise K.KernelError(f"imprint {p.get('name')}: edge imprint failed")
-    sol = K.one_solid(sp.Shape(), f"imprint {p.get('name')}")
+    attempt, sol = None, None
+    for limit in (None, 0.05, 0.03, 0.02, 0.01):
+        use = [e for t, e in all_edges if limit is None or t <= limit]
+        if not use:
+            break
+        edges = TopTools_ListOfShape()
+        for e in use:
+            edges.Append(e)
+        args = TopTools_ListOfShape()
+        args.Append(body)
+        sp = BRepAlgoAPI_Splitter()
+        sp.SetArguments(args)
+        sp.SetTools(edges)
+        sp.SetFuzzyValue(1e-5)
+        sp.Build()
+        if not sp.IsDone():
+            continue
+        cand = K.one_solid(sp.Shape(), f"imprint {p.get('name')}")
+        mt = check_solid(cand, argument_analysis=False)["max_tolerance_mm"]
+        attempt = {"edge_tolerance_limit_mm": limit, "edges_used": len(use), "edges_left_out": len(all_edges) - len(use),
+                   "result_max_tolerance_mm": mt}
+        if mt <= max(TOL_BUDGET, check_solid(body, argument_analysis=False)["max_tolerance_mm"]):
+            sol = cand
+            break
+    if sol is None:
+        raise K.KernelError(f"imprint {p.get('name')}: no edge set keeps the B-rep tolerance within {TOL_BUDGET} mm "
+                            f"(last attempt {attempt})")
+    n = attempt["edges_used"]
     v0, v1 = mass(body)["volume_mm3"], mass(sol)["volume_mm3"]
     if abs(v1 - v0) > 1e-6 * abs(v0):
         # split faces can come back with an inconsistent orientation; repair (ShapeFix_Solid + orientation) and re-test
@@ -336,7 +359,8 @@ def op_imprint_projection(p, inputs, doc):
         raise K.KernelError(f"imprint {p.get('name')}: volume changed by {v1 - v0:.3f} mm^3 (an imprint must not)")
     si = _argument_analysis(sol)
     return sol, {"valid": _valid(sol) and not si["faulty"], "why": si.get("faults"), "edges_imprinted": n,
-                 "region": p.get("name"), "material": p.get("material"), "self_intersection_check": si}
+                 "tolerance_budget": attempt, "region": p.get("name"), "material": p.get("material"),
+                 "self_intersection_check": si}
 
 
 def op_pocket_projection(p, inputs, doc):

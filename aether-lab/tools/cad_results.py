@@ -36,6 +36,13 @@ for f in doc["features"]:
         w(f"  - `{f['id']}` — {f.get('label')}")
 w("")
 
+nb = rep.get("features_not_built") or []
+w("**Optional features NOT built** (they add no volume; skipped visibly because they could not meet the validity / "
+  "tolerance rules): " + ("none." if not nb else ""))
+for f in nb:
+    w(f"- `{f['id']}` — {f['label']}: {f['why']}")
+w("")
+
 # validation
 val = rep["validation"]
 w("## A. Solid validity (OpenCascade)\n")

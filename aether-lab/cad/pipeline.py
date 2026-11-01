@@ -416,6 +416,8 @@ def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay"):
     for p in doc.data["parameters"].values():
         cls[p["provenance"]] = cls.get(p["provenance"], 0) + 1
     rep["provenance_counts"] = cls
+    rep["features_not_built"] = [{"id": f["id"], "label": f.get("label"), "why": f.get("error")}
+                                 for f in doc.data["features"] if f.get("status") == "failed_optional"]
     rep["assumptions"] = doc.data["assumptions"]
     rep["maturity_reached"] = ("drawing_consistent" if val["all_valid"] and rep.get("step_roundtrip", {}).get("all_pass")
                                and all(v["iou"] >= 0.9 for v in rp.values()) else

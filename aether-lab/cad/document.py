@@ -275,7 +275,17 @@ class Document:
                 continue
             try:
                 shp, inf = self.ops[f["op"]](params, [(shapes[i], info[i]) for i in f.get("inputs", [])], self)
+                if inf.get("valid") is False and f.get("optional"):
+                    raise RuntimeError("result not valid: " + str(inf.get("why", ""))[:300])
             except Exception as e:                                   # kernel or op error: explicit failure
+                if f.get("optional") and f.get("inputs"):
+                    # an OPTIONAL feature (it adds no volume, e.g. an imprinted outline) that cannot be built within
+                    # the validity rules is skipped VISIBLY: status failed_optional, its input passes through unchanged
+                    f["status"] = "failed_optional"
+                    f["error"] = f"{type(e).__name__}: {e}"[:500]
+                    shapes[fid], info[fid] = shapes[f["inputs"][0]], {**info[f["inputs"][0]], "skipped": fid}
+                    keys[fid] = key + ":skipped"
+                    continue
                 f["status"] = "failed"
                 f["error"] = f"{type(e).__name__}: {e}"[:500]
                 for g in self.data["features"]:

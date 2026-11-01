@@ -294,3 +294,15 @@ def test_G1_glb_from_brep(final):
     assert "tessellated from the validated OpenCascade B-rep" in js["asset"]["generator"]
     mats = {m["name"] for m in js["materials"]}
     assert any(m.endswith(" glass") for m in mats)                       # imprinted windows carry their material
+
+
+def test_optional_features_skipped_visibly(built):
+    """An optional feature (an imprint) that cannot meet the validity / tolerance rules is NOT silently dropped: it is
+    marked failed_optional with its reason, the body stays valid, and the tolerance stays within the budget."""
+    doc, _, _ = built
+    for f in doc.data["features"]:
+        assert f.get("status") in ("ok", "failed_optional"), f["id"]
+        if f.get("status") == "failed_optional":
+            assert f.get("optional") and f.get("error")
+    r = Vd.check_solid(doc.component_shape("body"))
+    assert r["valid"] and r["max_tolerance_mm"] <= 0.2, r["max_tolerance_mm"]
