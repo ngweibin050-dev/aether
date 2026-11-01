@@ -198,19 +198,20 @@ Time per stage (s, mean over runs): classify_upload 0.2, read_drawing 31.6, meas
 | 10 | 2026-10-31 23:59:59 | yes | machine | 102 | 109 | 72.8 | 68.8 / 53.1 | — | 0 | 4 | True (90.4) | 13 (0) | 90152 | 96.4 (+6) | — |
 | 11 | 2026-11-01 00:01:36 | yes | machine | 95 | 107 | 73.2 | 68.2 / 73.7 | — | 0 | 6 | True (92.7) | 13 (0) | 86490 | 91.1 (+1) | — |
 | 12 | 2026-11-01 00:03:07 | yes | machine | 97 | 112 | 84.3 | 66.2 / 57.1 | — | 0 | 11 | True (90.4) | 13 (0) | 86683 | 109.6 (+20) | — |
+| 14 | 2026-11-02 00:39:28 | yes | machine | 103 | 121 | 70.6 | 76.0 / 52.8 | — | 0 | 12 | True (89.5) | 13 (0) | 88108 | 116.5 (+26) | — |
 
-Mean and spread over 3 runs (spread = (max − min) / mean):
+Mean and spread over 4 runs (spread = (max − min) / mean):
 
-- parts read (after agreement, merge and the circle check): 98.0 (min 95, max 102, spread 7 %)
-- parts built: 109.3 (min 107, max 112, spread 5 %)
-- recall, drawing lines on built parts %: 76.8 (min 72.8, max 84.3, spread 15 %)
-- precision, parts %: 67.7 (min 66.2, max 68.8, spread 4 %); frames %: 61.3 (min 53.1, max 73.7, spread 34 %)
+- parts read (after agreement, merge and the circle check): 99.2 (min 95, max 103, spread 8 %)
+- parts built: 112.2 (min 107, max 121, spread 12 %)
+- recall, drawing lines on built parts %: 75.2 (min 70.6, max 84.3, spread 18 %)
+- precision, parts %: 69.8 (min 66.2, max 76, spread 14 %); frames %: 59.2 (min 52.8, max 73.7, spread 35 %)
 - gear pairs: 0
 
-- total time s: 99.0 (min 91.1, max 109.6, spread 19 %) (target 90 s: 0/3 runs within it)
-- Spark calls: 13.0 (min 13, max 13, spread 0 %); tokens: 87775.0 (min 86490, max 90152, spread 4 %)
+- total time s: 103.4 (min 91.1, max 116.5, spread 25 %) (target 90 s: 0/4 runs within it)
+- Spark calls: 13.0 (min 13, max 13, spread 0 %); tokens: 87858.2 (min 86490, max 90152, spread 4 %)
 
-Time per stage (s, mean over runs): classify_upload 0.2, read_drawing 35.3, measure_circles 0.0, complete_views 27.0, rebuild_3d 4.1, desk_score 8.3, focus_sweep 13.3
+Time per stage (s, mean over runs): classify_upload 0.2, read_drawing 33.6, measure_circles 0.0, complete_views 28.1, rebuild_3d 4.0, desk_score 7.1, focus_sweep 20.1
 
 ## patent_US929594_fig1 (inputs/US929594_fig1.png) — Muse Wonder reads the drawing and completes the unseen views (Part A rebuild, section gear pairs, plausibility filter); reading effort low
 
@@ -308,8 +309,9 @@ Time per stage (s, mean over runs): classify_upload 10.3, read_views 104.5, desk
 | 17 | 2026-11-01 01:53:19 | yes | three_view | — | 44 | — | — / — | 100.0/99.7/98.9 | — | — | True (94.5) | 2 (0) | 7417 | 250.0 (+160) | — |
 | 18 | 2026-11-01 01:57:29 | yes | three_view | — | 44 | — | — / — | 100.0/99.7/98.9 | — | — | True (94.5) | 2 (0) | 9265 | 79.3 (-11) | — |
 | 19 | 2026-11-01 01:58:49 | yes | three_view | — | 44 | — | — / — | 100.0/99.7/98.9 | — | — | True (94.5) | 2 (0) | 8763 | 31.6 (-58) | — |
+| 20 | 2026-11-02 00:43:58 | yes | three_view | — | 44 | — | — / — | 99.7/99.5/98.1 | — | — | True (94.5) | 2 (0) | 8915 | 45.5 (-44) | — |
 
-Mean and spread over 9 runs (spread = (max − min) / mean):
+Mean and spread over 10 runs (spread = (max − min) / mean):
 
 
 - parts built: 44.0 (min 44, max 44, spread 0 %)
@@ -317,10 +319,10 @@ Mean and spread over 9 runs (spread = (max − min) / mean):
 
 
 - view IoU % (min of the three views): 98.5 (min 95.8, max 99.1, spread 3 %)
-- total time s: 84.4 (min 31.6, max 250, spread 259 %) (target 90 s: 6/9 runs within it)
-- Spark calls: 2.0 (min 2, max 2, spread 0 %); tokens: 8680.3 (min 7417, max 9814, spread 28 %)
+- total time s: 80.5 (min 31.6, max 250, spread 271 %) (target 90 s: 7/10 runs within it)
+- Spark calls: 2.0 (min 2, max 2, spread 0 %); tokens: 8703.8 (min 7417, max 9814, spread 28 %)
 
-Time per stage (s, mean over runs): classify_upload 0.5, read_views 54.7, desk_score 22.8
+Time per stage (s, mean over runs): classify_upload 0.5, read_views 52.5, desk_score 20.9
 
 ## heldout_US1770035_fig1 (inputs/heldout/US1770035_fig1.png) — step 3 final: two readings + agreement, outlines fitted to the ink, edge-on round parts, measured gear module, reading deadline
 
