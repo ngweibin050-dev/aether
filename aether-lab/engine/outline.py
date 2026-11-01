@@ -212,10 +212,132 @@ def extrude(outer, holes=(), thickness=5.0):
     return np.vstack(V), np.vstack(F).astype(int)
 
 
-def mask_polygons(mask, mm_per_px, origin_px, eps_px=0.7, min_area_px=12):
-    """A mask -> outline polygons in mm (x right, y up) relative to origin_px, ready for geometry.outline."""
+def _dist_to_polyline(P, L):
+    """Distance of each point P (n, 2) to the closed polyline L (m, 2)."""
+    A, B = L, np.roll(L, -1, 0)
+    AB = B - A
+    t = np.clip((((P[:, None, :] - A[None]) * AB[None]).sum(2)) / np.maximum((AB * AB).sum(1), 1e-12)[None], 0, 1)
+    Q = A[None] + t[..., None] * AB[None]
+    return np.sqrt(((P[:, None, :] - Q) ** 2).sum(2)).min(1)
+
+
+def _circle(P):
+    A = np.c_[P, np.ones(len(P))]
+    b = (P ** 2).sum(1)
+    (a, c, d), *_ = np.linalg.lstsq(A, b, rcond=None)
+    cx, cy = a / 2, c / 2
+    return cx, cy, float(np.sqrt(max(d + cx * cx + cy * cy, 0)))
+
+
+def vectorize(L, eps_px=0.75, max_dev_px=1.5, axis_deg=4.0, collinear_deg=5.0):
+    """A traced closed outline (pixel units) -> the same outline as clean geometry: straight lines (Douglas-Peucker,
+    collinear neighbours merged, near-horizontal / near-vertical edges snapped to the axis), circular arcs where a run of
+    short edges keeps one curvature (fitted circle, residual <= 0.5 px, one point every <= 5 deg), and a smooth spline
+    (Chaikin) only where neither fits. An arc or spline is kept only if it stays within max_dev_px of the trace; the
+    result's largest distance from the trace is returned too. Returns (points (n, 2), max deviation px)."""
+    src = np.asarray(L, float)
+    P = np.asarray(simplify(src.tolist(), eps_px), float)
+    if len(P) < 4:
+        return P, 0.0
+    # merge collinear neighbours
+    for _ in range(3):
+        d1, d2 = np.roll(P, -1, 0) - P, P - np.roll(P, 1, 0)
+        ang = np.degrees(np.abs(np.arctan2(d1[:, 0] * d2[:, 1] - d1[:, 1] * d2[:, 0], (d1 * d2).sum(1))))
+        keep = ang > collinear_deg
+        if keep.all() or keep.sum() < 3:
+            break
+        P = P[keep]
+    # a whole loop that is one circle (a bore, a disc): an exact full circle, same orientation as the trace
+    cx_, cy_, r_ = _circle(P)
+    if r_ > 2 and np.abs(np.hypot(P[:, 0] - cx_, P[:, 1] - cy_) - r_).max() <= 0.5:
+        a = np.linspace(0, 2 * np.pi, max(24, int(np.ceil(360 / 5))), endpoint=False)
+        C = np.c_[cx_ + r_ * np.cos(a), cy_ + r_ * np.sin(a)]
+        if np.sign(area(C)) != np.sign(area(P)):
+            C = C[::-1]
+        if _dist_to_polyline(C, src).max() <= max_dev_px:
+            return C, float(_dist_to_polyline(C, src).max())
+    out, n, i = [], len(P), 0
+    # arcs: runs of >= 4 edges turning one way, gently (< 40 deg per vertex), that a circle fits
+    seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
+    e1, e2 = np.roll(P, -1, 0) - P, np.roll(P, -2, 0) - np.roll(P, -1, 0)
+    turn = np.sign(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0])          # 2-D cross product (np.cross needs 3-D)
+    tdeg = np.degrees(np.abs(np.arctan2(e1[:, 0] * e2[:, 1] - e1[:, 1] * e2[:, 0], (e1 * e2).sum(1))))   # a corner turns ~90
+    used = np.zeros(n, bool)
+    arcs = []
+    j = 0
+    while j < n:
+        k = j
+        while k + 1 < n and seg[k] < 60 and turn[k] == turn[j] and turn[j] != 0 and tdeg[k] < 40:
+            k += 1
+        if k - j >= 3:
+            run = P[j:k + 2] if k + 2 <= n else np.r_[P[j:], P[:k + 2 - n]]
+            cx, cy, r = _circle(run)
+            res = np.abs(np.hypot(run[:, 0] - cx, run[:, 1] - cy) - r).max()
+            if res <= 0.5 and r > 2:
+                a0, a1 = np.arctan2(run[0, 1] - cy, run[0, 0] - cx), np.arctan2(run[-1, 1] - cy, run[-1, 0] - cx)
+                sweep = (a1 - a0) % (2 * np.pi) if turn[j] > 0 else -((a0 - a1) % (2 * np.pi))
+                m = max(2, int(np.ceil(abs(np.degrees(sweep)) / 5)))
+                arc = np.c_[cx + r * np.cos(a0 + sweep * np.linspace(0, 1, m + 1)), cy + r * np.sin(a0 + sweep * np.linspace(0, 1, m + 1))]
+                if _dist_to_polyline(arc, src).max() <= max_dev_px:
+                    arcs.append((j, k + 1, arc))
+                    used[j:k + 2 if k + 2 <= n else n] = True
+            j = k + 1
+        else:
+            j += 1
+    starts = {a: (b, arc) for a, b, arc in arcs}
+    i = 0
+    while i < n:
+        if i in starts:
+            b, arc = starts[i]
+            out.extend(arc[:-1].tolist())
+            i = b
+        else:
+            out.append(P[i].tolist())
+            i += 1
+    P = np.asarray(out, float)
+    # snap near-axis edges to the axis: move the shared vertex to the intersection of the snapped lines
+    d = np.roll(P, -1, 0) - P
+    ang = np.degrees(np.arctan2(d[:, 1], d[:, 0])) % 180
+    horiz = (np.minimum(ang, 180 - ang) <= axis_deg) & (np.linalg.norm(d, axis=1) > 3)
+    vert = (np.abs(ang - 90) <= axis_deg) & (np.linalg.norm(d, axis=1) > 3)
+    Q = P.copy()
+    for e in np.nonzero(horiz)[0]:
+        y = (P[e, 1] + P[(e + 1) % len(P), 1]) / 2
+        Q[e, 1] = Q[(e + 1) % len(P), 1] = y
+    for e in np.nonzero(vert)[0]:
+        x = (P[e, 0] + P[(e + 1) % len(P), 0]) / 2
+        Q[e, 0] = Q[(e + 1) % len(P), 0] = x
+    if _dist_to_polyline(Q, src).max() <= max_dev_px:
+        P = Q
+    # spline (Chaikin) on what is left zig-zagging between lines: short edges, alternating turns
+    d1 = np.roll(P, -1, 0) - P
+    ln = np.linalg.norm(d1, axis=1)
+    if (ln < 3).mean() > 0.3:
+        S = P
+        for _ in range(2):
+            A, B = S, np.roll(S, -1, 0)
+            S = np.stack([0.75 * A + 0.25 * B, 0.25 * A + 0.75 * B], 1).reshape(-1, 2)
+        if _dist_to_polyline(S, src).max() <= max_dev_px:
+            P = S
+    return P, float(_dist_to_polyline(P, src).max())
+
+
+def mask_polygons(mask, mm_per_px, origin_px, eps_px=0.7, min_area_px=12, clean=True, stats=None):
+    """A mask -> outline polygons in mm (x right, y up) relative to origin_px, ready for geometry.outline. clean: every
+    traced outline is vectorised into lines, arcs and splines (vectorize; within 1.5 px of the trace), so no pixel
+    step reaches the solid; else Douglas-Peucker only. stats (dict): gets "max_dev_px", the largest distance of a
+    clean outline from its trace (mask pixels)."""
     out = []
-    for o, hs in nest([simplify(L, eps_px) for L in trace(mask)], min_area_px):
+    loops = []
+    for L in trace(mask):
+        if clean and len(L) >= 8:
+            P, dev = vectorize(L, max(0.75, eps_px))
+            loops.append(P)
+            if stats is not None:
+                stats["max_dev_px"] = max(stats.get("max_dev_px", 0.0), dev)
+        else:
+            loops.append(simplify(L, eps_px))
+    for o, hs in nest(loops, min_area_px):
         def to_mm(L):
             return [[round((x - origin_px[0]) * mm_per_px, 3), round((origin_px[1] - y) * mm_per_px, 3)] for x, y in L]
         # y flips (image y down -> mm y up), which reverses orientation: re-orient after the flip

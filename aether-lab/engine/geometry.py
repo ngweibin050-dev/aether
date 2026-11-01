@@ -116,8 +116,22 @@ def torus(radius=10, tube_radius=2, segments=48, sides=16):
 STANDARD_MODULES = (0.5, 0.6, 0.8, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16, 20)   # ISO 54 series I
 
 
+MODULES_II = (0.55, 0.7, 0.9, 1.125, 1.375, 1.75, 2.25, 2.75, 3.5, 4.5, 5.5, 7, 9, 11, 14, 18)   # ISO 54 series II
+
+
 def snap_module(m):
     return min(STANDARD_MODULES, key=lambda s: abs(np.log(s / m)))
+
+
+def module_for(m, tol=0.03):
+    """The module a gear drawn at measured module m gets: a standard ISO 54 module (series I first, then series II)
+    only if it is within tol of m; otherwise the measured module itself, so the built gear keeps the drawn size
+    (snapping 2.16 to 2 made a drawn 28 mm tip circle 26 mm). Returns (module, source)."""
+    for series, name in ((STANDARD_MODULES, "ISO 54 series I"), (MODULES_II, "ISO 54 series II")):
+        s = min(series, key=lambda v: abs(np.log(v / m)))
+        if abs(s / m - 1) <= tol:
+            return float(s), f"{name} (within {100 * abs(s / m - 1):.1f} % of the drawn size)"
+    return round(float(m), 3), f"measured from the drawing (no ISO 54 module within {100 * tol:.0f} %)"
 
 
 def gear_profile(teeth=12, module=2.0, pressure_angle=20.0, phase=0.0, flank_pts=7):
@@ -281,7 +295,57 @@ def outline(polygons, thickness=5.0):
     return np.vstack(Vs), np.vstack(Fs)
 
 
-BUILDERS = {"box": box, "profile": profile, "outline": outline, "cylinder": cylinder, "tube": tube, "cone": cone, "sphere": sphere,
+def inflate(polygons, thickness=10.0, round=1.0, cells=140, faces=3000):
+    """A traced outline made solid with a rounded cross-section (sketch inflation), instead of a flat extrusion.
+
+    Every point of the outline gets a half-thickness h(r) = t/2 * sqrt(1 - (1 - min(r/R, 1))^2), r = distance to
+    the nearest edge, R = round * t/2: edges are rounded like a cast or forged part, the middle is flat at t, and
+    narrow features (a thin arm) get thinner than wide ones, the way real castings are. Holes stay holes.
+    Voxelised, closed and smoothed by hull.surface, then decimated. Centred on z = 0."""
+    from PIL import Image, ImageDraw
+    from . import hull
+    pts = np.array([p for poly in polygons for p in poly["outer"]], float)
+    if not len(pts):
+        return box(1, 1, thickness)
+    lo, hi = pts.min(0), pts.max(0)
+    t = float(thickness)
+    cell = max(float((hi - lo).max()) / cells, t / 24, 0.2)
+    W, H = int(np.ceil((hi[0] - lo[0]) / cell)) + 3, int(np.ceil((hi[1] - lo[1]) / cell)) + 3
+    im = Image.new("1", (W, H))
+    d = ImageDraw.Draw(im)
+    tr = lambda P: [((x - lo[0]) / cell + 1, (y - lo[1]) / cell + 1) for x, y in P]
+    for poly in polygons:
+        d.polygon(tr(poly["outer"]), fill=1)
+        for h in poly.get("holes", []):
+            d.polygon(tr(h), fill=0)
+    m = np.array(im, bool).T                                  # [x, y]
+    # distance to the edge (city-block erosion steps, scaled ~ Euclidean by 1/1.2)
+    R = max(round * t / 2, cell)
+    steps = int(np.ceil(R / cell * 1.3)) + 1
+    dist = np.zeros(m.shape)
+    cur = m.copy()
+    for _ in range(steps):
+        dist += cur
+        nxt = cur.copy()
+        nxt[1:, :] &= cur[:-1, :]
+        nxt[:-1, :] &= cur[1:, :]
+        nxt[:, 1:] &= cur[:, :-1]
+        nxt[:, :-1] &= cur[:, 1:]
+        cur = nxt
+        if not cur.any():
+            break
+    r = dist * cell / 1.2
+    h = (t / 2) * np.sqrt(np.clip(1 - (1 - np.minimum(r / R, 1)) ** 2, 0, 1))
+    nz = max(4, int(np.ceil(t / cell)) + 2)
+    zc = (np.arange(nz) - (nz - 1) / 2) * cell
+    occ = m[:, :, None] & (np.abs(zc)[None, None, :] <= h[:, :, None])
+    if not occ.any():
+        return box(1, 1, thickness)
+    V, F = hull.surface(occ, cell, origin=(lo[0] - 1.5 * cell, lo[1] - 1.5 * cell, zc[0] - cell / 2), smooth=4)
+    return decimate(V, F, int(faces))
+
+
+BUILDERS = {"box": box, "profile": profile, "outline": outline, "inflate": inflate, "cylinder": cylinder, "tube": tube, "cone": cone, "sphere": sphere,
             "torus": torus, "gear": gear, "nozzle": nozzle, "blade_ring": blade_ring,
             "pipe": pipe, "coil": coil}
 
@@ -292,6 +356,7 @@ PARAM_HELP = {
     "blade_ring": "count, inner, outer, thickness, height, twist", "pipe": "points [[x,y,z],...], radius",
     "coil": "radius, wire, turns, pitch",
     "outline": "polygons [{outer: [[x,y],...], holes: [...]}], thickness",
+    "inflate": "polygons (as outline), thickness, round (0..1 edge rounding): rounded cast/forged solid of an outline",
 }
 
 # ---------------- transforms ----------------
