@@ -1,0 +1,9 @@
+# AETHER CAD worker: isolated, pinned environment (Python 3.12). Never install into the lab's own Python.
+# Versions tested in this repository (Linux, 1 Nov 2026). Windows: same pins, untested here.
+cadquery==2.8.0
+cadquery-ocp==7.9.3.1.1
+numpy==2.5.4
+scipy==1.18.1
+pillow==13.0.0
+meta-sam-parser==0.1.0
+pytest==9.2.0

@@ -227,3 +227,129 @@ def op_mirror_copy(p, inputs, doc):
 OPS = {"section_sketch": op_section_sketch, "skin_sections": op_skin_sections, "wheel_well_cut": op_wheel_well_cut,
        "cut_cylinders_x": op_cut_cylinders_x, "tyre": op_tyre, "rim": op_rim, "mirror_housing": op_mirror_housing,
        "exhaust_tip": op_exhaust_tip, "mirror_copy": op_mirror_copy}
+
+
+# ------------------------------------------------------------------------------------------------ region features
+_AXIS = {"side": 1, "top": 2, "front": 0, "rear": 0}
+
+
+def _poly3d(view, poly2d, depth):
+    """Region polygon in its view plane (model coords: side (x, z), top (x, y), front/rear (y, z)) placed at the
+    given coordinate along the view axis."""
+    if view == "side":
+        return [(a, depth, b) for a, b in poly2d]
+    if view == "top":
+        return [(a, b, depth) for a, b in poly2d]
+    return [(depth, a, b) for a, b in poly2d]
+
+
+def _region_prism(view, polys, lo, hi):
+    """Prisms of the region polygons along the view axis from lo to hi (model mm)."""
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakePrism
+    out = []
+    ax = _AXIS[view]
+    v = [0.0, 0.0, 0.0]
+    v[ax] = hi - lo
+    for poly in polys:
+        pts = _poly3d(view, poly, lo)
+        face = BRepBuilderAPI_MakeFace(K._poly_wire(pts)).Face()
+        mk = BRepPrimAPI_MakePrism(face, gp_Vec(*v))
+        mk.Build()
+        out.append(mk.Shape())
+    return out
+
+
+def op_imprint_projection(p, inputs, doc):
+    """Imprint drawn region outlines (windows, lights, panel lines) onto the body: the region polygon, extruded along
+    the view direction, splits the body's faces where it crosses them (BRepAlgoAPI_Splitter on the body's shell, then
+    the shell is made a solid again). No volume changes; the split faces carry the region (glass, light, panel)."""
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Splitter
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_SHELL
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopTools import TopTools_ListOfShape
+    from OCP.TopoDS import TopoDS
+    from OCP.ShapeFix import ShapeFix_Solid
+    body = inputs[0][0]
+    p = {**p, "polygons": [[[c * p.get("scale", 1.0) for c in q] for q in poly] for poly in p["polygons"]]}
+    bb = __import__("cad.validate", fromlist=["bbox"]).bbox(body)
+    ax = _AXIS[p["view"]]
+    lo, hi = bb[ax] - 50.0, bb[ax + 3] + 50.0
+    mid = (bb[ax] + bb[ax + 3]) / 2
+    if p["view"] == "front":
+        hi = mid                              # only the half that faces the viewer
+    elif p["view"] in ("rear", "top"):
+        lo = mid
+    tools = TopTools_ListOfShape()
+    for prism in _region_prism(p["view"], p["polygons"], lo, hi):
+        ex = TopExp_Explorer(prism, TopAbs_FACE)
+        while ex.More():
+            tools.Append(ex.Current())
+            ex.Next()
+    shells = TopTools_ListOfShape()
+    ex = TopExp_Explorer(body, TopAbs_SHELL)
+    shells.Append(ex.Current())
+    sp = BRepAlgoAPI_Splitter()
+    sp.SetArguments(shells)
+    sp.SetTools(tools)
+    sp.SetFuzzyValue(1e-5)
+    sp.Build()
+    if not sp.IsDone():
+        raise K.KernelError(f"imprint {p.get('name')}: splitter failed")
+    ex = TopExp_Explorer(sp.Shape(), TopAbs_SHELL)
+    if not ex.More():
+        raise K.KernelError(f"imprint {p.get('name')}: no shell after splitting")
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
+    sew = BRepBuilderAPI_Sewing(1e-4)
+    exf = TopExp_Explorer(sp.Shape(), TopAbs_FACE)
+    nf = 0
+    while exf.More():
+        sew.Add(exf.Current())
+        nf += 1
+        exf.Next()
+    sew.Perform()
+    exs = TopExp_Explorer(sew.SewedShape(), TopAbs_SHELL)
+    sol = BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(exs.Current())).Solid()
+    fx = ShapeFix_Solid(sol)
+    fx.Perform()
+    sol = K.one_solid(fx.Solid(), f"imprint {p.get('name')}")
+    from OCP.BRepLib import BRepLib
+    BRepLib.OrientClosedSolid_s(sol)
+    v0 = __import__("cad.validate", fromlist=["mass"]).mass(body)["volume_mm3"]
+    v1 = __import__("cad.validate", fromlist=["mass"]).mass(sol)["volume_mm3"]
+    if abs(v1 - v0) > 1e-5 * abs(v0):
+        raise K.KernelError(f"imprint {p.get('name')}: volume changed by {v1 - v0:.3f} mm^3 (an imprint must not)")
+    return sol, {"valid": _valid(sol), "faces_after": nf, "region": p.get("name"), "material": p.get("material")}
+
+
+def op_pocket_projection(p, inputs, doc):
+    """Pocket (recess) of drawn regions, `depth` mm deep measured along the view direction from the body surface
+    that faces the viewer: layer = (region prism ∩ body) - body shifted by `depth` towards the viewer, cut from the
+    body. side views: both sides (+Y and -Y); top: from +Z; front: from -X; rear: from +X."""
+    body = inputs[0][0]
+    p = {**p, "polygons": [[[c * p.get("scale", 1.0) for c in q] for q in poly] for poly in p["polygons"]]}
+    bb = __import__("cad.validate", fromlist=["bbox"]).bbox(body)
+    view, d = p["view"], float(p["depth"])
+    ax = _AXIS[view]
+    prism = K.compound(_region_prism(view, p["polygons"], bb[ax] - 50.0, bb[ax + 3] + 50.0))
+    inside, _ = K.boolean("common", body, prism, "pocket region")
+    dirs = {"side": [(0, 1, 0), (0, -1, 0)], "top": [(0, 0, 1)], "front": [(-1, 0, 0)], "rear": [(1, 0, 0)]}[view]
+    layers = []
+    for dv in dirs:
+        shifted = K.transformed(body, translate=tuple(-d * c for c in dv))
+        lay, _ = K.boolean("cut", inside, shifted, "pocket layer")
+        if K.solids(lay):
+            layers.append(lay)
+    if not layers:
+        raise K.KernelError(f"pocket {p.get('name')}: the region does not cut the body")
+    res = body
+    for lay in layers:
+        res, _ = K.boolean("cut", res, lay, f"pocket {p.get('name')}")
+    s = K.solids(res)
+    if len(s) != 1:
+        raise K.KernelError(f"pocket {p.get('name')}: left {len(s)} solids")
+    return s[0], {"valid": _valid(s[0]), "region": p.get("name"), "depth_mm": d}
+
+
+OPS["imprint_projection"] = op_imprint_projection
+OPS["pocket_projection"] = op_pocket_projection

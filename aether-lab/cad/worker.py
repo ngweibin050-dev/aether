@@ -207,8 +207,12 @@ CMDS = {"ping": cmd_ping, "build": cmd_build, "open": cmd_open, "document": cmd_
 
 
 def main():
-    out = sys.stdout
-    sys.stdout = sys.stderr                     # library prints (OCCT STEP statistics) must not corrupt the protocol
+    # the protocol gets a private copy of the real stdout; file descriptor 1 is pointed at stderr, because OpenCascade's
+    # C++ code (STEP writer statistics) prints straight to fd 1 and would corrupt the JSON lines
+    proto = os.dup(1)
+    os.dup2(2, 1)
+    out = os.fdopen(proto, "w", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stderr
     for line in sys.stdin:
         line = line.strip()
         if not line:

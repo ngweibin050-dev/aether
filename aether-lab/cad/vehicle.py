@@ -518,3 +518,25 @@ def crown_exponent(C, G, F):
         return 2.0, "no usable envelope rows: parabolic crown (assumed)"
     p = float(np.clip(np.median(ps), 1.5, 6.0))
     return p, f"median of {len(ps)} end-view envelope rows between the roof edge and the top (front + rear views)"
+
+
+# kind -> (operation, view it is built from, material or default depth). Each region is built from the view that sees it
+# face-on; a kind accepted in other views too is evidence only there (listed, not built twice).
+REGION_RULES = {
+    "side_window": ("imprint", "side", "glass"), "windscreen": ("imprint", "top", "glass"),
+    "rear_window": ("imprint", "top", "glass"), "door": ("imprint", "side", "panel"),
+    "headlight": ("imprint", "front", "light"), "tail_light": ("imprint", "rear", "light"),
+    "air_intake": ("pocket", "side", 60.0), "grille_mesh": ("pocket", "top", 25.0), "louvre": ("pocket", "top", 25.0),
+    "licence_plate": ("pocket", "rear", 15.0),
+}
+
+
+def region_to_model(F, view, poly_px):
+    P = np.asarray(poly_px, float)
+    if view == "side":
+        a, b = side_xz(F, P[:, 0], P[:, 1])
+    elif view == "top":
+        a, b = top_xy(F, P[:, 0], P[:, 1])
+    else:
+        a, b = end_yz(F, view, P[:, 0], P[:, 1])
+    return np.c_[a, b]

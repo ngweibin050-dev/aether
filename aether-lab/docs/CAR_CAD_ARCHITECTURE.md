@@ -651,3 +651,22 @@ Nothing is demonstrated yet.
 5. **Reprojection report** (P1–P5).
 6. **AETHER Lab integration:** GLB, Feature Tree, parameter edits (G1, I1).
 7. **Remaining recess and region features** (#9–#25 that were not done in step 3).
+
+---
+
+## 16. Implementation status (1 Nov 2026) and deviations from this plan
+
+**Implemented** in `aether-lab/cad/`. See [`cad/README.md`](../cad/README.md) for setup and use, and
+[`docs/CAD_RESULTS.md`](CAD_RESULTS.md) for the measured results and the acceptance table A–I.
+
+### Deviations, each for a measured reason
+
+| Plan | Built | Why |
+|---|---|---|
+| §3.6: body = lower-body loft L1 + greenhouse loft G1, Boolean-fused | **One skinned NURBS surface** through keypoint-sketch sections. The greenhouse is part of every section (beltline, glass, roof edge from the labelled regions), with a smooth cabin weight at its ends. | No Boolean between two B-spline lofts is needed, so this is more robust. The cabin is still measured (plan greenhouse outline, side-glass edges, beltline fit). Its shape is not a single crude loft: 45 stations from 7 named keypoints, each derived from a drawing curve. |
+| §3.6: lofts with `BRepOffsetAPI_ThruSections` + smoothing; separate end caps from `BRepFill_Filling` | **Skinning** (common-parameter half-section B-splines; pole rows interpolated along X) and **planar end caps** from the end sections. | ThruSections with smoothing **segfaults** on 40+ periodic sections (OCP 7.9). Without smoothing it **overshoots by metres**. The side view shows vertical end faces at nose and tail, which justifies planar caps. |
+| §9: STEP tolerance 1e-3 mm | Stated limit: **max(0.01 mm, the original B-rep's own maximum tolerance)**. Both values are reported. | STEP stores reals with about 7 significant digits, a few µm on a 4.5 m body. Boolean and imprint intersection edges carry an OCCT tolerance (up to 0.12 mm here), and a shape is only defined within its own tolerance. |
+| §8: R6 `end_view_scale_ratio` edit | **R6 = overall-length (scale) edit.** | The end-view ratio is applied when the views are interpreted, not by the features. A scale edit exercises every dependent parameter. |
+| §5A S8 | Done. It is advisory, and keyed by the overlay images' hash. | A stale verdict could otherwise have been replayed (found and fixed during testing). |
+| (new) | **Hard constraint:** no section is wider than the end-view silhouette at its height. | Found by reprojection (the shoulders stood outside the rear view). It is a drawing fact, so it is enforced. |
+| (new) | Stored model answers are replayed **only for an identical prompt** (hash of text + images). | A silhouette fix renumbered the regions, and the old labels were applied to the wrong regions (found by a missing exhaust pair). |

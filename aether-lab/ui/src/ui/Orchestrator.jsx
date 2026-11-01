@@ -138,7 +138,7 @@ function PhotoForm({ image, onCancel }) {
           <button type="button" onClick={onCancel} className="btn ml-auto whitespace-nowrap !py-1 text-[11px]">Cancel</button>
       </div>
       <button className="btn-accent w-full whitespace-nowrap !py-1.5 text-[11.5px]" title={KINDS.find((x) => x[0] === kind)[2]}>
-        {kind === "machine" ? "Build machine" : kind === "three_view" ? "Build from three views" : kind === "part" ? "Build part" : "Build 3D model"}</button>
+        {kind === "machine" ? "Build machine" : kind === "three_view" ? "Build CAD from three views" : kind === "part" ? "Build part" : "Build 3D model"}</button>
     </form>
   );
 }

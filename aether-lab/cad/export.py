@@ -180,10 +180,17 @@ def compare_shapes(a, b, n=600):
            "samples": [len(pa), len(pb)], "distance_method": "min(BRepExtrema point-shape distance, projection onto the face surfaces whose trimmed "
            f"region contains the foot point): both are distances to real points on the shape (upper bounds); {fa + fb} "
            "points had no in-face projection"}
+    # the limit: STEP_TOL_MM, or the original B-rep's own maximum tolerance if larger (OCCT shapes are only defined
+    # within their tolerance; Boolean / imprint intersection edges carry one). Both are reported.
+    tol = max(STEP_TOL_MM, va["max_tolerance_mm"])
+    out["tolerance_used_mm"] = tol
+    out["original_max_tolerance_mm"] = va["max_tolerance_mm"]
+    out["edge_count_note"] = ("equal" if out["counts"]["edges"][0] == out["counts"]["edges"][1] else
+                              "differs: the STEP translator merges / splits collinear sub-edges; faces and solids must match")
     out["pass"] = bool(out["reimported_valid"] and out["counts"]["solids"][0] == out["counts"]["solids"][1]
                        and out["counts"]["faces"][0] == out["counts"]["faces"][1] and out["volume_rel_diff"] < 1e-6
-                       and out["area_rel_diff"] < 1e-5 and out["bbox_diff_mm"] < STEP_TOL_MM
-                       and max(out["dist_orig_to_reimport_mm"]["max"], out["dist_reimport_to_orig_mm"]["max"]) <= STEP_TOL_MM)
+                       and out["area_rel_diff"] < 1e-5 and out["bbox_diff_mm"] <= tol
+                       and max(out["dist_orig_to_reimport_mm"]["max"], out["dist_reimport_to_orig_mm"]["max"]) <= tol)
     return out
 
 
@@ -255,7 +262,25 @@ def glb(components, extras_doc=None, linear=0.4, angular=0.3):
             mats.append({"name": c["id"], "pbrMetallicRoughness": {"baseColorFactor": _rgb(c.get("colour")) + [1.0],
                                                                    "metallicFactor": 0.35 if c.get("material") == "metal" else 0.1,
                                                                    "roughnessFactor": 0.85 if c.get("material") == "rubber" else 0.35}})
-            prims = [{"attributes": {"POSITION": pos, "NORMAL": nrm}, "indices": ind, "material": len(mats) - 1}]
+            fm = c.get("face_materials")
+            base_mi = len(mats) - 1
+            if fm:                                          # one primitive per material group (glass, lights, paint)
+                from cad.pipeline import MATERIALS
+                _, _, _, fid = T.mesh(c["shape"], linear, angular)
+                tri_mat = np.array([fm[i] or "" for i in fid])
+                prims = []
+                for m in sorted(set(tri_mat)):
+                    sel = F[tri_mat == m]
+                    mi = base_mi
+                    if m:
+                        mats.append({"name": f"{c['id']} {m}", "pbrMetallicRoughness": {
+                            "baseColorFactor": _rgb(MATERIALS[m]) + [1.0], "metallicFactor": 0.0 if m == "glass" else 0.05,
+                            "roughnessFactor": 0.08 if m == "glass" else 0.3}})
+                        mi = len(mats) - 1
+                    prims.append({"attributes": {"POSITION": pos, "NORMAL": nrm},
+                                  "indices": add(sel.astype(np.uint32).ravel(), 34963, 5125, "SCALAR"), "material": mi})
+            else:
+                prims = [{"attributes": {"POSITION": pos, "NORMAL": nrm}, "indices": ind, "material": len(mats) - 1}]
             if len(E):
                 ep = add(conv(E.reshape(-1, 3)), 34962, 5126, "VEC3", True)
                 mats.append({"name": c["id"] + " edges", "pbrMetallicRoughness": {"baseColorFactor": [0.08, 0.1, 0.13, 1.0],

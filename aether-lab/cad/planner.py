@@ -45,7 +45,8 @@ def _ref(pid):
     return {"$p": pid}
 
 
-def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6=None, s7=None, provenance_notes=None):
+def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6=None, s7=None, provenance_notes=None,
+                 region_feats=None):
     """Returns the document dict (validated by Document on load)."""
     title = f"{decisions.get('object', 'car')} — three-view CAD reconstruction"
     doc = Document.new(obs["source"], title)
@@ -189,8 +190,11 @@ def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6
                   "cap_tol": _ref("env_cap_tol")}
         _P(doc, f"{sid}._scale", rel={"kind": "scaled", "ref": 1.0, "by": "overall_length", "by_ref": REF_L}, unit="1",
            note="model scale relative to the reference (scales the envelope heights)")
+        scale_confirmed = decisions["overall_length_mm"].get("provenance") == "user_confirmed"
         for key in ("z_top", "z_bot", "y_max", "z_max", "y_sh", "z_sh", "y_re", "z_re", "r_low", "glass_bulge", "w_front"):
             cls = Vh.FIELD_CLASS[key]
+            if cls == "measured" and not scale_confirmed:
+                cls = "derived"           # measured in px on the drawing; in mm only via the (assumed) scale
             unit = "1" if key in ("glass_bulge", "w_front") else "mm"
             if unit == "1":
                 v = float(np.interp(x, FD["x"], FD[key]))
@@ -241,6 +245,42 @@ def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6
                       "params": {"x0": _ref("exhaust_x0"), "x1": {"$p": "exhaust_x1"},
                                  "holes": [[_ref(f"{t}.y"), _ref(f"{t}.z"), _ref(f"exhaust{t[7]}.r")] for t in hparams]}})
         last = "body.exhaust_openings"
+    # ---------------------------------------------------------------- drawn regions -> pockets, then imprints
+    groups = {}
+    for rf in region_feats or []:
+        groups.setdefault((rf["op"], rf["kind"], rf["view"]), []).append(rf)
+    order = sorted(groups, key=lambda k: (0 if k[0] == "pocket" else 1, k[1]))
+    _P(doc, "region_scale", rel={"kind": "scaled", "ref": 1.0, "by": "overall_length", "by_ref": REF_L}, unit="1",
+       note="region outlines are stored at the reference scale")
+    for op, kind, view in order:
+        items = groups[(op, kind, view)]
+        oid = f"obs.region.{kind}.{view}"
+        doc["observations"][oid] = {"kind": "region_outlines", "class": "measured", "view": view,
+                                    "regions": [it["region_id"] for it in items],
+                                    "label_status": [it["label"] for it in items],
+                                    "data": [it["poly_model"] for it in items],
+                                    "note": f"outlines of the regions labelled '{kind}' (S3) in the {view} view, model "
+                                            "coordinates of that view's plane at the reference scale"}
+        fid = f"body.{op}_{kind}_{view}"
+        params = {"view": view, "polygons": {"$obs": oid}, "scale": _ref("region_scale"), "name": f"{kind} ({view})"}
+        if op == "pocket":
+            pid = f"depth_{kind}"
+            if pid not in doc["parameters"]:
+                _P(doc, pid, value=float(items[0]["value"]), prov="assumed", rng=[1.0, 400.0],
+                   note=f"depth of the {kind} recess (not drawn)")
+            params["depth"] = _ref(pid)
+            label = f"Pocket: {kind.replace('_', ' ')} ({len(items)} region(s), {view} view, assumed depth)"
+        else:
+            params["material"] = items[0]["value"]
+            label = f"Imprint: {kind.replace('_', ' ')} outline ({len(items)} region(s), {view} view)"
+        feats.append({"id": fid, "op": f"{op}_projection", "inputs": [last], "params": params, "component": "body",
+                      "label": label, "region": {"kind": kind, "view": view, "material": params.get("material")}})
+        last = fid
+    if region_feats:
+        assume("A-13", "Drawn regions become features of the body: windows / windscreen / door / lights are IMPRINTED "
+                       "(the outline splits the surface; no depth is invented); intakes, grilles, louvres and the plate are "
+                       "POCKETS whose depths are assumed (not drawn). Each is built from the view that sees it face-on.",
+               "assumed", ["region features"], ["depth_*"])
     body_out = last
     comps = [{"id": "body", "name": "Body shell", "kind": "body_shell", "role": "body", "output": body_out,
               "material": "paint", "colour": "#b9c3cf", "parent": None}]

@@ -1,0 +1,4424 @@
+{
+"note": "Stored Muse Spark / Muse Wonder / SAM 3.1 answers (JSON only, no images) for the car three-view sheet, replayed by the CAD tests so they run without an API key. Replayed only for identical prompts (hash).",
+"sheet_sha256": "a98506a4301e30ad5ce6af1d82e348f0b47d710d98c0bebea1e28f43f67b52a3",
+"hypotheses": [
+{
+"stage": "S1_view_roles",
+"key": "seed1",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "0844d8db4846c410",
+"t": "2026-11-01 20:15:45",
+"ok": true,
+"response": {
+"end_a": "rear",
+"end_b": "front",
+"evidence": "B shows headlights, front grille, badge and windscreen; A shows 4 exhausts, plate recess and engine louvers. Side low pointed nose left. Top bonnet/headlights left, engine cover right.",
+"object": "Lamborghini Huracan coupe",
+"side_nose": "left",
+"top_nose": "left"
+},
+"latency_s": 5.7,
+"response_hash": "ed6f12d0862a3d48"
+},
+{
+"stage": "S1_view_roles",
+"key": "seed2",
+"model": "muse-spark-1.3",
+"seed": 2,
+"prompt_hash": "0844d8db4846c410",
+"t": "2026-11-01 20:15:51",
+"ok": true,
+"response": {
+"end_a": "rear",
+"end_b": "front",
+"evidence": "End B has headlights, grille, badge, windscreen; End A has 4 exhausts, plate, engine louvers. Side low nose left, tail right. Top badge/headlights left, engine cover right.",
+"object": "Lamborghini Huracan sports car",
+"side_nose": "left",
+"top_nose": "left"
+},
+"latency_s": 4.2,
+"response_hash": "4832f39e4f63a6b5"
+},
+{
+"stage": "S3_region_labels",
+"key": "top:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "84e0f851ab6b3d5a",
+"t": "2026-11-01 20:15:56",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.99,
+"kind": "roof",
+"n": 0
+},
+{
+"confidence": 0.99,
+"kind": "windscreen",
+"n": 1
+},
+{
+"confidence": 0.95,
+"kind": "bonnet",
+"n": 2
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.7,
+"kind": "pillar",
+"n": 5
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.85,
+"kind": "door",
+"n": 8
+},
+{
+"confidence": 0.85,
+"kind": "door",
+"n": 9
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 11
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.85,
+"kind": "louvre",
+"n": 13
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 14
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 15
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 16
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 17
+},
+{
+"confidence": 0.95,
+"kind": "side_window",
+"n": 18
+},
+{
+"confidence": 0.95,
+"kind": "side_window",
+"n": 19
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 20
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 23
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 24
+},
+{
+"confidence": 0.75,
+"kind": "grille_mesh",
+"n": 25
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 26
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 27
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 28
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 29
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 30
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 31
+},
+{
+"confidence": 0.8,
+"kind": "trim",
+"n": 32
+},
+{
+"confidence": 0.99,
+"kind": "mirror",
+"n": 33
+},
+{
+"confidence": 0.99,
+"kind": "mirror",
+"n": 34
+},
+{
+"confidence": 0.8,
+"kind": "trim",
+"n": 35
+},
+{
+"confidence": 0.8,
+"kind": "trim",
+"n": 36
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 38
+},
+{
+"confidence": 0.75,
+"kind": "trim",
+"n": 39
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 40
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 41
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 42
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 43
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 44
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 45
+},
+{
+"confidence": 0.65,
+"kind": "pillar",
+"n": 46
+},
+{
+"confidence": 0.65,
+"kind": "pillar",
+"n": 47
+}
+]
+},
+"latency_s": 44.4,
+"response_hash": "40169de2cafc14cd"
+},
+{
+"stage": "S3_region_labels",
+"key": "top:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "84e0f851ab6b3d5a",
+"t": "2026-11-01 20:16:40",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.9,
+"kind": "roof",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "windscreen",
+"n": 1
+},
+{
+"confidence": 0.95,
+"kind": "bonnet",
+"n": 2
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.7,
+"kind": "pillar",
+"n": 5
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.9,
+"kind": "door",
+"n": 8
+},
+{
+"confidence": 0.9,
+"kind": "door",
+"n": 9
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 11
+},
+{
+"confidence": 0.6,
+"kind": "badge",
+"n": 12
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 13
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 14
+},
+{
+"confidence": 0.6,
+"kind": "rear_window",
+"n": 15
+},
+{
+"confidence": 0.8,
+"kind": "engine_cover",
+"n": 16
+},
+{
+"confidence": 0.6,
+"kind": "spoiler",
+"n": 17
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 18
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 19
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 20
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 23
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 24
+},
+{
+"confidence": 0.75,
+"kind": "grille_mesh",
+"n": 25
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 26
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 27
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 28
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 29
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 30
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 31
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 32
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 33
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 34
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 35
+},
+{
+"confidence": 0.75,
+"kind": "louvre",
+"n": 36
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 38
+},
+{
+"confidence": 0.7,
+"kind": "pillar",
+"n": 39
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 40
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 41
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 42
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 43
+},
+{
+"confidence": 0.85,
+"kind": "tail_light",
+"n": 44
+},
+{
+"confidence": 0.85,
+"kind": "tail_light",
+"n": 45
+},
+{
+"confidence": 0.65,
+"kind": "side_window",
+"n": 46
+},
+{
+"confidence": 0.65,
+"kind": "side_window",
+"n": 47
+}
+]
+},
+"latency_s": 24.3,
+"response_hash": "159b4f1dbe43bcbf"
+},
+{
+"stage": "S3_region_labels",
+"key": "side:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "02f8cd1ef37798e7",
+"t": "2026-11-01 20:17:04",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.99,
+"kind": "door",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "body_panel",
+"n": 1
+},
+{
+"confidence": 0.99,
+"kind": "side_window",
+"n": 2
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.95,
+"kind": "wheel",
+"n": 4
+},
+{
+"confidence": 0.9,
+"kind": "engine_cover",
+"n": 5
+},
+{
+"confidence": 0.85,
+"kind": "trim",
+"n": 6
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.85,
+"kind": "sill",
+"n": 8
+},
+{
+"confidence": 0.85,
+"kind": "air_intake",
+"n": 9
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 10
+},
+{
+"confidence": 0.65,
+"kind": "trim",
+"n": 11
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 13
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 16
+},
+{
+"confidence": 0.95,
+"kind": "windscreen",
+"n": 17
+},
+{
+"confidence": 0.95,
+"kind": "roof",
+"n": 18
+},
+{
+"confidence": 0.7,
+"kind": "spoiler",
+"n": 19
+},
+{
+"confidence": 0.75,
+"kind": "sill",
+"n": 20
+},
+{
+"confidence": 0.8,
+"kind": "diffuser",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 22
+},
+{
+"confidence": 0.95,
+"kind": "headlight",
+"n": 23
+},
+{
+"confidence": 0.6,
+"kind": "body_panel",
+"n": 24
+},
+{
+"confidence": 0.6,
+"kind": "louvre",
+"n": 25
+},
+{
+"confidence": 0.7,
+"kind": "air_intake",
+"n": 26
+},
+{
+"confidence": 0.85,
+"kind": "trim",
+"n": 27
+},
+{
+"confidence": 0.95,
+"kind": "tail_light",
+"n": 28
+},
+{
+"confidence": 0.65,
+"kind": "bonnet",
+"n": 29
+},
+{
+"confidence": 0.9,
+"kind": "pillar",
+"n": 30
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 31
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 32
+},
+{
+"confidence": 0.9,
+"kind": "splitter",
+"n": 33
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 34
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 35
+},
+{
+"confidence": 0.95,
+"kind": "grille_mesh",
+"n": 36
+},
+{
+"confidence": 0.65,
+"kind": "trim",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 38
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 39
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 40
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 41
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 42
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 43
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 44
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 45
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 46
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 47
+}
+]
+},
+"latency_s": 40.9,
+"response_hash": "b12ab92c8ef37197"
+},
+{
+"stage": "S3_region_labels",
+"key": "side:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "02f8cd1ef37798e7",
+"t": "2026-11-01 20:17:45",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.9,
+"kind": "door",
+"n": 0
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 1
+},
+{
+"confidence": 0.95,
+"kind": "side_window",
+"n": 2
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 4
+},
+{
+"confidence": 0.85,
+"kind": "engine_cover",
+"n": 5
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.8,
+"kind": "sill",
+"n": 7
+},
+{
+"confidence": 0.7,
+"kind": "sill",
+"n": 8
+},
+{
+"confidence": 0.8,
+"kind": "air_intake",
+"n": 9
+},
+{
+"confidence": 0.85,
+"kind": "side_window",
+"n": 10
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 11
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.85,
+"kind": "side_window",
+"n": 13
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.7,
+"kind": "air_intake",
+"n": 15
+},
+{
+"confidence": 0.75,
+"kind": "pillar",
+"n": 16
+},
+{
+"confidence": 0.9,
+"kind": "windscreen",
+"n": 17
+},
+{
+"confidence": 0.9,
+"kind": "roof",
+"n": 18
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 19
+},
+{
+"confidence": 0.75,
+"kind": "sill",
+"n": 20
+},
+{
+"confidence": 0.75,
+"kind": "diffuser",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 22
+},
+{
+"confidence": 0.7,
+"kind": "headlight",
+"n": 23
+},
+{
+"confidence": 0.7,
+"kind": "splitter",
+"n": 24
+},
+{
+"confidence": 0.65,
+"kind": "louvre",
+"n": 25
+},
+{
+"confidence": 0.65,
+"kind": "trim",
+"n": 26
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 27
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 28
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 29
+},
+{
+"confidence": 0.8,
+"kind": "pillar",
+"n": 30
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 31
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 32
+},
+{
+"confidence": 0.8,
+"kind": "splitter",
+"n": 33
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 34
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 35
+},
+{
+"confidence": 0.9,
+"kind": "grille_mesh",
+"n": 36
+},
+{
+"confidence": 0.65,
+"kind": "sill",
+"n": 37
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 38
+},
+{
+"confidence": 0.8,
+"kind": "wheel",
+"n": 39
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 40
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 41
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 42
+},
+{
+"confidence": 0.8,
+"kind": "wheel",
+"n": 43
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 44
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 45
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 46
+},
+{
+"confidence": 0.8,
+"kind": "wheel",
+"n": 47
+}
+]
+},
+"latency_s": 21.9,
+"response_hash": "fa00aa57fb5f4e12"
+},
+{
+"stage": "S3_region_labels",
+"key": "end A:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "b0225e21d93d88a1",
+"t": "2026-11-01 20:18:07",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.95,
+"kind": "body_panel",
+"n": 0
+},
+{
+"confidence": 0.98,
+"kind": "licence_plate",
+"n": 1
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 2
+},
+{
+"confidence": 0.7,
+"kind": "spoiler",
+"n": 3
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 5
+},
+{
+"confidence": 0.85,
+"kind": "roof",
+"n": 6
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 8
+},
+{
+"confidence": 0.75,
+"kind": "diffuser",
+"n": 9
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 10
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 11
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 13
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 16
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 17
+},
+{
+"confidence": 0.7,
+"kind": "pillar",
+"n": 18
+},
+{
+"confidence": 0.7,
+"kind": "pillar",
+"n": 19
+},
+{
+"confidence": 0.6,
+"kind": "grille_mesh",
+"n": 20
+},
+{
+"confidence": 0.6,
+"kind": "grille_mesh",
+"n": 21
+},
+{
+"confidence": 0.85,
+"kind": "engine_cover",
+"n": 22
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 23
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 24
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 25
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 26
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 27
+},
+{
+"confidence": 0.85,
+"kind": "engine_cover",
+"n": 28
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 29
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 30
+},
+{
+"confidence": 0.75,
+"kind": "tail_light",
+"n": 31
+},
+{
+"confidence": 0.75,
+"kind": "tail_light",
+"n": 32
+},
+{
+"confidence": 0.6,
+"kind": "badge",
+"n": 33
+},
+{
+"confidence": 0.55,
+"kind": "trim",
+"n": 34
+},
+{
+"confidence": 0.55,
+"kind": "trim",
+"n": 35
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 36
+},
+{
+"confidence": 0.85,
+"kind": "engine_cover",
+"n": 37
+},
+{
+"confidence": 0.7,
+"kind": "tail_light",
+"n": 38
+},
+{
+"confidence": 0.7,
+"kind": "tail_light",
+"n": 39
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 40
+}
+]
+},
+"latency_s": 26.0,
+"response_hash": "a2aaa4984fa29417"
+},
+{
+"stage": "S3_region_labels",
+"key": "end A:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "b0225e21d93d88a1",
+"t": "2026-11-01 20:18:33",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 0
+},
+{
+"confidence": 0.9,
+"kind": "licence_plate",
+"n": 1
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 2
+},
+{
+"confidence": 0.9,
+"kind": "spoiler",
+"n": 3
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 5
+},
+{
+"confidence": 0.9,
+"kind": "roof",
+"n": 6
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 8
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 9
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 10
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 11
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 13
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 16
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 17
+},
+{
+"confidence": 0.9,
+"kind": "engine_cover",
+"n": 18
+},
+{
+"confidence": 0.9,
+"kind": "engine_cover",
+"n": 19
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 20
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "grille_mesh",
+"n": 23
+},
+{
+"confidence": 0.9,
+"kind": "grille_mesh",
+"n": 24
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 25
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 26
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 27
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 28
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 29
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 30
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 31
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 32
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 33
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 34
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 35
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 36
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 38
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 39
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 40
+}
+]
+},
+"latency_s": 33.4,
+"response_hash": "b8858f3fb728b11d"
+},
+{
+"stage": "S3_region_labels",
+"key": "end B:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "ea67618442e8ef81",
+"t": "2026-11-01 20:19:06",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.96,
+"kind": "windscreen",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "bonnet",
+"n": 1
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 2
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.9,
+"kind": "roof",
+"n": 5
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.85,
+"kind": "tyre",
+"n": 8
+},
+{
+"confidence": 0.85,
+"kind": "tyre",
+"n": 9
+},
+{
+"confidence": 0.92,
+"kind": "headlight",
+"n": 10
+},
+{
+"confidence": 0.92,
+"kind": "headlight",
+"n": 11
+},
+{
+"confidence": 0.98,
+"kind": "mirror",
+"n": 12
+},
+{
+"confidence": 0.98,
+"kind": "mirror",
+"n": 13
+},
+{
+"confidence": 0.8,
+"kind": "grille_mesh",
+"n": 14
+},
+{
+"confidence": 0.6,
+"kind": "door",
+"n": 15
+},
+{
+"confidence": 0.6,
+"kind": "door",
+"n": 16
+}
+]
+},
+"latency_s": 45.0,
+"response_hash": "4dddd21115e25fca"
+},
+{
+"stage": "S3_region_labels",
+"key": "end B:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "ea67618442e8ef81",
+"t": "2026-11-01 20:19:52",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.92,
+"kind": "windscreen",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "bonnet",
+"n": 1
+},
+{
+"confidence": 0.82,
+"kind": "body_panel",
+"n": 2
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.88,
+"kind": "roof",
+"n": 5
+},
+{
+"confidence": 0.88,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.88,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.9,
+"kind": "tyre",
+"n": 8
+},
+{
+"confidence": 0.9,
+"kind": "tyre",
+"n": 9
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 11
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 12
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 13
+},
+{
+"confidence": 0.55,
+"kind": "trim",
+"n": 14
+},
+{
+"confidence": 0.6,
+"kind": "side_window",
+"n": 15
+},
+{
+"confidence": 0.6,
+"kind": "side_window",
+"n": 16
+}
+]
+},
+"latency_s": 16.3,
+"response_hash": "dc6f19e283d43e4e"
+},
+{
+"stage": "S2_sam",
+"key": "side:wheel",
+"model": "sam-3.1",
+"prompt": "wheel",
+"t": "2026-11-01 20:37:11",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+1051,
+161,
+1280,
+385
+],
+"confidence": 0.8552036285400391,
+"mask_area_px": 41203,
+"mask_bbox": [
+1051,
+161,
+1278,
+384
+],
+"outline_on_ink": 0.988,
+"vs_measured_circle": {
+"centre_px": 1.7,
+"radius_rel": 0.007
+}
+},
+{
+"box": [
+236,
+168,
+449,
+384
+],
+"confidence": 0.8632478713989258,
+"mask_area_px": 36465,
+"mask_bbox": [
+236,
+168,
+448,
+383
+],
+"outline_on_ink": 1.0,
+"vs_measured_circle": {
+"centre_px": 1.0,
+"radius_rel": 0.012
+}
+}
+]
+},
+"latency_s": 2.6
+},
+{
+"stage": "S2_sam",
+"key": "side:side mirror",
+"model": "sam-3.1",
+"prompt": "side mirror",
+"t": "2026-11-01 20:37:13",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+497,
+102,
+582,
+167
+],
+"confidence": 0.9375000596046448,
+"mask_area_px": 3625,
+"mask_bbox": [
+497,
+102,
+581,
+166
+],
+"outline_on_ink": 1.0
+}
+]
+},
+"latency_s": 1.0
+},
+{
+"stage": "S2_sam",
+"key": "top:side mirror",
+"model": "sam-3.1",
+"prompt": "side mirror",
+"t": "2026-11-01 20:37:14",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+494,
+631,
+581,
+716
+],
+"confidence": 0.604938268661499,
+"mask_area_px": 4758,
+"mask_bbox": [
+494,
+631,
+580,
+715
+],
+"outline_on_ink": 1.0
+},
+{
+"box": [
+496,
+8,
+581,
+94
+],
+"confidence": 0.9101123809814453,
+"mask_area_px": 4695,
+"mask_bbox": [
+496,
+8,
+580,
+93
+],
+"outline_on_ink": 1.0
+}
+]
+},
+"latency_s": 0.9
+},
+{
+"stage": "S2_sam",
+"key": "end_rear:exhaust pipe",
+"model": "sam-3.1",
+"prompt": "exhaust pipe",
+"t": "2026-11-01 20:37:15",
+"ok": true,
+"response": {
+"objects": []
+},
+"latency_s": 1.1
+},
+{
+"stage": "S2_sam",
+"key": "end_front:headlight",
+"model": "sam-3.1",
+"prompt": "headlight",
+"t": "2026-11-01 20:37:16",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+507,
+168,
+608,
+211
+],
+"confidence": 0.9259259104728699,
+"mask_area_px": 2362,
+"mask_bbox": [
+507,
+168,
+607,
+210
+],
+"outline_on_ink": 1.0
+},
+{
+"box": [
+98,
+167,
+198,
+211
+],
+"confidence": 0.921951174736023,
+"mask_area_px": 2344,
+"mask_bbox": [
+98,
+167,
+197,
+210
+],
+"outline_on_ink": 1.0
+}
+]
+},
+"latency_s": 1.1
+},
+{
+"stage": "S5_sections",
+"key": "seed1",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "4d0b6e8d5fe415db",
+"t": "2026-11-01 20:37:21",
+"ok": true,
+"response": {
+"groups": [
+{
+"crown_frac": 0.035,
+"deck_drop_frac": 0.14,
+"glass_bulge_frac": 0.0,
+"group": "front_deck",
+"reason": "Front view shows a low, nearly flat wedge bonnet with only a slight centre crown falling to distinct fender shoulders.",
+"sill_radius_frac": 0.07
+},
+{
+"crown_frac": 0.025,
+"deck_drop_frac": 0.32,
+"glass_bulge_frac": 0.04,
+"group": "cabin",
+"reason": "Front and rear views show a shallow-arched roof, strongly tumble-homed side glass, and a beltline shoulder well below the roof centre.",
+"sill_radius_frac": 0.06
+},
+{
+"crown_frac": 0.02,
+"deck_drop_frac": 0.1,
+"glass_bulge_frac": 0.0,
+"group": "rear_deck",
+"reason": "Rear view shows a broad, flat louvred engine cover with a small drop to high, muscular rear haunches.",
+"sill_radius_frac": 0.09
+}
+],
+"reasoning": "Estimated cross-section shape fractions from the four orthographic views of the low mid-engined coupe, using the fixed station heights and half-widths as the section extremes."
+},
+"latency_s": 12.0,
+"response_hash": "ddafd09b51d540b6"
+},
+{
+"stage": "S5_sections",
+"key": "seed2",
+"model": "muse-wonder-1.0",
+"seed": 2,
+"prompt_hash": "4d0b6e8d5fe415db",
+"t": "2026-11-01 20:37:33",
+"ok": true,
+"response": {
+"groups": [
+{
+"crown_frac": 0.025,
+"deck_drop_frac": 0.1,
+"glass_bulge_frac": 0,
+"group": "front_deck",
+"reason": "Low, nearly flat wedge bonnet in front/rear views with fender shoulders only slightly below the centreline and a sharp low splitter edge.",
+"sill_radius_frac": 0.05
+},
+{
+"crown_frac": 0.045,
+"deck_drop_frac": 0.2,
+"glass_bulge_frac": 0.04,
+"group": "cabin",
+"reason": "Gently crowned roof with strong tumblehome to the beltline/shoulder and fairly flat, slightly bulged side glass seen in front/rear views.",
+"sill_radius_frac": 0.07
+},
+{
+"crown_frac": 0.02,
+"deck_drop_frac": 0.08,
+"glass_bulge_frac": 0,
+"group": "rear_deck",
+"reason": "Broad, flat louvred engine cover between high rear haunches close to deck height, with a comparatively tight lower diffuser/sill turn.",
+"sill_radius_frac": 0.06
+}
+],
+"reasoning": "Shape fractions estimated from the front and rear end views between the fixed side/top-view extremes."
+},
+"latency_s": 20.6,
+"response_hash": "89a2fd8e3d7e64e8"
+},
+{
+"stage": "S6_transitions",
+"key": "all",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "16cb1e4135fe7fa6",
+"t": "2026-11-01 20:38:03",
+"ok": true,
+"response": {
+"transitions": [
+{
+"intent": "G2",
+"reason": "Side profile flows smoothly from bonnet over the rounded nose with no crease line, for continuous aero and highlight flow.",
+"where": "nose_end"
+},
+{
+"intent": "G0",
+"reason": "Side and rear views show an abrupt Kamm truncation where the deck meets the near-vertical tail face at a distinct edge.",
+"where": "tail_end"
+},
+{
+"intent": "G0",
+"reason": "Front and top views show a transverse panel/glass boundary and the side profile changes angle from bonnet to windscreen there.",
+"where": "windscreen_base"
+},
+{
+"intent": "G1",
+"reason": "Side profile keeps the roof and sloping engine cover on the same tangent despite the panel break visible in top view.",
+"where": "roof_to_engine_cover"
+},
+{
+"intent": "G1",
+"reason": "Front/rear and side views show a small blended lip flare tangent to the wing surface around the wheel opening.",
+"where": "wheel_arch_lip"
+},
+{
+"intent": "sharp_crease",
+"reason": "Side view draws a deliberate angular character crease along the lower door into the sill and rear intake.",
+"where": "sill"
+}
+]
+},
+"latency_s": 13.0,
+"response_hash": "ba6b2fe650b58c43"
+},
+{
+"stage": "S7_ambiguities",
+"key": "all",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "37a9068dfb9c254d",
+"t": "2026-11-01 20:38:16",
+"ok": true,
+"response": {
+"ambiguities": [
+{
+"id": "brake_disc",
+"options": [
+{
+"choice": "brake_disc",
+"plausibility": 0.58,
+"reason": "The concentric ring sits behind the spokes and is present at both axles, consistent with a rotor visible through an open-spoke wheel."
+},
+{
+"choice": "rim_inner_step",
+"plausibility": 0.42,
+"reason": "The ring closely parallels the rim outline with no caliper, drilling, or hub separation shown, consistent with a stepped rim lip."
+}
+]
+},
+{
+"id": "end_view_scale",
+"options": [
+{
+"choice": "drawn_at_another_scale",
+"plausibility": 0.62,
+"reason": "Both end views share a similar systematic height reduction relative to the side view, suggesting uniform separate scaling rather than isolated drafting slips."
+},
+{
+"choice": "drawing_error",
+"plausibility": 0.38,
+"reason": "No differing scale is annotated, and blueprint views of the same vehicle would normally preserve the common height dimension."
+}
+]
+},
+{
+"id": "intake_depth",
+"options": [
+{
+"choice": "shallow_styling_recess",
+"plausibility": 0.18,
+"reason": "Only the side opening outline is defined, with no duct walls or internal termination shown in any view."
+},
+{
+"choice": "moderate_inset_duct_to_inner_body",
+"plausibility": 0.37,
+"reason": "The pronounced sculpted opening behind the door implies inset ducting, but the views do not show it reaching a specific internal component."
+},
+{
+"choice": "deep_functional_duct_to_engine_bay",
+"plausibility": 0.45,
+"reason": "Its large size and position ahead of the rear wheel on a mid-engined layout are consistent with an engine or radiator cooling duct."
+}
+]
+}
+]
+},
+"latency_s": 9.9,
+"response_hash": "bdcd5f8e576a10d9"
+},
+{
+"stage": "S8_verify",
+"key": "final",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "2aed15e0c8301c94",
+"t": "2026-11-01 20:42:41",
+"ok": true,
+"response": {
+"issues": [
+{
+"description": "Rear tire shows large magenta ring around drawing, model outer diameter much larger, with red crescent below at ground contact.",
+"severity": "major",
+"view": "side"
+},
+{
+"description": "Front tire bottom shows red crescent below cyan, drawing extends lower than model.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Front nose shows red above and magenta below, nose profile mismatch.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Rear tail shows red at spoiler top and magenta along rear face and lower bumper block.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Both side mirrors show red on leading edge and magenta on trailing edge, shape/position offset.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Rear corners show magenta blocks where model extends beyond drawing with small red edge remnants.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Front bumper corners show small red where drawing extends beyond model.",
+"severity": "info",
+"view": "top"
+},
+{
+"description": "Roof shows red band above cyan, drawing higher than model, with magenta at A-pillars where model is wider.",
+"severity": "minor",
+"view": "front"
+},
+{
+"description": "Roof shows red band above cyan, drawing higher than model, with magenta at upper sides.",
+"severity": "minor",
+"view": "rear"
+},
+{
+"description": "Lower rear quarters/wheels show large magenta areas, model much wider than drawing at rear track.",
+"severity": "major",
+"view": "rear"
+}
+]
+},
+"latency_s": 11.1,
+"response_hash": "4884c3fc47f5a8d0"
+},
+{
+"stage": "S8_verify",
+"key": "13cd98ad925374e6",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "1b1d0a42f1592df0",
+"t": "2026-11-01 20:54:36",
+"ok": true,
+"response": {
+"issues": [
+{
+"description": "Front bumper/nose: red fringe at leading edge and magenta at lower lip, model outline slightly offset from drawing.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Rear tail/bumper: red at spoiler top and around tail, magenta extensions at diffuser corners, model does not fully cover drawing.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Front and rear tires: red below cyan at ground contact, drawn wheels extend slightly below model.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Both side mirrors: red on outer edge with magenta inside, drawing mirror tips extend beyond model outline.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Front bumper corners and side body: thin red fringe outside cyan, drawing slightly wider than model.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Rear corners: small magenta squares beyond drawing, model extends past drawing at diffuser.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Roof/windshield header: red triangles at both upper corners, drawn roof wider than model.",
+"severity": "minor",
+"view": "front"
+},
+{
+"description": "Roof/engine cover sides: large red areas at both upper corners, drawing significantly wider than model.",
+"severity": "major",
+"view": "rear"
+},
+{
+"description": "Side mirrors: slight red fringe at outer edges, drawing slightly wider than model.",
+"severity": "info",
+"view": "rear"
+}
+]
+},
+"latency_s": 8.4,
+"response_hash": "cd1b4d73c565615a"
+},
+{
+"stage": "S1_view_roles",
+"key": "seed1",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "81eaa4b5c8cd584e",
+"t": "2026-11-01 21:05:44",
+"ok": true,
+"response": {
+"end_a": "rear",
+"end_b": "front",
+"evidence": "B shows headlights, front grille, badge and windscreen; A shows four exhausts, number plate and engine louvers; side low nose left, tail/exhaust right; top badge/headlights left, engine cover right.",
+"object": "Lamborghini Huracan supercar",
+"side_nose": "left",
+"top_nose": "left"
+},
+"latency_s": 3.9,
+"response_hash": "d6531a4f8ff35964"
+},
+{
+"stage": "S1_view_roles",
+"key": "seed2",
+"model": "muse-spark-1.3",
+"seed": 2,
+"prompt_hash": "81eaa4b5c8cd584e",
+"t": "2026-11-01 21:05:48",
+"ok": true,
+"response": {
+"end_a": "rear",
+"end_b": "front",
+"evidence": "B has headlights, grille, badge, windscreen; A has quad exhausts, plate, mesh, engine louvers. Side low nose/grille left, taillight/exhaust right. Top hood/badge/headlights left, engine cover right.",
+"object": "Lamborghini Huracan sports car",
+"side_nose": "left",
+"top_nose": "left"
+},
+"latency_s": 3.7,
+"response_hash": "47613d17c1f60a6b"
+},
+{
+"stage": "S2_sam",
+"key": "side:wheel",
+"model": "sam-3.1",
+"prompt": "wheel",
+"prompt_hash": "5516fd234fe3b312",
+"t": "2026-11-01 21:05:52",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+1050,
+160,
+1280,
+386
+],
+"confidence": 0.859649121761322,
+"mask_area_px": 41206,
+"mask_bbox": [
+1051,
+160,
+1278,
+385
+],
+"outline_on_ink": 0.987,
+"vs_measured_circle": {
+"centre_px": 1.6,
+"radius_rel": 0.0
+}
+},
+{
+"box": [
+234,
+166,
+449,
+384
+],
+"confidence": 0.8672199249267578,
+"mask_area_px": 36669,
+"mask_bbox": [
+234,
+166,
+448,
+383
+],
+"outline_on_ink": 1.0,
+"vs_measured_circle": {
+"centre_px": 0.6,
+"radius_rel": 0.021
+}
+}
+]
+},
+"latency_s": 2.1
+},
+{
+"stage": "S2_sam",
+"key": "side:side mirror",
+"model": "sam-3.1",
+"prompt": "side mirror",
+"prompt_hash": "d52ba3e81e0eedc9",
+"t": "2026-11-01 21:05:54",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+497,
+102,
+582,
+167
+],
+"confidence": 0.9336099624633789,
+"mask_area_px": 3604,
+"mask_bbox": [
+497,
+102,
+581,
+166
+],
+"outline_on_ink": 1.0
+}
+]
+},
+"latency_s": 1.1
+},
+{
+"stage": "S2_sam",
+"key": "top:side mirror",
+"model": "sam-3.1",
+"prompt": "side mirror",
+"prompt_hash": "3607ab14dd97c2b5",
+"t": "2026-11-01 21:05:55",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+494,
+631,
+581,
+716
+],
+"confidence": 0.604938268661499,
+"mask_area_px": 4758,
+"mask_bbox": [
+494,
+631,
+580,
+715
+],
+"outline_on_ink": 1.0
+},
+{
+"box": [
+496,
+8,
+581,
+94
+],
+"confidence": 0.9101123809814453,
+"mask_area_px": 4695,
+"mask_bbox": [
+496,
+8,
+580,
+93
+],
+"outline_on_ink": 1.0
+}
+]
+},
+"latency_s": 2.1
+},
+{
+"stage": "S2_sam",
+"key": "end_rear:exhaust pipe",
+"model": "sam-3.1",
+"prompt": "exhaust pipe",
+"prompt_hash": "8706f395b9f680d4",
+"t": "2026-11-01 21:05:57",
+"ok": true,
+"response": {
+"objects": []
+},
+"latency_s": 1.3
+},
+{
+"stage": "S2_sam",
+"key": "end_front:headlight",
+"model": "sam-3.1",
+"prompt": "headlight",
+"prompt_hash": "ab01784fa0e1dce1",
+"t": "2026-11-01 21:05:59",
+"ok": true,
+"response": {
+"objects": [
+{
+"box": [
+507,
+167,
+608,
+211
+],
+"confidence": 0.9179486632347107,
+"mask_area_px": 2386,
+"mask_bbox": [
+507,
+167,
+607,
+210
+],
+"outline_on_ink": 1.0
+},
+{
+"box": [
+98,
+167,
+198,
+211
+],
+"confidence": 0.9139785170555115,
+"mask_area_px": 2362,
+"mask_bbox": [
+98,
+167,
+197,
+210
+],
+"outline_on_ink": 1.0
+}
+]
+},
+"latency_s": 1.3
+},
+{
+"stage": "S3_region_labels",
+"key": "side:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "4da562cdae4b77cb",
+"t": "2026-11-01 21:06:00",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.99,
+"kind": "door",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "body_panel",
+"n": 1
+},
+{
+"confidence": 0.99,
+"kind": "side_window",
+"n": 2
+},
+{
+"confidence": 0.95,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.95,
+"kind": "wheel",
+"n": 4
+},
+{
+"confidence": 0.95,
+"kind": "wheel",
+"n": 5
+},
+{
+"confidence": 0.95,
+"kind": "engine_cover",
+"n": 6
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.9,
+"kind": "sill",
+"n": 8
+},
+{
+"confidence": 0.75,
+"kind": "trim",
+"n": 9
+},
+{
+"confidence": 0.85,
+"kind": "air_intake",
+"n": 10
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 11
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 12
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 13
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 16
+},
+{
+"confidence": 0.7,
+"kind": "windscreen",
+"n": 17
+},
+{
+"confidence": 0.8,
+"kind": "pillar",
+"n": 18
+},
+{
+"confidence": 0.95,
+"kind": "roof",
+"n": 19
+},
+{
+"confidence": 0.85,
+"kind": "diffuser",
+"n": 20
+},
+{
+"confidence": 0.75,
+"kind": "trim",
+"n": 21
+},
+{
+"confidence": 0.8,
+"kind": "diffuser",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 23
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 24
+},
+{
+"confidence": 0.75,
+"kind": "air_intake",
+"n": 25
+},
+{
+"confidence": 0.6,
+"kind": "rear_window",
+"n": 26
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 27
+},
+{
+"confidence": 0.8,
+"kind": "trim",
+"n": 28
+},
+{
+"confidence": 0.95,
+"kind": "tail_light",
+"n": 29
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 30
+},
+{
+"confidence": 0.9,
+"kind": "pillar",
+"n": 31
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 32
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 33
+},
+{
+"confidence": 0.9,
+"kind": "splitter",
+"n": 34
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 35
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 36
+},
+{
+"confidence": 0.95,
+"kind": "grille_mesh",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 38
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 39
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 40
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 41
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 42
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 43
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 44
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 45
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 46
+},
+{
+"confidence": 0.85,
+"kind": "wheel",
+"n": 47
+}
+]
+},
+"latency_s": 34.4,
+"response_hash": "0bcd675eac2e0e86"
+},
+{
+"stage": "S3_region_labels",
+"key": "side:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "4da562cdae4b77cb",
+"t": "2026-11-01 21:06:34",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.92,
+"kind": "door",
+"n": 0
+},
+{
+"confidence": 0.92,
+"kind": "body_panel",
+"n": 1
+},
+{
+"confidence": 0.95,
+"kind": "side_window",
+"n": 2
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.95,
+"kind": "wheel",
+"n": 4
+},
+{
+"confidence": 0.95,
+"kind": "wheel",
+"n": 5
+},
+{
+"confidence": 0.88,
+"kind": "engine_cover",
+"n": 6
+},
+{
+"confidence": 0.85,
+"kind": "bonnet",
+"n": 7
+},
+{
+"confidence": 0.78,
+"kind": "sill",
+"n": 8
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 9
+},
+{
+"confidence": 0.82,
+"kind": "air_intake",
+"n": 10
+},
+{
+"confidence": 0.88,
+"kind": "side_window",
+"n": 11
+},
+{
+"confidence": 0.72,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 13
+},
+{
+"confidence": 0.8,
+"kind": "side_window",
+"n": 14
+},
+{
+"confidence": 0.8,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.78,
+"kind": "air_intake",
+"n": 16
+},
+{
+"confidence": 0.78,
+"kind": "pillar",
+"n": 17
+},
+{
+"confidence": 0.9,
+"kind": "windscreen",
+"n": 18
+},
+{
+"confidence": 0.92,
+"kind": "roof",
+"n": 19
+},
+{
+"confidence": 0.75,
+"kind": "diffuser",
+"n": 20
+},
+{
+"confidence": 0.82,
+"kind": "sill",
+"n": 21
+},
+{
+"confidence": 0.78,
+"kind": "diffuser",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 23
+},
+{
+"confidence": 0.92,
+"kind": "mirror",
+"n": 24
+},
+{
+"confidence": 0.8,
+"kind": "air_intake",
+"n": 25
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 26
+},
+{
+"confidence": 0.78,
+"kind": "air_intake",
+"n": 27
+},
+{
+"confidence": 0.72,
+"kind": "body_panel",
+"n": 28
+},
+{
+"confidence": 0.85,
+"kind": "tail_light",
+"n": 29
+},
+{
+"confidence": 0.82,
+"kind": "headlight",
+"n": 30
+},
+{
+"confidence": 0.85,
+"kind": "pillar",
+"n": 31
+},
+{
+"confidence": 0.92,
+"kind": "mirror",
+"n": 32
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 33
+},
+{
+"confidence": 0.85,
+"kind": "splitter",
+"n": 34
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 35
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 36
+},
+{
+"confidence": 0.72,
+"kind": "grille_mesh",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 38
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 39
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 40
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 41
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 42
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 43
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 44
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 45
+},
+{
+"confidence": 0.9,
+"kind": "wheel",
+"n": 46
+},
+{
+"confidence": 0.78,
+"kind": "tyre",
+"n": 47
+}
+]
+},
+"latency_s": 29.2,
+"response_hash": "bb8dfe4ba54e990d"
+},
+{
+"stage": "S3_region_labels",
+"key": "top:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "251701412f240c75",
+"t": "2026-11-01 21:07:04",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.98,
+"kind": "roof",
+"n": 0
+},
+{
+"confidence": 0.98,
+"kind": "windscreen",
+"n": 1
+},
+{
+"confidence": 0.97,
+"kind": "bonnet",
+"n": 2
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 5
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.92,
+"kind": "door",
+"n": 8
+},
+{
+"confidence": 0.92,
+"kind": "door",
+"n": 9
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 11
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.75,
+"kind": "engine_cover",
+"n": 13
+},
+{
+"confidence": 0.78,
+"kind": "engine_cover",
+"n": 14
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.7,
+"kind": "louvre",
+"n": 16
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 17
+},
+{
+"confidence": 0.95,
+"kind": "side_window",
+"n": 18
+},
+{
+"confidence": 0.95,
+"kind": "side_window",
+"n": 19
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 20
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "air_intake",
+"n": 23
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 24
+},
+{
+"confidence": 0.7,
+"kind": "grille_mesh",
+"n": 25
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 26
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 27
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 28
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 29
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 30
+},
+{
+"confidence": 0.68,
+"kind": "louvre",
+"n": 31
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 32
+},
+{
+"confidence": 0.98,
+"kind": "mirror",
+"n": 33
+},
+{
+"confidence": 0.98,
+"kind": "mirror",
+"n": 34
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 35
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 36
+},
+{
+"confidence": 0.95,
+"kind": "headlight",
+"n": 37
+},
+{
+"confidence": 0.95,
+"kind": "headlight",
+"n": 38
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 39
+},
+{
+"confidence": 0.6,
+"kind": "body_panel",
+"n": 40
+},
+{
+"confidence": 0.6,
+"kind": "body_panel",
+"n": 41
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 42
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 43
+},
+{
+"confidence": 0.92,
+"kind": "tail_light",
+"n": 44
+},
+{
+"confidence": 0.92,
+"kind": "tail_light",
+"n": 45
+},
+{
+"confidence": 0.55,
+"kind": "pillar",
+"n": 46
+},
+{
+"confidence": 0.55,
+"kind": "pillar",
+"n": 47
+}
+]
+},
+"latency_s": 23.2,
+"response_hash": "3369800096c6cf84"
+},
+{
+"stage": "S3_region_labels",
+"key": "top:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "251701412f240c75",
+"t": "2026-11-01 21:07:27",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.92,
+"kind": "roof",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "windscreen",
+"n": 1
+},
+{
+"confidence": 0.94,
+"kind": "bonnet",
+"n": 2
+},
+{
+"confidence": 0.88,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.88,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.62,
+"kind": "trim",
+"n": 5
+},
+{
+"confidence": 0.88,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.88,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.82,
+"kind": "door",
+"n": 8
+},
+{
+"confidence": 0.82,
+"kind": "door",
+"n": 9
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 11
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 12
+},
+{
+"confidence": 0.78,
+"kind": "engine_cover",
+"n": 13
+},
+{
+"confidence": 0.78,
+"kind": "engine_cover",
+"n": 14
+},
+{
+"confidence": 0.68,
+"kind": "rear_window",
+"n": 15
+},
+{
+"confidence": 0.78,
+"kind": "engine_cover",
+"n": 16
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 17
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 18
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 19
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 20
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 21
+},
+{
+"confidence": 0.88,
+"kind": "air_intake",
+"n": 22
+},
+{
+"confidence": 0.88,
+"kind": "air_intake",
+"n": 23
+},
+{
+"confidence": 0.6,
+"kind": "trim",
+"n": 24
+},
+{
+"confidence": 0.72,
+"kind": "grille_mesh",
+"n": 25
+},
+{
+"confidence": 0.72,
+"kind": "louvre",
+"n": 26
+},
+{
+"confidence": 0.72,
+"kind": "louvre",
+"n": 27
+},
+{
+"confidence": 0.72,
+"kind": "louvre",
+"n": 28
+},
+{
+"confidence": 0.72,
+"kind": "louvre",
+"n": 29
+},
+{
+"confidence": 0.72,
+"kind": "louvre",
+"n": 30
+},
+{
+"confidence": 0.72,
+"kind": "louvre",
+"n": 31
+},
+{
+"confidence": 0.65,
+"kind": "trim",
+"n": 32
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 33
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 34
+},
+{
+"confidence": 0.65,
+"kind": "trim",
+"n": 35
+},
+{
+"confidence": 0.65,
+"kind": "trim",
+"n": 36
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "headlight",
+"n": 38
+},
+{
+"confidence": 0.62,
+"kind": "trim",
+"n": 39
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 40
+},
+{
+"confidence": 0.65,
+"kind": "body_panel",
+"n": 41
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 42
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 43
+},
+{
+"confidence": 0.85,
+"kind": "tail_light",
+"n": 44
+},
+{
+"confidence": 0.85,
+"kind": "tail_light",
+"n": 45
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 46
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 47
+}
+]
+},
+"latency_s": 29.1,
+"response_hash": "a89f802acb05696e"
+},
+{
+"stage": "S3_region_labels",
+"key": "end A:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "86356d9ae9de709b",
+"t": "2026-11-01 21:07:56",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.95,
+"kind": "body_panel",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "tyre",
+"n": 1
+},
+{
+"confidence": 0.95,
+"kind": "tyre",
+"n": 2
+},
+{
+"confidence": 0.99,
+"kind": "licence_plate",
+"n": 3
+},
+{
+"confidence": 0.85,
+"kind": "diffuser",
+"n": 4
+},
+{
+"confidence": 0.6,
+"kind": "spoiler",
+"n": 5
+},
+{
+"confidence": 0.55,
+"kind": "side_window",
+"n": 6
+},
+{
+"confidence": 0.55,
+"kind": "side_window",
+"n": 7
+},
+{
+"confidence": 0.75,
+"kind": "roof",
+"n": 8
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 9
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.5,
+"kind": "badge",
+"n": 11
+},
+{
+"confidence": 0.99,
+"kind": "mirror",
+"n": 12
+},
+{
+"confidence": 0.99,
+"kind": "mirror",
+"n": 13
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.6,
+"kind": "air_intake",
+"n": 16
+},
+{
+"confidence": 0.6,
+"kind": "air_intake",
+"n": 17
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 18
+},
+{
+"confidence": 0.7,
+"kind": "body_panel",
+"n": 19
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 20
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 21
+},
+{
+"confidence": 0.75,
+"kind": "tail_light",
+"n": 22
+},
+{
+"confidence": 0.75,
+"kind": "tail_light",
+"n": 23
+},
+{
+"confidence": 0.65,
+"kind": "louvre",
+"n": 24
+},
+{
+"confidence": 0.6,
+"kind": "grille_mesh",
+"n": 25
+},
+{
+"confidence": 0.6,
+"kind": "grille_mesh",
+"n": 26
+},
+{
+"confidence": 0.8,
+"kind": "exhaust",
+"n": 27
+},
+{
+"confidence": 0.8,
+"kind": "exhaust",
+"n": 28
+},
+{
+"confidence": 0.5,
+"kind": "splitter",
+"n": 29
+},
+{
+"confidence": 0.65,
+"kind": "louvre",
+"n": 30
+},
+{
+"confidence": 0.5,
+"kind": "wheel",
+"n": 31
+},
+{
+"confidence": 0.5,
+"kind": "wheel",
+"n": 32
+},
+{
+"confidence": 0.8,
+"kind": "exhaust",
+"n": 33
+},
+{
+"confidence": 0.8,
+"kind": "exhaust",
+"n": 34
+},
+{
+"confidence": 0.65,
+"kind": "grille_mesh",
+"n": 35
+},
+{
+"confidence": 0.5,
+"kind": "trim",
+"n": 36
+},
+{
+"confidence": 0.5,
+"kind": "trim",
+"n": 37
+},
+{
+"confidence": 0.5,
+"kind": "trim",
+"n": 38
+},
+{
+"confidence": 0.6,
+"kind": "engine_cover",
+"n": 39
+},
+{
+"confidence": 0.7,
+"kind": "tail_light",
+"n": 40
+},
+{
+"confidence": 0.5,
+"kind": "trim",
+"n": 41
+},
+{
+"confidence": 0.7,
+"kind": "tail_light",
+"n": 42
+}
+]
+},
+"latency_s": 25.6,
+"response_hash": "659aff17259a92eb"
+},
+{
+"stage": "S3_region_labels",
+"key": "end A:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "86356d9ae9de709b",
+"t": "2026-11-01 21:08:22",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 0
+},
+{
+"confidence": 0.9,
+"kind": "tyre",
+"n": 1
+},
+{
+"confidence": 0.9,
+"kind": "tyre",
+"n": 2
+},
+{
+"confidence": 0.9,
+"kind": "licence_plate",
+"n": 3
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 4
+},
+{
+"confidence": 0.9,
+"kind": "spoiler",
+"n": 5
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.9,
+"kind": "roof",
+"n": 8
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 9
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 10
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 11
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 12
+},
+{
+"confidence": 0.9,
+"kind": "mirror",
+"n": 13
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 14
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 15
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 16
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 17
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 18
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 19
+},
+{
+"confidence": 0.9,
+"kind": "pillar",
+"n": 20
+},
+{
+"confidence": 0.9,
+"kind": "pillar",
+"n": 21
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 22
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 23
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 24
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 25
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 26
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 27
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 28
+},
+{
+"confidence": 0.9,
+"kind": "diffuser",
+"n": 29
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 30
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 31
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 32
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 33
+},
+{
+"confidence": 0.9,
+"kind": "exhaust",
+"n": 34
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 35
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 36
+},
+{
+"confidence": 0.9,
+"kind": "side_window",
+"n": 37
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 38
+},
+{
+"confidence": 0.9,
+"kind": "louvre",
+"n": 39
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 40
+},
+{
+"confidence": 0.9,
+"kind": "trim",
+"n": 41
+},
+{
+"confidence": 0.9,
+"kind": "tail_light",
+"n": 42
+}
+]
+},
+"latency_s": 24.7,
+"response_hash": "ade2991c28755aef"
+},
+{
+"stage": "S3_region_labels",
+"key": "end B:spark",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "56ecdfaf847a081b",
+"t": "2026-11-01 21:08:46",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.99,
+"kind": "windscreen",
+"n": 0
+},
+{
+"confidence": 0.96,
+"kind": "bonnet",
+"n": 1
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 2
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.9,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.96,
+"kind": "roof",
+"n": 5
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.9,
+"kind": "tyre",
+"n": 8
+},
+{
+"confidence": 0.9,
+"kind": "tyre",
+"n": 9
+},
+{
+"confidence": 0.96,
+"kind": "headlight",
+"n": 10
+},
+{
+"confidence": 0.96,
+"kind": "headlight",
+"n": 11
+},
+{
+"confidence": 0.99,
+"kind": "mirror",
+"n": 12
+},
+{
+"confidence": 0.99,
+"kind": "mirror",
+"n": 13
+},
+{
+"confidence": 0.7,
+"kind": "trim",
+"n": 14
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 15
+},
+{
+"confidence": 0.6,
+"kind": "pillar",
+"n": 16
+}
+]
+},
+"latency_s": 21.4,
+"response_hash": "34c0f315e999d34c"
+},
+{
+"stage": "S3_region_labels",
+"key": "end B:wonder",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "56ecdfaf847a081b",
+"t": "2026-11-01 21:09:08",
+"ok": true,
+"response": {
+"regions": [
+{
+"confidence": 0.92,
+"kind": "windscreen",
+"n": 0
+},
+{
+"confidence": 0.95,
+"kind": "bonnet",
+"n": 1
+},
+{
+"confidence": 0.7,
+"kind": "badge",
+"n": 2
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 3
+},
+{
+"confidence": 0.85,
+"kind": "body_panel",
+"n": 4
+},
+{
+"confidence": 0.8,
+"kind": "roof",
+"n": 5
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 6
+},
+{
+"confidence": 0.75,
+"kind": "body_panel",
+"n": 7
+},
+{
+"confidence": 0.85,
+"kind": "tyre",
+"n": 8
+},
+{
+"confidence": 0.85,
+"kind": "tyre",
+"n": 9
+},
+{
+"confidence": 0.7,
+"kind": "headlight",
+"n": 10
+},
+{
+"confidence": 0.7,
+"kind": "headlight",
+"n": 11
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 12
+},
+{
+"confidence": 0.95,
+"kind": "mirror",
+"n": 13
+},
+{
+"confidence": 0.55,
+"kind": "licence_plate",
+"n": 14
+},
+{
+"confidence": 0.5,
+"kind": "side_window",
+"n": 15
+},
+{
+"confidence": 0.5,
+"kind": "side_window",
+"n": 16
+}
+]
+},
+"latency_s": 28.2,
+"response_hash": "03cb580c18192b13"
+},
+{
+"stage": "S5_sections",
+"key": "seed1",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "e81e53593e3e3694",
+"t": "2026-11-01 21:09:39",
+"ok": true,
+"response": {
+"groups": [
+{
+"crown_frac": 0.03,
+"deck_drop_frac": 0.07,
+"glass_bulge_frac": 0.0,
+"group": "front_deck",
+"reason": "Front view shows a low, nearly flat wedge bonnet between raised sharp fenders, with a crisp low splitter.",
+"sill_radius_frac": 0.05
+},
+{
+"crown_frac": 0.05,
+"deck_drop_frac": 0.1,
+"glass_bulge_frac": 0.05,
+"group": "cabin",
+"reason": "Narrow Huracan greenhouse has a gently crowned roof, strongly tumble-homed almost flat side glass, and tucked rounded sills.",
+"sill_radius_frac": 0.08
+},
+{
+"crown_frac": 0.03,
+"deck_drop_frac": 0.18,
+"glass_bulge_frac": 0.0,
+"group": "rear_deck",
+"reason": "Flat louvred engine cover sits high centrally while the section falls markedly to the wide muscular rear haunches and diffuser.",
+"sill_radius_frac": 0.1
+}
+],
+"reasoning": "Shape fractions estimated from the front and rear end views between the fixed side/top-view station extremes."
+},
+"latency_s": 13.4,
+"response_hash": "d43d7909033efbab"
+},
+{
+"stage": "S5_sections",
+"key": "seed2",
+"model": "muse-wonder-1.0",
+"seed": 2,
+"prompt_hash": "e81e53593e3e3694",
+"t": "2026-11-01 21:09:52",
+"ok": true,
+"response": {
+"groups": [
+{
+"crown_frac": 0.05,
+"deck_drop_frac": 0.1,
+"glass_bulge_frac": 0.0,
+"group": "front_deck",
+"reason": "Low wedge nose in front view has a shallow-crowned, nearly flat bonnet between raised front fenders.",
+"sill_radius_frac": 0.06
+},
+{
+"crown_frac": 0.03,
+"deck_drop_frac": 0.38,
+"glass_bulge_frac": 0.05,
+"group": "cabin",
+"reason": "Flat Huracan roof sits well above the beltline shoulder, with strongly tumble-homed but only slightly bulged side glass.",
+"sill_radius_frac": 0.07
+},
+{
+"crown_frac": 0.02,
+"deck_drop_frac": 0.18,
+"glass_bulge_frac": 0.0,
+"group": "rear_deck",
+"reason": "Flat louvred engine cover in rear view steps down to broad, muscular rear haunches.",
+"sill_radius_frac": 0.09
+}
+],
+"reasoning": "Shape fractions estimated from the front and rear end views between the fixed side/top-view station extremes."
+},
+"latency_s": 11.0,
+"response_hash": "c53e8f9b9864d426"
+},
+{
+"stage": "S6_transitions",
+"key": "all",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "2753245d7ec8f952",
+"t": "2026-11-01 21:10:12",
+"ok": true,
+"response": {
+"transitions": [
+{
+"intent": "G2",
+"reason": "Side and front outlines flow smoothly around the low nose with no kink or drawn break at the tip.",
+"where": "nose_end"
+},
+{
+"intent": "G0",
+"reason": "The truncated rear face meets the deck and sides at a distinct perimeter edge visible in rear and top views.",
+"where": "tail_end"
+},
+{
+"intent": "G0",
+"reason": "Hood and windscreen meet at the cowl with a clear angle change and panel line in side view.",
+"where": "windscreen_base"
+},
+{
+"intent": "G1",
+"reason": "Engine cover continues the roof's rearward slope tangentially in side view, but flattens into a separate louvred panel.",
+"where": "roof_to_engine_cover"
+},
+{
+"intent": "sharp_crease",
+"reason": "A concentric lip line is drawn inside the wheel opening silhouette, marking a deliberate arch flare edge.",
+"where": "wheel_arch_lip"
+},
+{
+"intent": "sharp_crease",
+"reason": "A long sculpted crease is drawn along the lower door and sill in side view.",
+"where": "sill"
+}
+]
+},
+"latency_s": 14.1,
+"response_hash": "d20868993eb93288"
+},
+{
+"stage": "S7_ambiguities",
+"key": "all",
+"model": "muse-wonder-1.0",
+"seed": 1,
+"prompt_hash": "b2113bfa4d1c8996",
+"t": "2026-11-01 21:10:26",
+"ok": true,
+"response": {
+"ambiguities": [
+{
+"id": "brake_disc",
+"options": [
+{
+"choice": "brake_disc",
+"plausibility": 0.65,
+"reason": "The ring is concentric inside the spokes with a central hub, consistent with a disc visible behind an open-spoke wheel."
+},
+{
+"choice": "rim_inner_step",
+"plausibility": 0.35,
+"reason": "The ring is a clean uninterrupted circle at the rim barrel, consistent with a stepped lip rather than a separate braking surface."
+}
+]
+},
+{
+"id": "end_view_scale",
+"options": [
+{
+"choice": "drawn_at_another_scale",
+"plausibility": 0.55,
+"reason": "The ~4.4% height difference is systematic for both end views, suggesting intentional rescaling to fit their layout."
+},
+{
+"choice": "drawing_error",
+"plausibility": 0.45,
+"reason": "No separate scale is indicated for the end views, so an unlabelled systematic mismatch could be a tracing or reproduction error."
+}
+]
+},
+{
+"id": "intake_depth",
+"options": [
+{
+"choice": "shallow_cosmetic_recess",
+"plausibility": 0.25,
+"reason": "Only the side opening outline is drawn, with no duct geometry shown in any view."
+},
+{
+"choice": "moderate_recessed_scoop",
+"plausibility": 0.4,
+"reason": "The pronounced side opening and sculpted surround imply a formed recess extending inboard of the body surface."
+},
+{
+"choice": "deep_duct_to_engine_or_cooling",
+"plausibility": 0.35,
+"reason": "Its position behind the door ahead of the rear wheel on a mid-engined car is consistent with an engine or cooling air duct, but its internal path is not drawn."
+}
+]
+}
+]
+},
+"latency_s": 8.3,
+"response_hash": "c9a7e6e5eac56ada"
+},
+{
+"stage": "S8_verify",
+"key": "1551867723cea1d8",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "ce21de8988cc2500",
+"t": "2026-11-01 21:15:45",
+"ok": true,
+"response": {
+"issues": [
+{
+"description": "Front bumper nose: red tip forward of cyan with magenta below - drawn nose extends ahead of model profile.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Rear: red at upper spoiler edge and magenta vertical/lower bumper blocks - model extends rearward low where drawing has nothing.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Both wheels: red at tire contact patches below cyan - model tire bottoms sit above drawing ground line, ride-height/wheel diameter offset.",
+"severity": "major",
+"view": "side"
+},
+{
+"description": "Both side mirrors: red slivers behind mirrors with small magenta at leading edge - model mirror outline slightly forward of drawing.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Rear bumper corners: magenta square protrusions beyond body on both sides - model wider/longer than drawing there.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Front bumper corners and center edge: small red slivers outside cyan - drawing slightly wider than model.",
+"severity": "info",
+"view": "top"
+},
+{
+"description": "Roof/A-pillar top corners: red triangles outside cyan on both sides - drawn cabin wider/higher than model.",
+"severity": "major",
+"view": "front"
+},
+{
+"description": "Roof/engine-cover top corners: large red areas outside cyan on both sides - drawn upper cabin wider than model.",
+"severity": "major",
+"view": "rear"
+}
+]
+},
+"latency_s": 11.3,
+"response_hash": "25357606c6fbe889"
+},
+{
+"stage": "S8_verify",
+"key": "3db10a081b70a758",
+"model": "muse-spark-1.3",
+"seed": 1,
+"prompt_hash": "d2d58f4dd611732f",
+"t": "2026-11-01 21:32:15",
+"ok": true,
+"response": {
+"issues": [
+{
+"description": "Front nose and lower fascia edge mismatch: red drawn area extends beyond cyan with small magenta model excess.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Rear bumper and lower diffuser: magenta model area extends beyond drawing with small red drawn overhang at top edge.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Wheels touch ground lower in drawing than model: red strips below both tires indicating ride-height mismatch.",
+"severity": "minor",
+"view": "side"
+},
+{
+"description": "Side mirrors shape mismatch: red drawn tips outside model with small magenta gap.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Rear corners show magenta rectangular model excess with no drawing coverage plus small red side overhang.",
+"severity": "minor",
+"view": "top"
+},
+{
+"description": "Front nose side edges show small red drawn overhang beyond model.",
+"severity": "info",
+"view": "top"
+},
+{
+"description": "Roof upper corners show red drawn area outside model, drawing cabin appears wider than model.",
+"severity": "minor",
+"view": "front"
+},
+{
+"description": "Roof upper corners show red drawn area outside model, drawing cabin appears wider than model.",
+"severity": "minor",
+"view": "rear"
+}
+]
+},
+"latency_s": 7.6,
+"response_hash": "5d895e42cd6b9ee1"
+}
+]
+}

@@ -501,3 +501,23 @@ def lug_count(ink, wheel, k_range=(3, 8)):
     k = int(np.argmax(spec[lo:hi + 1])) + lo
     strength = float(spec[k] / max(spec[1:20].sum(), 1e-9))
     return (k, strength) if strength >= 0.12 else (None, strength)
+
+
+def region_polygon(L, extent, index, eps=0.6, max_pts=60):
+    """Outline of one region (marching squares on its mask, Ramer-Douglas-Peucker), sheet px, counter-clockwise
+    in image coordinates. None if the region is too small to outline."""
+    from engine import outline as _ol
+    x0, y0, _, _ = extent
+    m = L == index
+    if m.sum() < 12:
+        return None
+    m = ndi.binary_opening(m, np.ones((2, 2))) | (m & ndi.binary_erosion(m))
+    loops = _ol.trace(m)
+    if not loops:
+        return None
+    P = max(loops, key=lambda q: abs(_ol.area(q)))
+    P = _ol.simplify(P, eps)
+    while len(P) > max_pts:
+        eps *= 1.4
+        P = _ol.simplify(max(loops, key=lambda q: abs(_ol.area(q))), eps)
+    return [[float(x + x0), float(y + y0)] for x, y in P]

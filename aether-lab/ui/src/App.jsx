@@ -5,6 +5,7 @@ import MenuBar from "./ui/MenuBar";
 import Orchestrator from "./ui/Orchestrator";
 import Outliner from "./ui/Outliner";
 import PhysicsPanel from "./ui/PhysicsPanel";
+import CadPanel from "./ui/CadPanel";
 import Toolbar from "./ui/Toolbar";
 import NavGizmo from "./ui/NavGizmo";
 import Dock from "./ui/Dock";
@@ -26,7 +27,7 @@ export default function App() {
       <div className="pointer-events-none absolute inset-0">
         <MenuBar />
         {ready && <>
-          <Orchestrator /><Outliner /><PhysicsPanel /><Toolbar /><NavGizmo /><Dock /><ExplainPlayer /><RecordedBanner /><HandTracker /><StatusBar />
+          <Orchestrator /><Outliner /><PhysicsPanel /><CadPanel /><Toolbar /><NavGizmo /><Dock /><ExplainPlayer /><RecordedBanner /><HandTracker /><StatusBar />
         </>}
       </div>
       {ready && <><Interaction /><Menus /><AirCursor /></>}

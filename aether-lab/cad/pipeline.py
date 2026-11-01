@@ -203,7 +203,27 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     lc = [O.lug_count(aux["ink"], w) for w in obs["side"]["wheels"]]
     lugs = {"count": lc[0][0] if lc and lc[0][0] and all(c[0] == lc[0][0] for c in lc) else None,
             "evidence": [f"side: angular FFT around the hub: {c[0]} (strength {c[1]:.2f})" for c in lc]}
-    stage("vehicle interpretation (curves, greenhouse, tips, lugs)", t)
+    # drawn regions that become features (accepted labels only; REGION_RULES picks the view that sees each face-on)
+    region_feats, region_skipped = [], []
+    role_of = {"side": "side", "top": "top", "front": F["front"]["key"], "rear": F["rear"]["key"]}
+    for kind, (op, view, val) in Vh.REGION_RULES.items():
+        role = role_of[view]
+        for i, rg in enumerate(obs["regions"][role]):
+            lab = labels[role].get(i)
+            if not lab or lab.get("kind") != kind:
+                continue
+            if lab["status"] != "accepted":
+                region_skipped.append({"region": rg["id"], "kind": kind, "why": f"label {lab['status']}"})
+                continue
+            poly = O.region_polygon(aux["region_labels"][role], obs["views"][role]["extent"], i)
+            if poly is None or len(poly) < 4:
+                region_skipped.append({"region": rg["id"], "kind": kind, "why": "too small to outline"})
+                continue
+            region_feats.append({"kind": kind, "op": op, "view": view, "value": val, "region_id": rg["id"],
+                                 "label": lab["status"], "poly_model": Vh.region_to_model(F, view, poly).round(3).tolist()})
+    stage("vehicle interpretation (curves, greenhouse, tips, lugs, region features)", t)
+    rep["regions"] = {"built": [{k: r[k] for k in ("region_id", "kind", "op", "view")} for r in region_feats],
+                      "skipped": region_skipped}
 
     # S5 section hypotheses: >= 2 Muse Wonder samples + the default, each built and scored by reprojection
     t = time.time()
@@ -243,9 +263,10 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     # 4. plan + CAD construction
     t = time.time()
     decisions["section_shape"] = {"value": best["name"], "provenance": best["source"]}
-    data = PL.plan_vehicle(obs, labels, decisions, best["shape"], F, C, G, tips, lugs, s2=s2, s6=s6, s7=s7)
+    data = PL.plan_vehicle(obs, labels, decisions, best["shape"], F, C, G, tips, lugs, s2=s2, s6=s6, s7=s7,
+                           region_feats=region_feats)
     data["hypotheses"] = store
-    data["pipeline_report"] = {k: rep[k] for k in ("S1", "S3", "S5")}
+    data["pipeline_report"] = {k: rep[k] for k in ("S1", "S3", "S5", "regions")}
     doc = Document(data, OPS)
     stage("plan (typed document)", t)
     t = time.time()
@@ -254,6 +275,66 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     rep["recompute"] = st
     return doc, {"report": rep, "timings": timings, "obs": obs, "aux": aux, "F": F, "C": C, "G": G,
                  "seconds": round(time.time() - t0, 1)}
+
+
+MATERIALS = {"glass": "#1d2b3a", "light": "#dfe7ef", "panel": None}
+
+
+def _pip(pt, poly):
+    x, y = pt
+    inside = False
+    n = len(poly)
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1 + 1e-30) + x1:
+            inside = not inside
+    return inside
+
+
+def face_materials(doc, shape):
+    """Material per face of the final body, by a GEOMETRIC rule (never a face index): a face whose centre projects
+    inside an imprinted region's outline in that region's view, and faces that view, takes the region's material."""
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.BRepLProp import BRepLProp_SLProps
+    from OCP.ShapeAnalysis import ShapeAnalysis_Surface
+    from OCP.BRep import BRep_Tool
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+    PV = doc.param_values()
+    imps = []
+    for f in doc.data["features"]:
+        if f["op"] == "imprint_projection" and MATERIALS.get(f["params"].get("material")):
+            sc = PV.get("region_scale", 1.0)
+            polys = [[[c * sc for c in q] for q in poly] for poly in doc.data["observations"][f["params"]["polygons"]["$obs"]]["data"]]
+            imps.append((f["params"]["view"], polys, f["params"]["material"]))
+    out = []
+    ex = TopExp_Explorer(shape, TopAbs_FACE)
+    while ex.More():
+        face = TopoDS.Face_s(ex.Current())
+        g = GProp_GProps()
+        BRepGProp.SurfaceProperties_s(face, g)
+        c = g.CentreOfMass()
+        P = np.array([c.X(), c.Y(), c.Z()])
+        sas = ShapeAnalysis_Surface(BRep_Tool.Surface_s(face))
+        uv = sas.ValueOfUV(c, 1e-6)
+        pr = BRepLProp_SLProps(BRepAdaptor_Surface(face), uv.X(), uv.Y(), 1, 1e-6)
+        n = np.array([pr.Normal().X(), pr.Normal().Y(), pr.Normal().Z()]) if pr.IsNormalDefined() else np.zeros(3)
+        if face.Orientation() == TopAbs_REVERSED:
+            n = -n
+        mat = None
+        for view, polys, m in imps:
+            q, facing = {"side": ((P[0], P[2]), abs(n[1]) > 0.25), "top": ((P[0], P[1]), n[2] > 0.25),
+                         "front": ((P[1], P[2]), n[0] < -0.25), "rear": ((P[1], P[2]), n[0] > 0.25)}[view]
+            if facing and any(_pip(q, poly) for poly in polys):
+                mat = m
+                break
+        out.append(mat)
+        ex.Next()
+    return out
 
 
 def components_for_export(doc):
@@ -265,6 +346,11 @@ def components_for_export(doc):
                         "features": [f["id"] for f in doc.data["features"] if f.get("component") == c["id"]][:60]}}
         if not c.get("group"):
             e["shape"] = doc.shapes[c["output"]]
+            if c["kind"] == "body_shell":
+                fm = face_materials(doc, e["shape"])
+                if any(fm):
+                    e["face_materials"] = fm
+                    e["extras"]["face_materials"] = {m: sum(1 for x in fm if x == m) for m in set(fm) if m}
         out.append(e)
     return out
 

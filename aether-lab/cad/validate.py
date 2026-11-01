@@ -2,12 +2,12 @@
 
 Checks per solid: BRepCheck_Analyzer validity (and which sub-shapes fail, with their status codes), closure (free
 edges = 0), orientation (a far point classifies OUT), volume > 0 and finite, degenerate / tiny edges and faces, max
-tolerance, Boolean-argument analysis (BOPAlgo_ArgumentAnalyzer: self-intersection, small edges, rebuilt faces).
+tolerance, Boolean-argument validity (BRepAlgoAPI_Check: self-intersection, small edges).
 """
 from __future__ import annotations
 
 import numpy as np
-from OCP.BOPAlgo import BOPAlgo_ArgumentAnalyzer
+
 from OCP.BRep import BRep_Tool
 from OCP.BRepBndLib import BRepBndLib
 from OCP.BRepCheck import BRepCheck_Analyzer, BRepCheck_ListOfStatus, BRepCheck_NoError
@@ -114,11 +114,11 @@ def check_solid(shape, name="solid", argument_analysis=True):
 
 
 def _argument_analysis(shape):
-    """BOPAlgo_ArgumentAnalyzer on one shape: self-interference, small edges, rebuilt faces, continuity."""
-    aa = BOPAlgo_ArgumentAnalyzer()
-    aa.SetShape1(shape)
-    try:
-        aa.Perform()
-    except Exception as e:
-        return {"faulty": False, "note": f"analyzer did not run: {type(e).__name__}"}
-    return {"faulty": bool(aa.HasFaulty())}
+    """Boolean-argument validity of one shape: BRepAlgoAPI_Check with self-intersection and small-edge tests ON (the
+    BOPAlgo_ArgumentAnalyzer of this OCP build exposes its mode switches without setters, so with it no test ran).
+    Returns {"faulty": bool, "faults": {status: count}}."""
+    import collections
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Check
+    c = BRepAlgoAPI_Check(shape, True, True)
+    cnt = collections.Counter(str(r.GetCheckStatus()).split(".")[-1] for r in c.Result())
+    return {"faulty": not c.IsValid(), "faults": dict(cnt), "check": "BRepAlgoAPI_Check(self-intersection, small edges)"}

@@ -400,7 +400,7 @@ def world_matrix(part, by_id):
 
 
 def local_mesh(part, cache=None):
-    if part["type"] == "mesh":            # imported (already decimated) mesh
+    if part["type"] in ("mesh", "cad"):   # imported mesh, or a tessellation of a validated CAD B-rep (cad/)
         return np.asarray(part["params"]["vertices"], float).reshape(-1, 3), \
             np.asarray(part["params"]["faces"], int).reshape(-1, 3)
     if part["type"] == "group":

@@ -21,6 +21,12 @@ function useGeometry(mesh) {
     const src = new THREE.BufferGeometry();
     src.setAttribute("position", new THREE.Float32BufferAttribute(mesh.v, 3));
     src.setIndex(mesh.f);
+    if (mesh.n) {
+      // a CAD part: normals come from the B-rep surfaces (smooth NURBS stays smooth, real edges stay sharp)
+      src.setAttribute("normal", new THREE.Float32BufferAttribute(mesh.n, 3));
+      src.computeBoundingBox();
+      return src;
+    }
     // smooth across gentle edges, sharp across creases > 35 deg: an extruded plate keeps crisp rims, a hull its curves
     const g = toCreasedNormals(src, 35 * RAD);
     src.dispose();

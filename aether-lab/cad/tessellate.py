@@ -103,7 +103,11 @@ def edges(shape, deflection=0.2, sharp_only=True, min_angle_deg=12.0):
             if fl[0].IsSame(fl[1]):
                 continue                                 # seam
             if _dihedral_deg(e, fl[0], fl[1]) < min_angle_deg:
-                continue
+                c0 = BRepAdaptor_Curve(e)
+                mid = c0.Value((c0.FirstParameter() + c0.LastParameter()) / 2)
+                if abs(mid.Y()) < 1.0:
+                    continue                 # tangent seam on the symmetry plane: not a design line
+                # tangent edge elsewhere = an imprinted line (window, light, panel): keep it
         c = BRepAdaptor_Curve(e)
         try:
             d = GCPnts_TangentialDeflection(c, 0.2, deflection)
