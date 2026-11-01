@@ -101,7 +101,8 @@ export class Nav {
     if (!box || box.isEmpty()) return;
     const c = box.getCenter(new THREE.Vector3());
     const r = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 10);
-    this.animateTo({ target: c, dist: r / Math.sin(THREE.MathUtils.degToRad(this.persp.fov / 2)) * 1.15 });
+    const free = Math.max(0.3, Math.min(this.safe?.sx ?? 1, this.safe?.sy ?? 1));   // share of the canvas not under panels
+    this.animateTo({ target: c, dist: r / Math.sin(THREE.MathUtils.degToRad(this.persp.fov / 2)) * 1.15 / free });
   }
 
   _bind() {

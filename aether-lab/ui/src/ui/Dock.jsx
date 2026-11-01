@@ -4,6 +4,7 @@ import { HEAVY, useStore } from "../store";
 import { run } from "../commands";
 import { sceneBox } from "../scene/Viewport";
 import Icon from "./Icon";
+import { L, useLayout } from "./layout";
 import { Slider } from "./Charts";
 
 const AXI = { x: "x", y: "y", z: "z" };
@@ -29,7 +30,7 @@ function SectionPop() {
   }, [v.section]);
   return (
     <div className="w-72 space-y-3 p-3">
-      <div className="flex items-center justify-between"><span className="label">Section cut</span>
+      <div className="flex items-center justify-between pr-7"><span className="label">Section cut</span>
         <span className="font-mono text-[10.5px] text-magenta-glow">{v.section ? `${v.section.toUpperCase()} = ${v.section_mm.toFixed(1)} mm` : "off"}</span></div>
       <div className="grid grid-cols-4 gap-1">
         {["x", "y", "z"].map((a) => <button key={a} onClick={() => run("in.sec" + a)}
@@ -50,7 +51,7 @@ function ExplodePop() {
   const setView = useStore((s) => s.setView);
   return (
     <div className="w-72 space-y-3 p-3">
-      <div className="flex items-center justify-between"><span className="label">Exploded view</span><span className="readout text-cyan-glow">{Math.round(v.explode * 100)}%</span></div>
+      <div className="flex items-center justify-between pr-7"><span className="label">Exploded view</span><span className="readout text-cyan-glow">{Math.round(v.explode * 100)}%</span></div>
       <Slider value={v.explode} min={0} max={1} onChange={(x) => setView({ explode: +x.toFixed(2) })} />
       <div className="grid grid-cols-3 gap-1">
         {[[0, "Assembled"], [0.5, "Half"], [1, "Full"]].map(([x, l]) => <button key={l} className="btn py-1" onClick={() => setView({ explode: x }, { now: true })}>{l}</button>)}
@@ -66,30 +67,37 @@ export default function Dock() {
   const dock = useStore((s) => s.dock);
   const setDock = useStore((s) => s.setDock);
   const sel = useStore((s) => s.selection.length);
+  const bar = useStore((s) => s.dockBar);
+  const lay = useLayout();
   const anyBusy = HEAVY.some((h) => busy[h]);
+  // lives under the menu bar, between the side panels: Tools menu has every action; "Show tool bar" pins this strip
   return (
-    <div className="pointer-events-auto absolute bottom-[30px] left-1/2 z-30 -translate-x-1/2">
+    <div className="pointer-events-none absolute z-30 flex flex-col items-center gap-2" style={{ top: L.top, left: lay.toolLeft + 56, right: lay.navRight + 56 }}>
+      {bar && <div className="glass pointer-events-auto relative flex max-w-full items-center gap-0.5 overflow-hidden rounded-2xl p-1">
+        <DockButton icon="close" title="Hide the tool bar (Tools menu has the same actions)" onClick={() => useStore.getState().setDockBar(false)} />
+        <span className="mx-1 h-6 w-px bg-white/10" />
+        <DockButton icon="holo" title="Calculate hologram + focus sweep (F12)" busy={busy.make_hologram} onClick={() => run("holo.calc")} />
+        <DockButton icon="wave" title="Focus sweep through the depth (Ctrl+F12)" busy={busy.focus_sweep} onClick={() => run("holo.prop")} />
+        <DockButton icon="eye" title="Eye view through a 4 mm pupil" busy={busy.eye_view} onClick={() => run("holo.eye")} />
+        <span className="mx-1 h-6 w-px bg-white/10" />
+        <DockButton icon="section" title="Section cut (Alt+X / Alt+Y)" on={!!v.section || dock === "section"} onClick={() => setDock("section")} />
+        <DockButton icon="explode" title="Exploded view (E)" on={v.explode > 0 || dock === "explode"} onClick={() => setDock("explode")} />
+        <DockButton icon="xray" title="X-ray (Alt+Z)" on={v.xray} onClick={() => run("in.xray")} />
+        <DockButton icon="isolate" title="Isolate selected (/)" on={v.isolate.length > 0} onClick={() => (sel || v.isolate.length) && run("in.isolate")} />
+        <span className="mx-1 h-6 w-px bg-white/10" />
+        <DockButton icon="film" title="Export a 2400 dpi print film + predicted wall image" busy={busy.export_film} onClick={() => run("file.film")} />
+        {anyBusy && <div className="pointer-events-none absolute inset-0 busy-sheen opacity-70" />}
+      </div>}
       <AnimatePresence>
         {dock && (
-          <motion.div key={dock} initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            style={{ x: "-50%" }} className="glass-solid absolute bottom-[58px] left-1/2">
+          <motion.div key={dock} initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            className="glass-solid pointer-events-auto relative">
+            <button className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-md text-slate-400 hover:bg-white/10 hover:text-white" title="Close"
+              onClick={() => useStore.getState().setDock(dock)}><Icon name="close" className="h-3.5 w-3.5" /></button>
             {dock === "section" ? <SectionPop /> : <ExplodePop />}
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="glass relative flex items-center gap-0.5 overflow-hidden rounded-[22px] p-1">
-        <DockButton icon="holo" label="Calculate hologram" title="Calculate hologram + focus sweep (F12)" busy={busy.make_hologram} onClick={() => run("holo.calc")} wide />
-        <DockButton icon="wave" label="Wave propagation" title="Focus sweep through the depth (Ctrl+F12)" busy={busy.focus_sweep} onClick={() => run("holo.prop")} />
-        <DockButton icon="eye" title="Eye view through a 4 mm pupil" busy={busy.eye_view} onClick={() => run("holo.eye")} />
-        <span className="mx-1 h-6 w-px bg-white/10" />
-        <DockButton icon="section" label="Section" title="Section cut (Alt+X / Alt+Y)" on={!!v.section || dock === "section"} onClick={() => setDock("section")} />
-        <DockButton icon="explode" label="Explode" title="Exploded view (E)" on={v.explode > 0 || dock === "explode"} onClick={() => setDock("explode")} />
-        <DockButton icon="xray" title="X-ray (Alt+Z)" on={v.xray} onClick={() => run("in.xray")} />
-        <DockButton icon="isolate" title="Isolate selected (/)" on={v.isolate.length > 0} onClick={() => (sel || v.isolate.length) && run("in.isolate")} />
-        <span className="mx-1 h-6 w-px bg-white/10" />
-        <DockButton icon="film" label="Export film" title="Export a 2400 dpi print film + predicted wall image" busy={busy.export_film} onClick={() => run("file.film")} />
-        {anyBusy && <div className="pointer-events-none absolute inset-0 busy-sheen opacity-70" />}
-      </div>
     </div>
   );
 }

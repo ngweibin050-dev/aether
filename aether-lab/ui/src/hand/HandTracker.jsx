@@ -15,6 +15,7 @@ import { pick } from "../scene/Interaction";
 import * as modal from "../scene/modal";
 import { explodeOffset } from "../scene/modal";
 import { cmd, run } from "../commands";
+import { useLayout } from "../ui/layout";
 
 const VOL = { x: 520, zMin: 0, zMax: 170, yNear: -160, yFar: 160 };
 const BONES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
@@ -261,9 +262,11 @@ export default function HandTracker() {
     };
   }, [mode]);
 
+  const lay = useLayout();
   if (mode !== "hand") return null;
+  // top right of the viewport, beside the view gizmo: clear of the chat and the panels
   return (
-    <div className="glass pointer-events-auto absolute bottom-[78px] z-20 w-[232px] overflow-hidden p-1.5" style={{ left: 332 }}>
+    <div className="glass pointer-events-auto absolute z-20 w-[208px] overflow-hidden p-1.5 transition-[right] duration-300" style={{ right: lay.navRight + 96, top: lay.navTop }}>
       <div className="relative overflow-hidden rounded-xl bg-black">
         <video ref={video} className="aspect-[4/3] w-full -scale-x-100 object-cover opacity-50" muted playsInline />
         <canvas ref={canvas} width={640} height={480} className="absolute inset-0 h-full w-full" />

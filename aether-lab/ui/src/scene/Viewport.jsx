@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Grid, Html, Line, TransformControls } from "@react-three/drei";
 import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import * as THREE from "three";
 import { beamMaterial, holoMaterial, holoSweep, holoTime } from "./holo";
 import { useStore } from "../store";
@@ -15,19 +16,32 @@ const AXI = { x: 0, y: 1, z: 2 };
 const clipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
 
 function useGeometry(mesh) {
-  return useMemo(() => {
+  const g = useMemo(() => {
     if (!mesh) return null;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(mesh.v, 3));
-    g.setIndex(mesh.f);
-    g.computeVertexNormals();
+    const src = new THREE.BufferGeometry();
+    src.setAttribute("position", new THREE.Float32BufferAttribute(mesh.v, 3));
+    src.setIndex(mesh.f);
+    // smooth across gentle edges, sharp across creases > 35 deg: an extruded plate keeps crisp rims, a hull its curves
+    const g = toCreasedNormals(src, 35 * RAD);
+    src.dispose();
     g.computeBoundingBox();
     return g;
   }, [mesh]);
+  // free the GPU buffers of the old geometry: without this every rebuild of a 100-part model leaked them until
+  // the browser dropped the WebGL context (the black viewport)
+  useEffect(() => () => g?.dispose(), [g]);
+  return g;
 }
 
-function EdgeLines({ geom, color, opacity, clip }) {
-  const edges = useMemo(() => new THREE.EdgesGeometry(geom, 28), [geom]);
+// Outline edges; a model rebuilt from a drawing carries the drawing's own lines (doors, windows, intakes) instead.
+function EdgeLines({ geom, lines, color, opacity, clip }) {
+  const edges = useMemo(() => {
+    if (!lines) return new THREE.EdgesGeometry(geom, 28);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+    return g;
+  }, [geom, lines]);
+  useEffect(() => () => edges.dispose(), [edges]);
   return (
     <lineSegments geometry={edges} raycast={() => null}>
       <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} clippingPlanes={clip} />
@@ -90,9 +104,10 @@ function PartNode({ part, childrenOf }) {
   else if (holo)
     material = <primitive object={holo} attach="material" />;
   else
-    material = <meshStandardMaterial color={part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")} metalness={0.62} roughness={0.34} envMapIntensity={0.55}
+    material = <meshStandardMaterial color={part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")}
+      metalness={part.material === "glass" ? 0.9 : 0.62} roughness={part.material === "glass" ? 0.06 : 0.34} envMapIntensity={part.material === "glass" ? 1.1 : 0.55}
       emissive={sel || "#000000"} emissiveIntensity={sel ? 0.22 : 0} transparent={ghost} opacity={ghost ? 0.06 : 1}
-      depthWrite={!ghost} clippingPlanes={clip} />;
+      depthWrite={!ghost} clippingPlanes={clip} polygonOffset={!!mesh?.l} polygonOffsetFactor={1.5} polygonOffsetUnits={2} />;
 
   return (
     <group ref={ref} name={part.id}
@@ -100,6 +115,12 @@ function PartNode({ part, childrenOf }) {
       scale={part.scale} visible={part.visible !== false && !hiddenByIsolate}>
       {geom && (
         <>
+          {mesh.l && shading === "holo" && !ghost && (
+            // depth only: the see-through hologram still hides drawing lines on the far side of the body
+            <mesh geometry={geom} renderOrder={-1} raycast={() => null}>
+              <meshBasicMaterial colorWrite={false} polygonOffset polygonOffsetFactor={3} polygonOffsetUnits={4} clippingPlanes={clip} />
+            </mesh>
+          )}
           <mesh geometry={geom} userData={{ part: part.id }}>
             {material}
           </mesh>
@@ -109,9 +130,9 @@ function PartNode({ part, childrenOf }) {
             </mesh>
           )}
           {shading !== "wire" && (
-            <EdgeLines geom={geom} clip={clip}
-              color={sel || (shading === "holo" ? "#8ff0ff" : "#e6f6ff")}
-              opacity={sel ? 0.95 : shading === "holo" ? (ghost ? 0.25 : 0.6) : ghost ? 0.4 : 0.12} />
+            <EdgeLines geom={geom} lines={mesh.l} clip={clip}
+              color={sel || (shading === "holo" ? "#8ff0ff" : mesh.l ? "#1a2533" : "#e6f6ff")}
+              opacity={mesh.l ? (ghost ? 0.3 : 0.85) : sel ? 0.95 : shading === "holo" ? (ghost ? 0.25 : 0.6) : ghost ? 0.4 : 0.12} />
           )}
         </>
       )}
@@ -411,6 +432,34 @@ function Rig() {
     Object.assign(cams.o, { left: -size.width / 2, right: size.width / 2, top: size.height / 2, bottom: -size.height / 2 });
     view.nav?.apply();
   }, [size, cams]);
+  // The panels cover the edges of the canvas: centre the view (and framing) in the free area between them, as
+  // design apps do, so a model is never hidden behind the chat or a side panel.
+  useEffect(() => {
+    let last = "";
+    const tick = () => {
+      const W = gl.domElement.clientWidth, H = gl.domElement.clientHeight;
+      if (!W || !H) return;
+      let l = 0, r = 0, b = 0, t = 56;
+      for (const el of document.querySelectorAll("section[data-dock]")) {
+        if (el.dataset.mode === "max") continue;
+        const q = el.getBoundingClientRect();
+        if (el.dataset.dock === "left") l = Math.max(l, q.right);
+        else if (el.dataset.dock === "right") r = Math.max(r, W - q.left);
+        else if (el.dataset.dock === "bottom") b = Math.max(b, H - q.top);
+        else if (el.dataset.dock === "top") t = Math.max(t, q.bottom);      // the Explain step player
+      }
+      l = Math.min(l, W * 0.45); r = Math.min(r, W * 0.45); b = Math.min(b, H * 0.6); t = Math.min(t, H * 0.5);
+      const key = [W, H, l, r, b, t].map(Math.round).join(",");
+      if (key === last) return;
+      last = key;
+      const ox = (l - r) / 2, oy = (t - b) / 2;
+      for (const cam of [cams.p, cams.o]) { cam.setViewOffset(W, H, -ox, -oy, W, H); cam.updateProjectionMatrix(); }
+      if (view.nav) view.nav.safe = { sx: (W - l - r) / W, sy: (H - t - b) / H };
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [gl, cams]);
   return null;
 }
 
@@ -423,12 +472,18 @@ function Glow() {
 }
 
 export default function Viewport() {
+  // if the GPU still drops the context (driver reset, other tabs), rebuild the 3D view instead of staying black
+  const [gen, setGen] = useState(0);
+  const onCreated = ({ gl }) => {
+    const c = gl.domElement;
+    c.addEventListener("webglcontextlost", (e) => { e.preventDefault(); setTimeout(() => setGen((g) => g + 1), 300); }, { once: true });
+  };
   return (<>
-    <Canvas dpr={[1, 2]} gl={{ antialias: false, alpha: false, localClippingEnabled: true, powerPreference: "high-performance" }} raycaster={{ params: { Line: { threshold: 0 } } }}
+    <Canvas key={gen} onCreated={onCreated} dpr={[1, 1.5]} gl={{ antialias: false, alpha: false, localClippingEnabled: true, powerPreference: "high-performance" }} raycaster={{ params: { Line: { threshold: 0 } } }}
       onContextMenu={(e) => e.preventDefault()}>
       <Rig />
       <AutoFrame />
-      <color attach="background" args={["#020409"]} />
+      <color attach="background" args={["#04060b"]} />
       <Env />
       <HoloClock />
       <hemisphereLight args={["#cfe9ff", "#0b0f18", 0.9]} />
@@ -450,6 +505,5 @@ export default function Viewport() {
         <Vignette offset={0.28} darkness={0.75} />
       </EffectComposer>
     </Canvas>
-    <div className="hud-tag pointer-events-none absolute bottom-[84px] left-1/2 -translate-x-1/2 !text-[9px] opacity-70">DESIGN VIEW · SCREEN RENDER · THE HOLOGRAM SIMULATION IS IN THE PHYSICS PANEL</div>
   </>);
 }

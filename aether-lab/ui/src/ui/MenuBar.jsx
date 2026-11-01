@@ -26,6 +26,7 @@ export default function MenuBar() {
   const shading = useStore((s) => s.shading);
   const xray = useStore((s) => s.view.xray);
   const compute = useStore((s) => s.compute);
+  const stale = useStore((s) => s.modalStale);
   const undo = useStore((s) => s.undo.length), redo = useStore((s) => s.redo.length);
   const s = useStore.getState();
   useEffect(() => {
@@ -37,11 +38,11 @@ export default function MenuBar() {
   return (
     <header className="pointer-events-auto absolute inset-x-3 top-3 z-40 flex h-10 items-center gap-2" data-menubar>
       <div className="glass flex h-10 items-center gap-1 rounded-xl px-2">
-        <div className="flex items-center gap-2 pl-1 pr-2">
+        <a href="#/" title="Back to the AETHER home page" className="flex items-center gap-2 rounded-lg pl-1 pr-2 transition hover:bg-white/[0.06]">
           <div className="relative h-5 w-5 rounded-full border border-cyan-glow/70 shadow-glow"><div className="absolute inset-[5px] rounded-full bg-cyan-glow/80" /></div>
-          <span className="font-display text-[13px] font-semibold tracking-[0.22em]">AETHER</span>
-          <span className="font-mono text-[10px] text-cyan-glow">2.1</span>
-        </div>
+          <span className="font-display text-[13px] font-bold tracking-[0.22em]">AETHER</span>
+          <span className="grad-text-lab font-mono text-[10px] font-semibold">2.3</span>
+        </a>
         {MENUS.map((m) => (
           <div key={m} className="relative">
             <button onClick={() => setOpen(open === m ? null : m)} onPointerEnter={() => open && setOpen(m)}
@@ -70,9 +71,13 @@ export default function MenuBar() {
               className={`btn-icon border-0 ${shading === k ? "bg-cyan-glow/20 text-cyan-glow" : "bg-transparent"}`}><Icon name={ic} fill={k === "solid" && shading === k} /></button>
           ))}
         </div>
-        <span className="chip"><i className="h-1.5 w-1.5 rounded-full bg-ok shadow-[0_0_8px_#5eead4]" />Muse Spark</span>
-        <span className="chip"><i className={`h-1.5 w-1.5 rounded-full ${compute === "modal" ? "bg-magenta-glow" : "bg-cyan-glow"}`} />{compute === "modal" ? "Modal T4 GPU" : "local CPU"}</span>
-        <span className="chip border-warn/25 text-warn/90">Simulation · not a built display</span>
+        <span className="chip !font-sans !text-[11px]"><i className="h-1.5 w-1.5 rounded-full bg-ok shadow-[0_0_8px_#5eead4]" />Muse Spark</span>
+        {compute === "modal" && stale
+          ? <span className="chip !font-sans !text-[11px] !border-warn/30 !text-warn" title="Modal runs an older AETHER engine than this computer. The server is uploading the new engine to Modal now (about 1 to 3 minutes); heavy tools wait for it and then run on the GPU. Nothing runs on this CPU.">
+              <i className="h-1.5 w-1.5 rounded-full bg-warn" />Modal T4 · updating engine…</span>
+          : <span className="chip !font-sans !text-[11px]"><i className={`h-1.5 w-1.5 rounded-full ${compute === "modal" ? "bg-magenta-glow" : "bg-cyan-glow"}`} />{compute === "modal" ? "Modal T4 GPU" : "local CPU"}</span>}
+        <span className="chip !font-sans !text-[11px] !border-warn/30 !bg-warn/[0.06] !text-warn/90" title="Everything here is a simulation, not a built display">
+          Simulation<span className="hidden 2xl:inline">&nbsp;· not a built display</span></span>
       </div>
     </header>
   );

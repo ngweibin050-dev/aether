@@ -13,6 +13,7 @@ export const useStore = create((set, get) => ({
   meshVersion: -1,
   compute: "local",
   backend: null,               // what the last heavy tool ran on, e.g. "cupy-gpu" on Modal
+  modalStale: false,           // Modal runs an older engine than this computer: the server is redeploying it
 
   // ---- ui state ----
   mode: "laptop",            // laptop | hand
@@ -27,6 +28,8 @@ export const useStore = create((set, get) => ({
   modal: null,               // live G/R/S readout
   dock: null,                // open dock popover: section | explode
   panels: { orchestrator: true, outliner: true, physics: true, toolbar: true },
+  win: { orchestrator: "normal", outliner: "normal", physics: "normal" },   // normal | min | max
+  dockBar: false,            // the tool strip (hologram, section, explode…) is in Tools; this shows it as a bar too
   outlinerTab: "outliner",
   busy: {},
   timing: {},
@@ -38,7 +41,18 @@ export const useStore = create((set, get) => ({
   handFrame: null,
   handCursor: null,          // { x, y, down } air cursor in hand mode
 
-  setPanel: (k, v) => set((s) => ({ panels: { ...s.panels, [k]: v ?? !s.panels[k] } })),
+  setPanel: (k, v) => set((s) => {
+    const on = v ?? !s.panels[k];
+    return { panels: { ...s.panels, [k]: on }, ...(on && s.win[k] === "min" ? { win: { ...s.win, [k]: "normal" } } : {}) };
+  }),
+  // one panel can be maximised at a time; maximising one restores any other maximised one
+  setWin: (k, v) => set((s) => {
+    const win = { ...s.win };
+    if (v === "max") for (const o in win) if (win[o] === "max") win[o] = "normal";
+    win[k] = v;
+    return { win, panels: { ...s.panels, [k]: true } };
+  }),
+  setDockBar: (v) => set((s) => ({ dockBar: v ?? !s.dockBar })),
   setMode: (mode) => set({ mode, menu: null }),
   setTool: (t) => set({ activeTool: t, measure: t === "measure" ? get().measure : null }),
   setAxis: (axis) => set({ axis }),
@@ -53,7 +67,7 @@ export const useStore = create((set, get) => ({
 
   async load() {
     const j = await api("/api/state");
-    set({ state: j.state, compute: j.compute, backend: j.gpu?.backend || null, view: { ...DEFAULT_VIEW, ...(j.state.view || {}) },
+    set({ state: j.state, compute: j.compute, backend: j.gpu?.backend || null, modalStale: !!j.gpu?.stale, view: { ...DEFAULT_VIEW, ...(j.state.view || {}) },
           selection: j.state.selected ? [j.state.selected] : [] });
     await get().syncMeshes();
   },
@@ -62,7 +76,11 @@ export const useStore = create((set, get) => ({
     const s = get().state;
     if (!s || s.version === get().meshVersion) return;
     const j = await api("/api/meshes");
-    set({ meshes: j.meshes, offsets: j.offsets || {}, meshVersion: j.version });
+    // keep the old object for an unchanged mesh, so its GPU geometry is reused instead of rebuilt (and leaked)
+    const old = get().meshes, same = (a, b) => a && b && a.v.length === b.v.length && a.f.length === b.f.length &&
+      (a.l?.length || 0) === (b.l?.length || 0) && [0, 1, 7, a.v.length >> 1, a.v.length - 1].every((i) => a.v[i] === b.v[i]);
+    const meshes = Object.fromEntries(Object.entries(j.meshes).map(([id, m]) => [id, same(old[id], m) ? old[id] : m]));
+    set({ meshes, offsets: j.offsets || {}, meshVersion: j.version });
   },
 
   applyState(state) {
@@ -88,6 +106,7 @@ export const useStore = create((set, get) => ({
       get().applyState(j.state);
       get().ingest(name, j.result);
       if (j.result?._backend) set({ backend: j.result._backend });
+      if (j.gpu) set({ modalStale: !!j.gpu.stale });
       set((s) => ({ timing: { ...s.timing, [name]: Math.round(performance.now() - t0), last: name } }));
       if (j.result?.error && !quiet) get().notify(j.result.error, "error");
       return j.result;
@@ -103,19 +122,21 @@ export const useStore = create((set, get) => ({
     if (!r) return;
     const im = r._images || {};
     const res = { ...get().results };
+    if ((name === "read_views" || name === "sam_3_1" || name === "build_assembly") && !r.error)
+      for (const k of ["hologram", "recon", "sweep", "eye", "wave", "desk", "score", "window", "hand", "speckle"]) delete res[k];   // a new design: old measurements no longer apply
     if (im.hologram) res.hologram = { img: im.hologram, info: r };
     if (im.reconstruction) res.recon = { img: im.reconstruction, z: r.z_mm };
     if (im.sweep && r.depths_mm) {
       if (res.eye) res.eye = { ...res.eye, latest: false };
-      res.sweep = { imgs: im.sweep, depths: r.depths_mm, sharp: r.share_sharp_pct, display: r.display, lasers: r.lasers_nm, speckle: r.speckle_contrast_pct, outside: r.parts_outside_window_pct, i: Math.floor(im.sweep.length / 2) };
+      res.sweep = { imgs: im.sweep, depths: r.depths_mm, sharp: r.share_sharp_pct.map((v) => v ?? 0), sharpRaw: r.share_sharp_pct, display: r.display, lasers: r.lasers_nm, speckle: r.speckle_contrast_pct, outside: r.parts_outside_window_pct, i: Math.floor(im.sweep.length / 2) };
     }
     if (im.eye) res.eye = { img: im.eye, info: r, latest: true };
     if (name === "desk_wave_view" && im.wave) res.wave = { wave: im.wave, model: im.eye_model, info: r };
     if (name === "desk_check" && r.rows) res.desk = r;
     if (name === "desk_score" && r.rows) res.score = r;
-    if (name === "build_assembly" || name === "sam_3_1") res.opt = null;   // a new design: the old before/after no longer applies
+    if (name === "build_assembly" || name === "sam_3_1" || name === "read_views") res.opt = null;   // a new design: the old before/after no longer applies
     if (name === "optimize_for_desk" && r.rounds) res.opt = { ...r, before_img: im.opt_before, after_img: im.opt_after };
-    if (name === "sam_3_1" && !r.error) res.sam = { ...r, overlay: im.sam_overlay, cutout: im.sam_cutout };
+    if ((name === "sam_3_1" || name === "read_views") && !r.error) res.sam = { ...r, overlay: im.sam_overlay, cutout: im.sam_cutout, checkImg: im.sam_check };
     if (name === "window_check" && r.parts) res.window = r;
     if (name === "hand_check") res.hand = r;
     if (im.speckle_one) res.speckle = { ...r, imgs: im };
@@ -250,7 +271,9 @@ export const useStore = create((set, get) => ({
   async turn(path, body, userMsg) {
     const before = clone(get().state.parts);
     set((s) => ({ chat: [...s.chat, userMsg], busy: { ...s.busy, chat: true }, progress: [] }));
-    const poll = setInterval(() => fetch("/api/progress").then((r) => r.json()).then((p) => set({ progress: p.steps || [] })).catch(() => {}), 600);
+    // the server's clock offset lets each running step show its own seconds without trusting this computer's clock
+    const poll = setInterval(() => fetch("/api/progress").then((r) => r.json())
+      .then((p) => set({ progress: p.steps || [], progressSkew: p.now ? Date.now() / 1000 - p.now : 0 })).catch(() => {}), 600);
     try {
       const j = await api(path, body);
       if (JSON.stringify(before) !== JSON.stringify(j.state.parts))
@@ -259,13 +282,22 @@ export const useStore = create((set, get) => ({
       set({ view: { ...DEFAULT_VIEW, ...(j.state.view || {}) } });
       const KEYS = { make_hologram: ["hologram", "reconstruction"], propagate: ["reconstruction"], focus_sweep: ["sweep"], eye_view: ["eye"],
         speckle_compare: ["speckle_one", "speckle_random", "speckle_groups"], export_film: ["predicted_wall", "film_tile"],
-        optimize_for_desk: ["opt_before", "opt_after"], sam_3_1: ["sam_overlay", "sam_cutout"] };
+        optimize_for_desk: ["opt_before", "opt_after"], sam_3_1: ["sam_overlay", "sam_cutout", "sam_check"], read_views: ["sam_check"] };
       for (const t of j.trace) {
         const im = {};
         for (const k of KEYS[t.tool] || []) if (j.images[k]) im[k] = j.images[k];
         get().ingest(t.tool, { ...t.result, _images: im });
       }
-      if (j.trace.some((t) => t.tool === "optimize_for_desk" || t.tool === "sam_3_1")) get().setPanel("physics", true);
+      if (j.gpu) set({ modalStale: !!j.gpu.stale });
+      if (j.trace.some((t) => t.tool === "optimize_for_desk" || t.tool === "sam_3_1" || t.tool === "read_views")) get().setPanel("physics", true);
+      // a new model from a photo or drawing: bring all of it into view
+      if (j.trace.some((t) => t.tool === "read_views" || t.tool === "sam_3_1")) {
+        // frame it once its geometry has arrived (a big model takes a moment), inside the area the panels leave free
+        const t0 = Date.now();
+        const go = () => (get().meshVersion === get().state?.version || Date.now() - t0 > 8000)
+          ? setTimeout(() => import("./commands").then((m) => m.run("view.all")), 150) : setTimeout(go, 150);
+        go();
+      }
       set((s) => ({ chat: [...s.chat, { role: "steps", trace: j.trace }, ...(j.reply ? [{ role: "ai", text: j.reply }] : [])] }));
     } catch (e) {
       set((s) => ({ chat: [...s.chat, { role: "error", text: e.message }] }));
@@ -275,10 +307,38 @@ export const useStore = create((set, get) => ({
     }
   },
   ask(text) { return get().turn("/api/chat", { text }, { role: "user", text }); },
-  askPhoto(image, prompt, size_mm) {
-    const many = prompt.includes(",");
-    return get().turn("/api/photo", { image, prompt, size_mm }, { role: "user", img: image,
-      text: many ? `Drawing of a machine (${size_mm} mm wide): find ${prompt} → SAM 3.1 → assembly` : `Photo of a real ${prompt} (~${size_mm} mm) → SAM 3.1 → model` });
+  // Explain this machine: Muse Spark's step-by-step explanation of the built model (explain.py) + one Muse Image
+  // illustration; the step player (ui/ExplainPlayer.jsx) highlights each step's parts
+  explain: null,               // { machine, steps, rejected_steps, timing, illustration, ... }
+  explainStep: 0,
+  async runExplain() {
+    if (get().busy.explain) return;
+    set((s) => ({ busy: { ...s.busy, explain: true }, progress: [], explain: null }));
+    const poll = setInterval(() => fetch("/api/progress").then((r) => r.json())
+      .then((p) => set({ progress: p.steps || [], progressSkew: p.now ? Date.now() / 1000 - p.now : 0 })).catch(() => {}), 600);
+    try {
+      const r = await fetch("/api/explain", { method: "POST", body: "{}" });
+      const j = await r.json();
+      if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+      set({ explain: j, explainStep: 0 });
+    } catch (e) {
+      get().notify(`Explain failed: ${e.message}`, "error");
+    } finally {
+      clearInterval(poll);
+      set((s) => ({ busy: { ...s.busy, explain: false } }));
+    }
+  },
+  setExplainStep(i) { set({ explainStep: i }); },
+  closeExplain() {
+    set({ explain: null, explainStep: 0 });
+    get().setView({ xray: false, explode: 0, section: null }, { now: true });
+    get().select(null);
+  },
+  askPhoto(image, prompt, size_mm, mode = "interpret", kind = "auto") {
+    const what = { auto: "image → 3D (AETHER decides what it is)", machine: `machine drawing → ${mode === "trace" ? "SAM 3.1 traces each part" : "read like an engineer"} → 3D assembly`,
+      three_view: "three-view sheet → 3D model from named parts", part: "photo of one part → SAM 3.1 → model" }[kind];
+    return get().turn("/api/photo", { image, prompt, size_mm, mode, kind }, { role: "user", img: image,
+      text: `${prompt ? prompt + ": " : ""}${what} (${size_mm} mm, assumed unless a dimension is read)` });
   },
   optimize(target_pct = 80) {
     return get().turn("/api/optimize", { target_pct, max_rounds: 3 }, { role: "user", text: `Make it sharp on the AETHER Desk (≥${target_pct}%)` });

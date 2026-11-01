@@ -13,8 +13,8 @@ export default {
         silver: "#9aa4b2",
       },
       fontFamily: {
-        display: ["\"Space Grotesk Variable\"", "\"Inter Variable\"", "system-ui", "sans-serif"],
-        sans: ["\"Inter Variable\"", "system-ui", "\"Segoe UI\"", "sans-serif"],
+        display: ["\"Plus Jakarta Sans Variable\"", "\"Inter Variable\"", "system-ui", "sans-serif"],
+        sans: ["\"Plus Jakarta Sans Variable\"", "\"Inter Variable\"", "system-ui", "\"Segoe UI\"", "sans-serif"],
         mono: ["\"JetBrains Mono Variable\"", "ui-monospace", "Consolas", "monospace"],
       },
       boxShadow: {

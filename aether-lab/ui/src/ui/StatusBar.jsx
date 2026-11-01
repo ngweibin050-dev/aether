@@ -18,10 +18,12 @@ export default function StatusBar() {
   const running = HEAVY.find((h) => busy[h]);
   return (
     <>
-      <footer className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex h-[22px] items-center gap-4 border-t border-white/[0.06] bg-black/50 px-3 text-[10.5px] text-silver backdrop-blur-xl">
+      <footer className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex h-[22px] items-center gap-4 overflow-hidden whitespace-nowrap border-t border-white/[0.06] bg-[#04060b]/90 px-3 text-[10.5px] text-silver">
         {HINTS[mode].map(([k, v]) => <span key={k} className="flex items-center gap-1.5"><span className="kbd">{k}</span>{v}</span>)}
-        <span className="ml-auto font-mono">Objects {sel}/{parts}</span>
-        <span className="font-mono">{mode === "hand" ? "Hand tracking" : "Laptop"}</span>
+        <span className="hidden min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-cyan-glow/60 2xl:inline">Screen render · hologram in Physics panel</span>
+        <span className="kbd ml-auto">⇧Tab</span><span className="-ml-2.5 whitespace-nowrap">hide panels</span>
+        <span className="whitespace-nowrap font-mono">Objects {sel}/{parts}</span>
+        <span className="whitespace-nowrap font-mono">{mode === "hand" ? "Hand tracking" : "Laptop"}</span>
       </footer>
       <AnimatePresence>
         {modal && (

@@ -24,6 +24,8 @@ const P = {
   chevron: "m9 6 6 6-6 6",
   close: "M6 6l12 12M18 6 6 18",
   min: "M6 12h12",
+  max: "M5 5h14v14H5z",
+  restore: "M8 8h11v11H8zM5 15V5h10",
   target: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   upload: "M12 15V3M7 8l5-5 5 5M4 17v3h16v-3",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4",

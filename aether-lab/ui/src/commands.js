@@ -123,7 +123,9 @@ export const COMMANDS = [
   { id: "view.holo", menu: "View", label: "Shading: Hologram", keys: "Z", run: () => S().setShading("holo") },
   { id: "view.toolbar", menu: "View", label: "Toolbar", keys: "T", run: () => S().setPanel("toolbar") },
   { id: "view.sidebar", menu: "View", label: "Sidebar (Item)", keys: "N", run: () => { S().setPanel("outliner", true); useStore.setState({ outlinerTab: "item" }); } },
-  { id: "view.panels", menu: "View", label: "Toggle all panels", keys: "Ctrl Space", run: () => { const on = !Object.values(S().panels).some(Boolean); for (const k of ["orchestrator", "outliner", "physics", "toolbar"]) S().setPanel(k, on); } },
+  { id: "view.panels", menu: "View", label: "Toggle all panels", run: () => { const on = !Object.values(S().panels).some(Boolean); for (const k of ["orchestrator", "outliner", "physics", "toolbar"]) S().setPanel(k, on); } },
+  { id: "view.minall", menu: "View", label: "Minimise all panels (more room)", keys: "Shift Tab", run: () => { for (const k of ["orchestrator", "outliner", "physics"]) S().setWin(k, "min"); } },
+  { id: "view.restore", menu: "View", label: "Restore all panels", keys: "Shift Tab", run: () => { for (const k of ["orchestrator", "outliner", "physics"]) { S().setPanel(k, true); S().setWin(k, "normal"); } } },
   { id: "view.mode", menu: "View", label: "Switch Laptop / Hand mode", keys: "Tab", run: () => S().setMode(S().mode === "laptop" ? "hand" : "laptop") },
   // Inspect (see inside)
   { id: "in.xray", menu: "Inspect", label: "X-ray", keys: "Alt Z", run: () => S().setView({ xray: !S().view.xray }, { now: true }) },
@@ -133,6 +135,7 @@ export const COMMANDS = [
   { id: "in.flip", menu: "Inspect", label: "Flip section side", when: () => !!S().view.section, run: () => S().setView({ section_flip: !S().view.section_flip }, { now: true }) },
   { id: "in.explode", menu: "Inspect", label: "Explode / assemble", keys: "E", run: () => { S().setView({ explode: S().view.explode > 0.5 ? 0 : 1 }, { now: true }); setTimeout(() => view.nav?.frame(sceneBox()), 700); } },
   { id: "in.isolate", menu: "Inspect", label: "Isolate selected (local view)", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
+  { id: "in.explainMachine", menu: "Inspect", label: "Explain this machine", run: () => S().runExplain() },
   { id: "in.reset", menu: "Inspect", label: "Reset inspection", run: () => S().setView({ xray: false, section: null, explode: 0, isolate: [] }, { now: true }) },
   // Hologram
   { id: "holo.calc", menu: "Hologram", label: "Calculate hologram", keys: "F12", run: () => S().hologram() },
@@ -148,4 +151,17 @@ export const COMMANDS = [
 
 export const cmd = (id) => COMMANDS.find((c) => c.id === id);
 export const run = (id) => { const c = cmd(id); if (c && (!c.when || c.when())) c.run(); };
-export const MENUS = ["File", "Edit", "Select", "Add", "Object", "View", "Inspect", "Hologram"];
+// Tools: the actions that used to sit in the bottom dock, in one menu (and optionally pinned as a bar)
+COMMANDS.push(
+  { id: "tools.holo", menu: "Tools", group: "Hologram", label: "Calculate hologram", keys: "F12", run: () => S().hologram() },
+  { id: "tools.sweep", menu: "Tools", group: "Hologram", label: "Wave propagation (eye focus sweep)", keys: "Ctrl F12", run: () => S().tool("focus_sweep", { steps: 7, ...S().eyeArgs() }) },
+  { id: "tools.eye", menu: "Tools", group: "Hologram", label: "Eye view through a 4 mm pupil", run: () => S().eyeView() },
+  { id: "tools.section", menu: "Tools", group: "Inspect", label: "Section cut…", run: () => S().setDock("section") },
+  { id: "tools.explode", menu: "Tools", group: "Inspect", label: "Exploded view…", run: () => S().setDock("explode") },
+  { id: "tools.xray", menu: "Tools", group: "Inspect", label: "X-ray", keys: "Alt Z", run: () => S().setView({ xray: !S().view.xray }, { now: true }) },
+  { id: "tools.isolate", menu: "Tools", group: "Inspect", label: "Isolate selected", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
+  { id: "tools.film", menu: "Tools", group: "Output", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
+  { id: "tools.bar", menu: "Tools", group: "Show", label: "Show tool bar under the menu", run: () => S().setDockBar() },
+);
+
+export const MENUS = ["File", "Edit", "Select", "Add", "Object", "View", "Inspect", "Hologram", "Tools"];

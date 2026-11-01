@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import { view } from "../scene/registry";
 import { run } from "../commands";
 import Icon from "./Icon";
+import { useLayout } from "./layout";
 
 const AX = [["x", [1, 0, 0], "#ff5d73", "right", "left"], ["y", [0, 1, 0], "#7ddc5a", "back", "front"], ["z", [0, 0, 1], "#5fa8ff", "top", "bottom"]];
 
@@ -11,7 +12,7 @@ const AX = [["x", [1, 0, 0], "#ff5d73", "right", "left"], ["y", [0, 1, 0], "#7dd
 export default function NavGizmo() {
   const [, tick] = useState(0);
   const [ortho, setOrtho] = useState(false);
-  const physics = useStore((s) => s.panels.physics);
+  const lay = useLayout();
   useEffect(() => {
     let off, t = setInterval(() => { if (view.nav) { off = view.nav.onChange((n) => { tick((k) => k + 1); setOrtho(n.isOrtho); }); clearInterval(t); tick(1); } }, 100);
     return () => { clearInterval(t); off?.(); };
@@ -38,7 +39,7 @@ export default function NavGizmo() {
     addEventListener("pointermove", mv); addEventListener("pointerup", up);
   };
   return (
-    <div className="pointer-events-auto absolute top-[62px] z-20 flex flex-col items-center gap-1.5" style={{ right: physics ? 346 : 14 }}>
+    <div className="pointer-events-auto absolute z-20 flex flex-col items-center gap-1.5 transition-[right] duration-300" style={{ right: lay.navRight, top: lay.navTop }}>
       <svg width={C * 2} height={C * 2} onPointerDown={drag("orbit")} className="cursor-grab rounded-full transition hover:bg-white/[0.06]">
         {balls.filter((b) => b.s > 0).map((b) => <line key={"l" + b.n} x1={C} y1={C} x2={b.x} y2={b.y} stroke={b.col} strokeWidth="2" strokeOpacity=".8" />)}
         {balls.map((b) => (

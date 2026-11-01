@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { selectedPart, useStore } from "../store";
-import FloatPanel from "./FloatPanel";
+import FloatPanel, { PanelIcon } from "./FloatPanel";
+import { L } from "./layout";
 import Icon from "./Icon";
 import { Slider } from "./Charts";
 
@@ -225,9 +226,10 @@ export default function Outliner() {
     return (kids.root || []).map((p) => render(p, 0));
   }, [parts]);
   const st = useStore.getState();
-  return (
+  return (<>
+    <PanelIcon id="outliner" title="Scene" icon="layers" style={{ left: L.gap, top: L.top }} />
     <FloatPanel id="outliner" title="Scene" icon="layers" open={open} onClose={() => st.setPanel("outliner", false)}
-      className="bottom-[78px] left-3 top-[calc(50vh+38px)] w-[310px]"
+      style={{ left: L.gap, top: L.top, bottom: L.bottom, width: L.left }}
       right={<>
         <button className="grid h-6 w-6 place-items-center rounded-md text-silver hover:bg-white/10 hover:text-white" title="Add (Shift+A)"
           onClick={(e) => st.setMenu({ kind: "add", x: e.clientX, y: e.clientY })}><Icon name="plus" className="h-3.5 w-3.5" /></button>
@@ -251,5 +253,5 @@ export default function Outliner() {
       </div>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-2">{tab === "outliner" ? tree : <ItemTab />}</div>
     </FloatPanel>
-  );
+  </>);
 }

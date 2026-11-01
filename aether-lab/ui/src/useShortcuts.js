@@ -11,6 +11,8 @@ export default function useShortcuts() {
     const onKey = (e) => {
       const tag = document.activeElement?.tagName;
       if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || modalActive()) return;
+      // keys typed through a Chinese / Japanese input method belong to it, not to the lab
+      if (e.isComposing || e.key === "Process" || e.keyCode === 229) return;
       const s = useStore.getState();
       if (s.menu && e.key !== "Escape") return;
       const k = e.key.toLowerCase(), code = e.code;
@@ -33,6 +35,7 @@ export default function useShortcuts() {
       if (code === "NumpadDecimal" || (k === "." && !shift && !ctrl)) return go("view.frame");
       if (k === "home") return go("view.all");
       if (k === "escape") { s.setMenu(null); s.setDock(null); return; }
+      if (k === "tab" && shift) return go(Object.values(s.win).some((w) => w !== "min") ? "view.minall" : "view.restore");
       if (k === "tab") return go("view.mode");
       if (k === "f3") return menu("search");
       if (k === "f2") return go("edit.rename");
@@ -46,7 +49,6 @@ export default function useShortcuts() {
         if (k === "o") return go("file.open");
         if (k === "i") return go("sel.invert");
         if (k === "p") return go("obj.parent");
-        if (k === " ") return go("view.panels");
         return;
       }
       if (alt) {

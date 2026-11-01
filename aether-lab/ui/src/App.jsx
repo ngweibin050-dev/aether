@@ -8,6 +8,7 @@ import PhysicsPanel from "./ui/PhysicsPanel";
 import Toolbar from "./ui/Toolbar";
 import NavGizmo from "./ui/NavGizmo";
 import Dock from "./ui/Dock";
+import ExplainPlayer from "./ui/ExplainPlayer";
 import Menus from "./ui/Menus";
 import StatusBar from "./ui/StatusBar";
 import HandTracker, { AirCursor } from "./hand/HandTracker";
@@ -25,7 +26,7 @@ export default function App() {
       <div className="pointer-events-none absolute inset-0">
         <MenuBar />
         {ready && <>
-          <Orchestrator /><Outliner /><PhysicsPanel /><Toolbar /><NavGizmo /><Dock /><HandTracker /><StatusBar />
+          <Orchestrator /><Outliner /><PhysicsPanel /><Toolbar /><NavGizmo /><Dock /><ExplainPlayer /><HandTracker /><StatusBar />
         </>}
       </div>
       {ready && <><Interaction /><Menus /><AirCursor /></>}

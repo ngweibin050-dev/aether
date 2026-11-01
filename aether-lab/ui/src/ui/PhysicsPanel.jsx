@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { HEAVY, useStore } from "../store";
-import FloatPanel from "./FloatPanel";
+import FloatPanel, { PanelIcon } from "./FloatPanel";
+import { L } from "./layout";
 import Icon from "./Icon";
 import { LineChart, SineLoader, Slider } from "./Charts";
 import { Num } from "./Outliner";
@@ -8,7 +9,7 @@ import { Num } from "./Outliner";
 function Section({ title, children, right, busy }) {
   return (
     <section className="space-y-2 border-t border-white/[0.06] px-3.5 py-3">
-      <div className="flex items-center justify-between"><span className="label">{title}</span>{busy ? <SineLoader label="" /> : right}</div>
+      <div className="flex min-h-[22px] items-center justify-between gap-2"><span className="label min-w-0 leading-snug">{title}</span><div className="shrink-0">{busy ? <SineLoader label="" /> : right}</div></div>
       {children}
     </section>
   );
@@ -16,8 +17,8 @@ function Section({ title, children, right, busy }) {
 
 function Stat({ k, v, hot }) {
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-black/25 px-2 py-1.5">
-      <div className="text-[9px] uppercase tracking-[0.14em] text-silver">{k}</div>
+    <div className="min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-2 py-1.5" title={k}>
+      <div className="truncate font-mono text-[9px] uppercase tracking-[0.1em] text-slate-400">{k}</div>
       <div className={`readout mt-0.5 truncate ${hot ? "text-cyan-glow" : ""}`}>{v}</div>
     </div>
   );
@@ -25,12 +26,13 @@ function Stat({ k, v, hot }) {
 
 function EmptyHolo({ lab, busy, onRun }) {
   return (
-    <div className="relative grid aspect-square place-items-center overflow-hidden rounded-[10px] bg-[radial-gradient(circle_at_50%_55%,rgba(95,225,255,.10),transparent_60%)]">
-      <div className="absolute h-40 w-40 animate-[spin_14s_linear_infinite] rounded-full border border-dashed border-cyan-glow/20" />
-      <div className="absolute h-28 w-28 animate-[spin_9s_linear_infinite_reverse] rounded-full border border-cyan-glow/15 border-t-cyan-glow/60" />
+    <div className="relative grid aspect-[4/3] place-items-center overflow-hidden rounded-xl border border-slate-400/[0.14] bg-[radial-gradient(circle_at_50%_55%,rgba(56,189,248,.13),transparent_62%),linear-gradient(180deg,rgba(255,255,255,.02),transparent)]">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.06)_1px,transparent_1px)] bg-[size:20px_20px] [mask-image:radial-gradient(circle_at_50%_50%,#000,transparent_75%)]" />
+      <div className="absolute h-36 w-36 animate-[spin_14s_linear_infinite] rounded-full border border-dashed border-cyan-glow/20" />
+      <div className="absolute h-24 w-24 animate-[spin_9s_linear_infinite_reverse] rounded-full border border-violet-400/20 border-t-cyan-glow/60" />
       <div className="relative space-y-2 text-center">
         <button onClick={onRun} disabled={busy} className="btn-accent rounded-full px-4">{busy ? "Computing…" : "Calculate hologram"}</button>
-        <div className="font-mono text-[9.5px] text-silver">{lab ? "lab hologram follows the eye view" : "F12 · ~15 s on CPU"}</div>
+        <div className="font-mono text-[9.5px] text-slate-400">{lab ? "lab hologram follows the eye view" : "F12 · ~15 s on CPU"}</div>
       </div>
     </div>
   );
@@ -84,16 +86,74 @@ function LoopCard({ opt }) {
 }
 
 function SamCard({ sam }) {
-  if (sam.mode === "blueprint") return <>
-    <img src={sam.overlay} className="w-full rounded-[10px] object-contain" />
+  if (sam.mode === "three-view") return <ThreeViewCard sam={sam} />;
+  if (sam.mode === "blueprint" || sam.mode === "interpret") return <BlueprintCard sam={sam} />;
+  return <PhotoCard sam={sam} />;
+}
+
+// A sheet with side, front and top views: the solid is projected back into each view so the match can be seen.
+function ThreeViewCard({ sam }) {
+  const c = sam.check, iou = c.view_match_iou_pct, mm = sam.size_mm;
+  return <>
+    <img src={sam.checkImg} className="w-full rounded-[10px] bg-white object-contain" />
+    <div className="grid grid-cols-3 gap-1.5">
+      {["side", "top", "front"].map((k) => <Stat key={k} k={k} v={`${iou[k]}%`} hot={iou[k] >= 90} />)}
+    </div>
+    <p className="text-[10.5px] leading-snug text-slate-400">Blue: the 3D model seen from that view. <span className="text-rose-300">Red: drawn but not built</span> (the views disagree there). {c.views_found} views found and matched by size ({c.size_disagreement_pct}% size disagreement); an unused view (e.g. the rear) is left uncoloured.</p>
+    <p className="font-mono text-[10px] text-silver">size: {mm[0]} × {mm[1]} × {mm[2]} mm · <span className="text-warn">length assumed, proportions from the drawing</span></p>
+    {sam.precision && <div className="space-y-1 rounded-lg border border-white/[0.07] bg-black/20 p-2">
+      <div className="font-mono text-[10px] uppercase tracking-wider text-slate-400">Precision vs the drawing</div>
+      <table className="w-full font-mono text-[10px] text-silver">
+        <thead><tr className="text-slate-500"><td>outline</td><td className="text-right">mean</td><td className="text-right">95%</td><td className="text-right">max</td></tr></thead>
+        <tbody>{["side", "top", "front"].map((k) => { const e = sam.precision.outline_error_mm[k]; return e && (
+          <tr key={k}><td className="text-white/80">{k}</td><td className="text-right text-cyan-glow">{e.mean_mm} mm</td><td className="text-right">{e.p95_mm} mm</td><td className="text-right">{e.max_mm} mm</td></tr>); })}</tbody>
+      </table>
+      <p className="text-[10px] leading-snug text-slate-400">How far the model's outline is from the drawn outline in each view, at the model's size ({mm[0]} mm long; mean side error {sam.precision.outline_error_mm.side?.mean_pct_of_length}% of the length). Mesh: {sam.precision.faces.toLocaleString()} faces, {sam.precision.mesh_edge_mm} mm edges; drawing read at {sam.precision.drawing_px_mm} mm per pixel. Built from {sam.parts_built ?? sam.precision.parts ?? 1} separate parts (one per closed region the drawing's lines make, plus tyres and rims). Panel line segments: {Object.entries(sam.precision.panel_line_segments || sam.precision.drawn_line_segments || {}).map(([k, v]) => `${k} ${v}`).join(" · ")}. {sam.precision.lines_note}.{sam.detail && <> Parts named by {sam.detail.named_by}; {Object.entries(sam.detail.kinds || {}).map(([k, v]) => `${v} ${k}`).join(" · ")}; {Object.keys(sam.detail.recessed_mm || {}).length} parts sunk into the body ({sam.detail.note}).</>}</p>
+    </div>}
+    <p className="text-[10.5px] leading-snug text-silver">{sam.note}</p>
+  </>;
+}
+
+// What was read, and what was built laid back over the drawing: the person checks it with their own eyes.
+function BlueprintCard({ sam }) {
+  const [tab, setTab] = useState(sam.checkImg ? "check" : "read");
+  const c = sam.check;
+  return <>
+    {sam.checkImg && <div className="flex gap-0.5 rounded-lg bg-black/30 p-0.5">
+      {[["check", "Built vs drawing"], ["read", sam.mode === "interpret" ? "What Spark read" : "What SAM traced"]].map(([k, l]) => (
+        <button key={k} onClick={() => setTab(k)} className={`tab ${tab === k ? "tab-on" : ""}`}>{l}</button>))}
+    </div>}
+    <img src={tab === "check" && sam.checkImg ? sam.checkImg : sam.overlay} className="w-full rounded-[10px] bg-white object-contain" />
+    {c && tab === "check" && <div className="grid grid-cols-2 gap-1.5">
+      <Stat k="recall · drawn lines built" v={`${c.drawing_lines_on_built_parts_pct}%`} hot={c.drawing_lines_on_built_parts_pct >= 75} />
+      <Stat k="frame ∩ parts" v={`${c.frame_part_overlap_mm2} mm²`} hot={c.frame_part_overlap_mm2 === 0} />
+      {c.outline_on_ink_pct && <>
+        <Stat k="precision · part outlines on ink" v={c.outline_on_ink_pct.parts == null ? "—" : `${c.outline_on_ink_pct.parts}%`} hot={c.outline_on_ink_pct.parts >= 75} />
+        <Stat k="precision · frame outlines on ink" v={c.outline_on_ink_pct.frames == null ? "—" : `${c.outline_on_ink_pct.frames}%`} hot={c.outline_on_ink_pct.frames >= 75} />
+      </>}
+    </div>}
+    {c && tab === "check" && <p className="text-[10.5px] leading-snug text-slate-400">Cyan: a part was built here. Amber: frame body. <span className="text-rose-300">Red: drawn lines nothing was built for</span> (a missed part, or text, dimensions, hatching). Recall = share of the drawn lines that lie on something built; precision = share of the built outlines within 2 px of a drawn line (an outline on blank paper was invented; a big frame cannot fake it). One front view only: depth is assumed, so judge the shape here before trusting the 3D.</p>}
+    {sam.reading && <div className="grid grid-cols-3 gap-1.5">
+      <Stat k="parts read" v={sam.reading.after_merge} />
+      <Stat k="circles measured" v={sam.reading.circles_measured} />
+      <Stat k="total parts" v={sam.reading.total_parts} hot />
+    </div>}
+    {sam.reading && <p className="text-[10.5px] leading-snug text-slate-400">
+      {sam.reading.whole_sheet_readings
+        ? <>Muse Spark read the whole sheet and 4 close-ups at 2×, each twice (temperature 0, strict JSON). Kept: {sam.reading.whole_sheet_parts_agreed} whole-sheet and {sam.reading.close_up_parts_agreed} close-up parts both readings agreed on (or a measured circle confirmed); {sam.reading.dropped_not_confirmed} seen by one reading only were dropped.{sam.reading.unconfirmed && <span className="text-warn"> {sam.reading.unconfirmed}.</span>} </>
+        : <>Muse Spark read the whole sheet ({sam.reading.whole_sheet_parts} parts) and 4 close-ups at 2× ({sam.reading.close_up_parts} more, duplicates merged). </>}
+      Every circle on the drawing was then measured: {sam.reading.round_parts_snapped_to_measured_circle} round parts snapped to their measured centre and radius, {sam.reading.parts_added_from_measured_circles} pivots / bosses / discs added that the reading had missed.</p>}
     <div className="flex flex-wrap gap-1.5">{Object.entries(sam.found).map(([k, v]) => <span key={k} className="chip !text-[10px]">{k} × {v}</span>)}</div>
     <div className="scroll-thin max-h-28 space-y-0.5 overflow-y-auto font-mono text-[10px] text-silver">
       {sam.parts.map((p) => <div key={p.n} className="flex gap-2"><span className="w-5 text-cyan-glow">{p.n}</span><span className="w-12 truncate text-white/80">{p.label}</span>
         <span>{p.centre_mm.map(Math.round).join(",")}</span><span className="ml-auto">{p.radius_mm ? `r ${p.radius_mm}${p.lobes ? ` · ${p.lobes}T` : ""}` : `${Math.round(p.length_mm)}×${Math.round(p.width_mm)} ∠${p.angle_deg}°`}</span></div>)}
     </div>
     {sam.scale_source && <p className="font-mono text-[10px] text-silver">scale: <span className={sam.scale_source.startsWith("read") ? "text-cyan-glow" : "text-warn"}>{sam.scale_source}</span>{sam.view ? ` · view: ${sam.view}` : ""}</p>}
-    <p className="text-[10.5px] leading-snug text-silver">{sam.read_by?.startsWith("Muse") ? "Muse Spark read the drawing and boxed each part; SAM 3.1 traced every box." : "SAM 3.1 searched the drawing once per part type."} Every part was rebuilt as the solid it is: involute gears that mesh (module and phase solved), pins through the stack, plates with their real holes, frame plates front and back. The drawing stands upright on the desk. Thicknesses are engineering rules, marked as assumed in each part.</p>
+    <p className="text-[10.5px] leading-snug text-silver">{sam.mode === "interpret" ? "Engineer's interpretation: Muse Spark read each part's type, box and axis (cyan boxes, orange axes) and every part was drawn as a clean standard part: nothing was traced, so hatching and labels do not leak into the solids." : sam.read_by?.startsWith("Muse") ? "Muse Spark read the drawing and boxed each part; SAM 3.1 traced every box." : "SAM 3.1 searched the drawing once per part type."} Every part was rebuilt as the solid it is: involute gears that mesh (module and phase solved), pins through the stack, plates with their real holes, frame plates front and back. The drawing stands upright on the desk. Thicknesses are engineering rules, marked as assumed in each part.</p>
   </>;
+}
+
+function PhotoCard({ sam }) {
   return <>
     <div className="grid grid-cols-[1fr_88px] gap-2">
       <img src={sam.overlay} className="w-full rounded-[10px] object-cover" />
@@ -137,30 +197,32 @@ export default function PhysicsPanel() {
   const anyBusy = HEAVY.some((h) => busy[h]);
   const lastT = timing.last && HEAVY.includes(timing.last) ? `${timing[timing.last]} ms` : "—";
   const ei = eyeShown || !sweep ? r.eye?.info : null;           // the single eye view, when it is what is shown
-  const hero = ei ? { v: ei.sharpness_vs_full_2d_pct, z: ei.focus_z_mm, sp: ei.speckle_contrast_pct, out: ei.parts_outside_window_pct }
-    : sweep ? { v: sweep.sharp[sweep.i], z: sweep.depths[sweep.i], sp: sweep.speckle, out: sweep.outside } : null;
+  const hero = ei ? { v: ei.in_focus_vs_full_2d_pct ?? "—", z: ei.focus_z_mm, sp: ei.speckle_contrast_pct, out: ei.parts_outside_window_pct }
+    : sweep ? { v: sweep.sharpRaw?.[sweep.i] ?? "—", z: sweep.depths[sweep.i], sp: sweep.speckle, out: sweep.outside } : null;
   const pic = img === "focus" ? (eyeShown && r.eye ? r.eye.img : sweep?.imgs[sweep.i]) : img === "lab" ? r.recon?.img : r.hologram?.img;
 
-  return (
+  return (<>
+    <PanelIcon id="physics" title="Physics Engine" icon="wave" busy={anyBusy} style={{ right: L.gap, top: L.top }} />
     <FloatPanel id="physics" title="Physics Engine" icon="wave" open={open} busy={anyBusy}
-      onClose={() => st.setPanel("physics", false)} className="bottom-[78px] right-3 top-[60px] w-[330px]">
+      onClose={() => st.setPanel("physics", false)} style={{ right: L.gap, top: L.top, bottom: L.bottom, width: L.right }}>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
         <div className="px-3.5 pb-3">
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="label">sharp vs full 2D · same focus</div>
-              <div className="mt-1 flex items-baseline gap-1">
-                <span className={`hero-num text-[46px] ${hero ? "text-white glow-text" : "text-white/25"}`}>{hero ? Math.round(hero.v) : "--"}</span>
-                <span className="font-display text-[18px] text-silver">%</span>
-              </div>
-              <div className="mt-1 font-mono text-[10px] text-silver">{hero ? <>focus <span className="text-cyan-glow">{hero.z} mm</span> · vs full 2D</> : "calculate to measure"}</div>
+          <div className="relative overflow-hidden rounded-xl border border-slate-400/[0.14] bg-gradient-to-br from-sky-400/[0.08] via-transparent to-violet-500/[0.10] px-3 py-2.5">
+            <div className="label">Sharpness vs full 2D · same focus</div>
+            <div className="mt-1.5 flex items-baseline gap-1">
+              <span className={`hero-num text-[44px] ${hero ? "grad-text-lab" : "text-white/25"}`}>{hero ? (typeof hero.v === "number" ? Math.round(hero.v) : hero.v) : "--"}</span>
+              <span className="font-display text-[18px] font-semibold text-slate-400">%</span>
             </div>
-            <div className="space-y-1.5 text-right">
-              {[["speckle", hero?.sp != null ? `${hero.sp}%` : "--", hero?.sp > 4.4 ? "text-warn" : "text-white"],
-                ["outside window", hero?.out != null ? `${hero.out}%` : "--", hero?.out > 0 ? "text-warn" : "text-white"],
-                ["last run", lastT, "text-white"]].map(([k2, v, c]) => (
-                <div key={k2}><div className="label !text-[8.5px]">{k2}</div><div className={`font-mono text-[12px] tabular-nums ${c}`}>{v}</div></div>))}
-            </div>
+            <div className="mt-0.5 font-mono text-[10px] text-slate-400">{hero ? <>eye focused at <span className="text-cyan-glow">{hero.z} mm</span></> : "Calculate the hologram to measure"}</div>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            {[["speckle", hero?.sp != null ? `${hero.sp}%` : "--", hero?.sp > 4.4 ? "text-warn" : "text-white", "Speckle contrast; visible above about 4%"],
+              ["off-window", hero?.out != null ? `${hero.out}%` : "--", hero?.out > 0 ? "text-warn" : "text-white", "Share of the design outside the panel window"],
+              ["last run", lastT, "text-white", "Time of the last physics calculation"]].map(([k2, v, c, t]) => (
+              <div key={k2} title={t} className="min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.025] px-2 py-1.5">
+                <div className="truncate font-mono text-[9px] uppercase tracking-[0.1em] text-slate-400">{k2}</div>
+                <div className={`mt-0.5 truncate font-mono text-[12.5px] font-semibold tabular-nums ${c}`}>{v}</div>
+              </div>))}
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {[view.section && `cut ${view.section.toUpperCase()}`, view.explode > 0 && `exploded ${Math.round(view.explode * 100)}%`, view.xray && "x-ray"].filter(Boolean).map((t) =>
@@ -170,7 +232,7 @@ export default function PhysicsPanel() {
           </div>
         </div>
 
-        {r.sam && <Section title={r.sam.mode === "blueprint" ? "SAM 3.1 · machine drawing" : "SAM 3.1 · photo of a real part"}><SamCard sam={r.sam} /></Section>}
+        {r.sam && <Section title={r.sam.mode === "three-view" ? "Three-view drawing → 3D" : r.sam.mode === "interpret" ? "Muse Spark · machine drawing, interpreted" : r.sam.mode === "blueprint" ? "SAM 3.1 · machine drawing" : "SAM 3.1 · photo of a real part"}><SamCard sam={r.sam} /></Section>}
 
         <Section title="AI design loop" busy={busy.chat && looping}
           right={<button className="btn whitespace-nowrap px-2 py-0.5 text-[11px]" disabled={busy.chat || !s.parts.length} onClick={() => st.optimize(80)}><Icon name="sparkle" />Fix for desk</button>}>
@@ -178,7 +240,7 @@ export default function PhysicsPanel() {
             : <p className="text-[11px] text-silver">Muse Spark moves, turns or scales the design; the wave-optics eye re-scores every part on the AETHER Desk; repeat until all parts are ≥80% sharp and inside the window.</p>}
         </Section>
 
-        <Section title="Hologram · what your eye sees" busy={busy.make_hologram || busy.focus_sweep || busy.eye_view || busy.propagate || busy.desk_wave_view}
+        <Section title="What your eye sees" busy={busy.make_hologram || busy.focus_sweep || busy.eye_view || busy.propagate || busy.desk_wave_view}
           right={<div className="flex gap-0.5 rounded-md bg-black/30 p-0.5">{[["focus", "eye"], ["lab", "lab"], ["holo", "phase"]].map(([kk, l]) => (
             <button key={kk} onClick={() => setImg(kk)} className={`rounded px-1.5 py-0.5 font-mono text-[9.5px] ${img === kk ? "bg-white/10 text-white" : "text-silver"}`}>{l}</button>))}</div>}>
           {img === "focus" && <div className="flex gap-0.5 rounded-md bg-black/30 p-0.5">{DISPLAYS.map(([kk, l]) => (
@@ -189,13 +251,13 @@ export default function PhysicsPanel() {
               style={eyeColor ? { background: "linear-gradient(90deg,#ff5a5a33,#5aff8a33,#5a8aff33)", color: "#fff" } : { color: "#6dffa0" }}>{eyeColor ? "RGB" : "530"}</button>
           </div>}
           <div className="flex gap-2.5">
-            <div className="hud-frame relative flex-1">
+            <div className={`relative min-w-0 flex-1 ${pic ? "hud-frame" : ""}`}>
               {pic ? <>
                 <img src={pic} className="aspect-square w-full rounded-[10px] bg-black object-cover" />
                 <div className="scanlines pointer-events-none absolute inset-0 rounded-[10px]" />
                 <span className="hud-tag absolute right-2 top-2 !text-[8.5px]">{img === "focus" ? `SIMULATED RETINA · ${(sweep?.lasers || r.eye?.info.lasers_nm || [530]).join("/")} nm` : img === "lab" ? "LAB SLM DEMO · NOT THE DESK" : "PHASE · LAB SLM"}</span>
               </> : <EmptyHolo lab={img !== "focus"} busy={busy.eye_view || busy.focus_sweep || busy.make_hologram} onRun={() => st.hologram()} />}
-              {img === "focus" && sweep && !eyeShown && <div className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-cyan-glow">focus {sweep.depths[sweep.i]} mm · {sweep.sharp[sweep.i]}%</div>}
+              {img === "focus" && sweep && !eyeShown && <div className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-cyan-glow">focus {sweep.depths[sweep.i]} mm · {sweep.sharpRaw?.[sweep.i] ?? "—"}%</div>}
               {img === "focus" && eyeShown && <button onClick={() => setEyeShown(false)} className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-cyan-glow">eye view · speckle {r.eye.info.speckle_contrast_pct}% ✕</button>}
               {img === "lab" && r.recon && <div className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] text-cyan-glow">lab reconstruction{r.recon.z != null ? ` · z ${r.recon.z} mm` : ""}</div>}
             </div>
@@ -215,13 +277,16 @@ export default function PhysicsPanel() {
               onClick={() => { setImg("focus"); st.eyeView({ which_eye: "both" }); }}><Icon name="eye" />Both eyes</button>
             <button className="btn" disabled={!s.parts.length || busy.desk_wave_view} title="True-scale wave simulation of the desk panel (slower)"
               onClick={() => st.tool("desk_wave_view", sweep ? { focus_z_mm: sweep.depths[sweep.i] } : {})}><Icon name="wave" />Desk wave check</button>
+            <button className="btn" disabled={!s.parts.length || busy.desk_wave_view} title="Same, with ONE phase-only panel solved for the tracked pupil band (pupil-GS, ~2x slower)"
+              onClick={() => st.tool("desk_wave_view", { encode: "pupil_gs", ...(sweep ? { focus_z_mm: sweep.depths[sweep.i] } : {}) })}><Icon name="wave" />Phase-only</button>
           </div>
           {r.wave && <div className="space-y-1">
             <div className="grid grid-cols-2 gap-1.5">
               <div className="relative"><img src={r.wave.wave} className="aspect-square w-full rounded-[8px] bg-black object-cover" /><span className="hud-tag absolute left-1 top-1 !text-[8px]">WAVE · PANEL</span></div>
               <div className="relative"><img src={r.wave.model} className="aspect-square w-full rounded-[8px] bg-black object-cover" /><span className="hud-tag absolute left-1 top-1 !text-[8px]">EYE MODEL</span></div>
             </div>
-            <p className="text-[10px] leading-snug text-silver">Left: the desk panel itself simulated at full size ({r.wave.info.projected_pitch_um} µm projected pitch, eye box {r.wave.info.eye_box_mm} mm, focus {r.wave.info.focus_z_mm} mm, {r.wave.info.encode === "none" ? "ideal complex modulation" : r.wave.info.encode}). Right: the fast eye model used everywhere else. They should agree.</p>
+            <p className="text-[10px] leading-snug text-silver">Left: the desk panel itself simulated at full size ({r.wave.info.projected_pitch_um} µm projected pitch, eye box {r.wave.info.eye_box_mm} mm, focus {r.wave.info.focus_z_mm} mm, {r.wave.info.encode === "none" ? "ideal complex modulation" : r.wave.info.encode === "pupil_gs" ? "one phase-only panel, pupil-band phase retrieval" : r.wave.info.encode}). Right: the fast eye model used everywhere else. They should agree.
+              {r.wave.info.error_vs_complex_pct != null && <> Phase-only vs ideal complex: {r.wave.info.error_vs_complex_pct}% error, haze in dark areas {r.wave.info.haze_in_dark_pct}%{r.wave.info.pupil_band_efficiency ? `, ${Math.round(r.wave.info.pupil_band_efficiency * 100)}% of the panel light aimed into the pupil band` : ""}.</>}</p>
           </div>}
           <p className="text-[10.5px] leading-snug text-silver">
             {img === "focus" ? <>A seated viewer 70 cm away, eye focused at the slider height. Wave-optics eye (v9, 4 mm pupil), Window Law, 3×3 sparse-group speckle (v11). {sweep?.display}{view.section || view.explode || view.xray ? " · cut / exploded / x-ray as shown" : ""}. Simulation, not a built display.</>
@@ -235,7 +300,7 @@ export default function PhysicsPanel() {
             : <p className="text-[11px] text-silver">Calculate to see how sharp each height looks to the eye.</p>}
         </Section>
 
-        <Section title="AETHER Desk · sharpness vs height" busy={busy.desk_check || busy.search_column_width}
+        <Section title="Desk · sharpness vs height" busy={busy.desk_check || busy.search_column_width}
           right={<button className="btn px-2 py-0.5 text-[11px]" onClick={() => st.tool("desk_check")}>Run</button>}>
           {r.desk ? <>
             <LineChart xs={r.desk.rows.map((x) => x.height_cm)} ys={r.desk.rows.map((x) => x.sharpness_vs_full_hologram_pct)} yMax={100} threshold={80}
@@ -246,7 +311,7 @@ export default function PhysicsPanel() {
           {r.search && <div className="font-mono text-[11px] text-silver">best <span className="text-cyan-glow">{r.search.largest_column_width_um ?? "—"} µm</span> · {r.search.tried?.length} steps</div>}
         </Section>
 
-        <Section title="Window Law · eye through panel" busy={busy.window_check}
+        <Section title="Window Law" busy={busy.window_check}
           right={<button className="btn px-2 py-0.5 text-[11px]" onClick={() => st.tool("window_check")}>Check</button>}>
           {r.window ? <>
             <div className="flex items-baseline justify-between"><span className="text-[11.5px] text-white/80">Visible</span><span className="readout text-[16px] text-cyan-glow">{r.window.visible_pct}%</span></div>
@@ -288,5 +353,5 @@ export default function PhysicsPanel() {
         </Section>
       </div>
     </FloatPanel>
-  );
+  </>);
 }
