@@ -79,7 +79,7 @@ The models are used as a **pipeline**, not as individual Q&A endpoints: Muse Spa
 > *A working demo that holds up, and a demo video worth watching*
 
 **Hosted replay (no key, no server):** Pre-computed results of all three demos — interactive 3D viewer in the browser, real GLB models, full explanation steps.
-→ https://ngweibin050-dev.github.io/aether/
+→  https://aether-lab-delta.vercel.app/
 
 **Demo menu in the app:**
 - **D** — metal drawing press (US Patent 929,594)
