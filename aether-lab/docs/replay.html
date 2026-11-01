@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AETHER Lab replay</title>
+<meta name="description" content="Recorded runs of AETHER Lab: a patent drawing to a working 3D assembly with Meta's models. Static replay, no live AI.">
+<style>
+:root { --bg: #070d16; --panel: #0d1726; --line: #1d2a3d; --text: #e6edf6; --muted: #93a4ba; --accent: #5fe1ff; --warn: #ffb547; --ok: #4ade80; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+header h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
+.rec { color: var(--warn); font: 600 12px ui-monospace, Consolas, monospace; border: 1px solid #ffb54766; border-radius: 999px; padding: 3px 10px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tabs button, .btn { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.tabs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .4; cursor: default; }
+main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 16px; padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 12px 16px 32px; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; min-width: 0; }
+#view { position: relative; height: min(68vh, 640px); padding: 0; overflow: hidden; }
+#view canvas { display: block; width: 100%; height: 100%; }
+#viewbar { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+.label { color: var(--muted); font: 600 11px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: .08em; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 8px 0; }
+.stat { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.stat b { display: block; font: 600 20px ui-monospace, Consolas, monospace; color: var(--accent); }
+table { width: 100%; border-collapse: collapse; font: 12.5px ui-monospace, Consolas, monospace; }
+td { padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.who { color: var(--accent); white-space: nowrap; } td.s { text-align: right; color: var(--muted); white-space: nowrap; }
+.note { color: var(--warn); font-size: 12.5px; }
+.muted { color: var(--muted); font-size: 13px; }
+#explain h3 { margin: 6px 0 2px; font-size: 16px; }
+.exrow { display: flex; gap: 12px; } .exrow > div { flex: 1; min-width: 0; }
+figure { margin: 0; width: 140px; flex: none; } figure img { width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+figcaption { color: var(--warn); font-size: 11px; line-height: 1.3; margin-top: 4px; }
+.imgs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .imgs img { width: 100%; border-radius: 8px; background: #fff; }
+@media (max-width: 560px) { .exrow { flex-direction: column; } figure { width: 100%; } .imgs { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="index.html" style="color:inherit;text-decoration:none">AETHER Lab</a> · replay</h1>
+  <div class="tabs" id="tabs"></div>
+  <span class="rec" id="rec">RECORDED · not live</span>
+</header>
+<main>
+  <section class="card" id="view">
+    <div id="viewbar">
+      <button class="btn" data-cam="front">Front</button><button class="btn" data-cam="top">Top</button>
+      <button class="btn" data-cam="iso">3/4</button><button class="btn" id="explodeBtn">Explode</button>
+      <a class="btn" id="glb" download>Download GLB</a>
+    </div>
+  </section>
+  <aside style="display:grid;gap:16px;align-content:start;min-width:0">
+    <section class="card">
+      <div class="label" id="src"></div>
+      <h2 id="title" style="margin:4px 0 2px;font-size:20px"></h2>
+      <div class="muted" id="meta"></div>
+      <div class="stats" id="stats"></div>
+      <div class="note" id="scale"></div>
+    </section>
+    <section class="card" id="explain" hidden>
+      <div class="label">Explain this machine · Muse Spark · every part and number checked against the built model</div>
+      <div class="exrow">
+        <div>
+          <div class="muted" id="exstep"></div>
+          <h3 id="extitle"></h3>
+          <p id="extext" style="margin:4px 0 10px"></p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn" id="back">Back</button><button class="btn" id="next">Next</button><button class="btn" id="play">Play</button>
+          </div>
+        </div>
+        <figure id="ill" hidden><figcaption></figcaption></figure>
+      </div>
+    </section>
+    <section class="card">
+      <div class="label">Who did each step (seconds, this recorded run)</div>
+      <table id="steps"></table>
+    </section>
+  </aside>
+  <section class="card" style="grid-column:1/-1">
+    <div class="label" id="imglabel">The drawing and what was built</div>
+    <div class="imgs" id="imgs"></div>
+    <p class="muted">Everything optical in AETHER is a simulation; no holographic display has been built. These are saved results of real
+      runs (Meta Model API, Modal T4 GPU), replayed without any AI call. Means over many runs: <a href="RESULTS.md">RESULTS.md</a>.</p>
+  </section>
+</main>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const $ = (id) => document.getElementById(id);
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.localClippingEnabled = true;
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x070d16);
+scene.add(new THREE.HemisphereLight(0xdfefff, 0x1a2230, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(1, 2, 1.5); scene.add(sun);
+const camera = new THREE.PerspectiveCamera(35, 1, 0.001, 50);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+let model = null, meshes = [], centre = new THREE.Vector3(), radius = 0.1, exploded = 0, explodeTarget = 0, camGoal = null;
+const fit = () => { const r = view.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); };
+addEventListener("resize", fit);
+
+const DIRS = { front: [0, 0.15, 1], top: [0, 1, 0.001], iso: [0.8, 0.6, 0.9] };
+function aim(name, box) {
+  const b = box && !box.isEmpty() ? box : new THREE.Box3().setFromObject(model);
+  const c = b.getCenter(new THREE.Vector3()), r = Math.max(b.getSize(new THREE.Vector3()).length() / 2, radius * 0.15);
+  const dir = new THREE.Vector3(...DIRS[name]).normalize();
+  camGoal = { pos: c.clone().add(dir.multiplyScalar(r / Math.sin(THREE.MathUtils.degToRad(17.5)) * 1.1)), target: c };
+}
+// GLTFLoader sanitises node names (spaces and . : / [ ] become _): compare the same way
+const key = (n) => THREE.PropertyBinding.sanitizeNodeName(n);
+function highlight(names) {
+  const set = new Set((names || []).map(key));
+  for (const m of meshes) {
+    const on = !set.size || set.has(m.userData.partName);
+    m.material.transparent = !on; m.material.opacity = on ? 1 : 0.07; m.material.depthWrite = on;
+    m.material.emissive.setHex(set.size && on ? 0x1c6f8a : 0x000000);
+  }
+}
+function boxOf(names) {
+  const set = new Set(names.map(key)), b = new THREE.Box3();
+  for (const m of meshes) if (set.has(m.userData.partName)) b.expandByObject(m);
+  return b;
+}
+
+let data = null, step = 0, timer = null;
+async function load(id) {
+  clearInterval(timer); timer = null; $("play").textContent = "Play";
+  data = await (await fetch(`replay/${id}/data.json`)).json();
+  for (const b of $("tabs").children) b.setAttribute("aria-pressed", b.dataset.id === id);
+  $("src").textContent = data.source;
+  $("title").textContent = data.title;
+  $("rec").textContent = `RECORDED ${data.recorded_at} · not live`;
+  $("meta").textContent = `${data.parts} parts · ${data.size_mm.join(" × ")} mm on the desk`;
+  const m = data.metrics || {}, s = [];
+  if (m.view_match_pct) s.push(...Object.entries(m.view_match_pct).map(([k, v]) => [`view match ${k}`, v + " %"]));
+  if (m.recall_pct != null) s.push(["recall: drawn lines built", m.recall_pct + " %"], ["parts precision", m.parts_precision_pct + " %"]);
+  if (data.desk) s.push(["desk: parts ≥ 80 % sharp", `${data.desk.parts_ok}/${data.desk.parts}`]);
+  $("stats").innerHTML = s.map(([k, v]) => `<div class="stat"><span class="label">${k}</span><b>${v}</b></div>`).join("");
+  $("scale").textContent = `Model scale, real size unknown (${m.scale || "assumed"}). Desk numbers are simulated.`;
+  $("steps").innerHTML = data.steps.map((x) => `<tr><td class="who">${x.who}</td><td>${x.what}</td><td class="s">${x.s} s</td></tr>`).join("")
+    + (data.explain ? `<tr><td class="who">Muse Spark</td><td>explanation</td><td class="s">${data.explain.timing?.spark_s} s</td></tr>` : "")
+    + (data.explain?.illustration_s ? `<tr><td class="who">Muse Image</td><td>illustration</td><td class="s">${data.explain.illustration_s} s</td></tr>` : "");
+  $("imgs").innerHTML = [[data.check_image, data.kind === "machine" ? "Built vs drawing (cyan: built, red: drawn but not built)" : "Blue: the model seen from each view; red: drawn but not built"],
+    [data.reading_image, "What Muse Spark read (boxes and axes)"]].filter(([f]) => f)
+    .map(([f, c]) => `<figure style="width:auto"><img src="replay/${id}/${f}" alt="${c}"><figcaption style="color:var(--muted)">${c}</figcaption></figure>`).join("");
+  $("glb").href = `replay/${id}/model.glb`; $("glb").setAttribute("download", `aether-${id}.glb`);
+  if (model) scene.remove(model);
+  const g = await new GLTFLoader().loadAsync(`replay/${id}/model.glb`);
+  model = g.scene; meshes = [];
+  model.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.side = THREE.DoubleSide; o.userData.partName = o.name; o.userData.home = o.position.clone(); meshes.push(o); } });
+  const box = new THREE.Box3().setFromObject(model); box.getCenter(centre); radius = box.getSize(new THREE.Vector3()).length() / 2;
+  for (const o of meshes) { const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3()); o.userData.dir = c.sub(centre); }
+  scene.add(model); exploded = explodeTarget = 0;
+  camera.position.copy(centre).add(new THREE.Vector3(...DIRS.iso).normalize().multiplyScalar(radius * 3.4));
+  controls.target.copy(centre); controls.update();
+  $("explain").hidden = !data.explain;
+  step = 0; highlight(null);
+  if (data.explain) { showStep(); const il = data.explain.illustration; $("ill").hidden = !il;
+    if (il) { $("ill").querySelector("img")?.remove(); const img = new Image(); img.alt = "AI concept illustration"; img.src = `replay/${id}/${il}`;
+      $("ill").prepend(img); $("ill").querySelector("figcaption").textContent = data.explain.illustration_label; } }
+}
+function showStep() {
+  const ex = data.explain, st = ex.steps[step];
+  $("exstep").textContent = `${ex.machine} · step ${step + 1} / ${ex.steps.length}`;
+  $("extitle").textContent = st.title; $("extext").textContent = st.text;
+  $("back").disabled = step === 0; $("next").disabled = step >= ex.steps.length - 1;
+  highlight(st.parts); explodeTarget = st.explode ? 1 : 0;
+  aim(st.camera === "top" ? "top" : st.camera === "iso" ? "iso" : "front", boxOf(st.parts));
+}
+$("back").onclick = () => { if (step > 0) { step--; showStep(); } };
+$("next").onclick = () => { if (step < data.explain.steps.length - 1) { step++; showStep(); } };
+$("play").onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "Play"; return; }
+  $("play").textContent = "Pause";
+  timer = setInterval(() => { if (step >= data.explain.steps.length - 1) { clearInterval(timer); timer = null; $("play").textContent = "Play"; } else { step++; showStep(); } }, 7000);
+};
+for (const b of document.querySelectorAll("[data-cam]")) b.onclick = () => aim(b.dataset.cam);
+$("explodeBtn").onclick = () => { explodeTarget = explodeTarget ? 0 : 1; };
+
+const idx = await (await fetch("replay/index.json")).json();
+$("tabs").innerHTML = idx.map((d) => `<button data-id="${d.id}">${d.id} · ${d.title}</button>`).join("");
+for (const b of $("tabs").children) b.onclick = () => load(b.dataset.id);
+fit();
+await load(new URLSearchParams(location.search).get("demo") || idx[0].id);
+renderer.setAnimationLoop(() => {
+  exploded += (explodeTarget - exploded) * 0.12;
+  for (const m of meshes) m.position.copy(m.userData.home).addScaledVector(m.userData.dir, exploded * 0.7);
+  if (camGoal) { camera.position.lerp(camGoal.pos, 0.08); controls.target.lerp(camGoal.target, 0.08); if (camera.position.distanceTo(camGoal.pos) < radius * 0.002) camGoal = null; }
+  controls.update(); renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AETHER Lab</title>
+<meta name="description" content="One paper machine drawing in, a working 3D assembly out — completed by Meta's models and checked on a simulated holographic desk.">
+<style>
+:root { --bg: #070d16; --panel: #0d1726; --line: #1d2a3d; --text: #e6edf6; --muted: #93a4ba; --accent: #5fe1ff; --warn: #ffb547; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+@media (max-width: 600px) { .wrap { padding: 0 16px; } }
+header { padding: 56px 0 28px; }
+.kicker { color: var(--accent); font: 600 12px ui-monospace, Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+h1 { font-size: clamp(30px, 6vw, 52px); line-height: 1.08; margin: 10px 0 16px; letter-spacing: -.01em; }
+.lede { font-size: 18px; color: #c9d5e4; max-width: 760px; }
+.cta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+.cta a { padding: 10px 18px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; color: var(--text); background: var(--panel); }
+.cta a.primary { background: var(--accent); color: #031018; border-color: var(--accent); font-weight: 600; }
+section { padding: 26px 0; border-top: 1px solid var(--line); }
+h2 { font-size: 22px; margin: 0 0 12px; }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+.step b { color: var(--accent); display: block; font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 560px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font: 600 12px ui-monospace, Consolas, monospace; text-transform: uppercase; letter-spacing: .06em; }
+td:first-child { white-space: nowrap; color: var(--accent); }
+.honest { border: 1px solid #ffb54755; background: #ffb5470d; border-radius: 12px; padding: 14px 16px; color: #f3dcb4; }
+footer { padding: 28px 0 48px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">Meta AI Builders Hackathon 2026 · built Oct 26 – Nov 4</div>
+  <h1>One paper drawing in.<br>A working 3D machine out.</h1>
+  <p class="lede">AETHER Lab reads a single page of a mechanical drawing — a century-old patent figure with no scale and no
+    second view — and Meta's models turn it into a 3D assembly whose gears mesh, explain it part by part, and check
+    how sharp it would look on a holographic workbench. <b>The workbench is simulated, not built.</b></p>
+  <div class="cta">
+    <a class="primary" href="replay.html">Replay the demos</a>
+    <a href="replay.html?demo=C">Gearbox (held out)</a>
+    <a href="HOLOGRAPHY_ROADMAP.md">Holography roadmap</a>
+    <a href="RESULTS.md">All measured results</a>
+  </div>
+</header>
+
+<section>
+  <h2>How it works</h2>
+  <div class="steps">
+    <div class="step"><b>1 · Muse Spark reads</b>The whole sheet and four close-ups, each twice; a part is kept only when both readings agree or the drawing confirms it.</div>
+    <div class="step"><b>2 · Muse Wonder completes</b>Depth, planes, the hidden shafts and bearings, which gears mesh — each added part with its engineering reason.</div>
+    <div class="step"><b>3 · The engine rebuilds</b>Involute gears that mesh, pins through the stack, plates with their holes; GLB and STL export.</div>
+    <div class="step"><b>4 · Muse Spark explains</b>Step by step, highlighting each part; every part id and number is checked against the model in code.</div>
+    <div class="step"><b>5 · The desk checks</b>A wave-optics eye model scores every part on the AETHER Desk (simulation).</div>
+  </div>
+</section>
+
+<section>
+  <h2>Meta models used</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Model</th><th>What it does</th><th>Measured</th></tr>
+    <tr><td>Muse Spark</td><td>Reads the drawing; writes the grounded explanation; runs the design agent</td><td>reading 30–42 s; explanation 12–15 s, 6 steps, 0 rejected</td></tr>
+    <tr><td>Muse Wonder</td><td>Engineer's completion of the views the drawing does not show</td><td>35–75 s per run, a reason for every added part</td></tr>
+    <tr><td>Muse Image</td><td>One concept illustration, labelled "not the measured model"</td><td>9–20 s, in parallel</td></tr>
+    <tr><td>Muse Voice Transcribe</td><td>Voice commands, "Explain this machine"</td><td>a spoken request transcribed word for word</td></tr>
+    <tr><td>SAM 3.1</td><td>Cuts a part out of a photo for the rebuild</td><td>gear found, 12 teeth counted, 4.4 s</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Results (live runs, real API)</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Input</th><th>Measure</th><th>Result</th></tr>
+    <tr><td>D press</td><td>full run incl. explanation</td><td>108.9 s / 110.5 s</td></tr>
+    <tr><td>C gearbox, held out</td><td>full run incl. explanation</td><td>121.1 s / 161.4 s</td></tr>
+    <tr><td>B, D, C</td><td>recall / parts precision (replayed)</td><td>76.3/62.9 · 72.3/77.8 · 73.6/80.4 %</td></tr>
+    <tr><td>NASA X-3 sheet</td><td>view match side / top / front</td><td>100.0 / 99.5 / 98.9 %</td></tr>
+    <tr><td>NASA X-2, held out</td><td>first untouched run</td><td>92.6 / 65.8 / 95.1 %</td></tr>
+  </table></div>
+  <p class="honest">Honest misses: precision on the densest drawing is 62.9 % (target 70); a full run takes 100–160 s
+    (target 90); patent drawings have no scale, so sizes are model scale. No holographic display has been built:
+    every optical number is a simulation.</p>
+</section>
+
+<footer>AETHER Lab · Ng Wei Bin · MIT licence. Inputs: public-domain US patents and NASA graphics; NASA does not endorse this project.
+  This page and the replay are static files: no API key, no live AI call.</footer>
+</div>
+</body>
+</html>

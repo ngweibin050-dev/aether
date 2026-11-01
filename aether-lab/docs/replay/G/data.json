@@ -1,0 +1,41 @@
+{
+ "id": "G",
+ "title": "Douglas X-3 three-view",
+ "source": "NASA Dryden graphic (public domain)",
+ "kind": "three_view",
+ "recorded_at": "2026-11-01 17:14",
+ "parts": 44,
+ "size_mm": [
+  179.9,
+  61.8,
+  35.9
+ ],
+ "check_image": "check.jpg",
+ "reading_image": null,
+ "steps": [
+  {
+   "who": "Modal T4 GPU",
+   "what": "find the views, carve the 3D shape",
+   "s": 39.3
+  },
+  {
+   "who": "Modal T4 GPU",
+   "what": "desk sharpness score",
+   "s": 6.0
+  }
+ ],
+ "metrics": {
+  "view_match_pct": {
+   "side": 100.0,
+   "top": 99.5,
+   "front": 98.9
+  },
+  "triangles": 40000,
+  "scale": "assumed: length 180.0 mm (no scale on the sheet)"
+ },
+ "desk": {
+  "parts_ok": 44,
+  "parts": 44,
+  "min_sharpness_pct": 94.5
+ }
+}
