@@ -181,7 +181,7 @@ def test_R2_station_override(built):
     assert st["state"] == "ok", st
     assert d.data["parameters"][f"{sid}.z_top"]["provenance"] == "user_confirmed"
     pts = d.info[f"section.{sid}"]["points_yz"]
-    assert abs(pts[-1][1] - new) < 1e-6                                  # the section's top centre is the new value
+    assert abs(pts[-1][1] - new) < 1e-3                                  # section points are stored to 1e-4 mm
     rebuilt = st["rebuilt_features"]
     assert rebuilt < len(d.data["features"])                             # only dependents were rebuilt (cache)
 
