@@ -10,7 +10,7 @@ Theme : Push the Frontlier
 Theme Judgment : Use Meta’s Models to tackle challenges in software, robotics, manufacturing, energy, materials and beyond. Show us what becomes possible when these models meet the real world
 
 Rules :
-1.	Build it between Oct 26 and Nov 24 only
+1.	Build it between Oct 26 and Nov 4 only
 2.	GitHub Repository must be public
 3.	Demo only what you built, judges must be able to tell what your team created during the event, or the project is disqualified.
 No these allowed :
