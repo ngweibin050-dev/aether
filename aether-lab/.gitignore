@@ -4,3 +4,9 @@ output/
 *.pyc
 ui/node_modules/
 graphify-out/
+# third-party images (stock / brand): internal comparison only, never in the repo
+tests/blueprint_example2.jpg
+tests/machine_dense.jpg
+tests/car_three_view.gif
+# scratch renders
+g_side_ceiling*.png

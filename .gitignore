@@ -2,3 +2,7 @@
 aether-window
 .env
 skills-lock.json
+# another site's design, kept for reference only
+reference/design_example/
+# graphify knowledge-graph output (local tool)
+graphify-out/
