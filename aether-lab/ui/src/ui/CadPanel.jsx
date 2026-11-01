@@ -62,10 +62,10 @@ export default function CadPanel() {
     .filter((p) => !q || p.id.toLowerCase().includes(q.toLowerCase()) || (p.note || "").toLowerCase().includes(q.toLowerCase())), [doc, q]);
   const counts = useMemo(() => (doc?.parameters || []).reduce((a, p) => ({ ...a, [p.provenance]: (a[p.provenance] || 0) + 1 }), {}), [doc]);
   const s = doc?.status || {};
-  const style = { right: L.right + 2 * L.gap, top: L.top, bottom: L.bottom + 170, width: 380 };
+  const style = { right: L.right + 2 * L.gap, top: L.top + 112, bottom: L.bottom + 170, width: 380 };   // below the nav gizmo
 
   return (<>
-    <PanelIcon id="cad" title="CAD document" icon="holo" style={{ right: L.right + 2 * L.gap, top: L.top }} busy={busy} />
+    <PanelIcon id="cad" title="CAD document" icon="holo" style={{ right: L.right + 2 * L.gap, top: L.top + 112 }} busy={busy} />
     <FloatPanel id="cad" title="CAD document" icon="holo" open={open} busy={busy} onClose={() => st.setPanel("cad", false)} style={style}>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3.5 pb-3 text-[12px]">
         {!doc && <div className="py-4 text-slate-400">{err ? `No CAD document yet (${err}). Upload a three-view sheet: it is rebuilt as parametric CAD.` : "Loading…"}</div>}

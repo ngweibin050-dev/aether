@@ -413,6 +413,7 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     doc = cad_client.call("document")
     imp = lab.import_cad(state, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
                          provenance={"maturity": doc["maturity"]})
+    imp["display_fit"] = _fit_to_desk(state, imp["id"])     # display scale only; the CAD document stays in real mm
     rep = r.get("report") or {}
     LAST_REPORT.clear()
     LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,

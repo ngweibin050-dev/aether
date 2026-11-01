@@ -292,6 +292,8 @@ def cad_import_current(name, status_extra=None):
     with LOCK:
         res = lab.import_cad(STATE, m["meshes"], m["groups"], name, doc["document_id"],
                              provenance={"maturity": doc["maturity"], "stale": m["stale"]})
+        # shown on the desk at one uniform DISPLAY scale (the CAD document keeps its real millimetres)
+        res["display_fit"] = agent._fit_to_desk(STATE, res["id"])
     return res, doc
 
 

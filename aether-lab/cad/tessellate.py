@@ -63,7 +63,7 @@ def mesh(shape, linear=0.15, angular=0.25, relative=False):
             acc = np.zeros_like(V)
             for j in range(3):
                 np.add.at(acc, F[:, j], fn)
-            bad = ~ok | (np.linalg.norm(N, axis=1) < 1e-9)
+            bad = (not ok) | (np.linalg.norm(N, axis=1) < 1e-9)
             N[bad] = acc[bad]
             N /= np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
             # a surface normal pointing against the triangle winding: trust the winding (orientation errors)

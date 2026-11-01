@@ -249,7 +249,10 @@ def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6
     groups = {}
     for rf in region_feats or []:
         groups.setdefault((rf["op"], rf["kind"], rf["view"]), []).append(rf)
-    order = sorted(groups, key=lambda k: (0 if k[0] == "pocket" else 1, k[1]))
+    # imprints first (outlines on the clean skin), then pockets (Boolean cuts handle the imprinted edges); each pocket
+    # takes its depth from the clean skin (a second input). Order chosen by measurement: the reverse order made the
+    # headlight imprint self-intersect (BRepAlgoAPI_Check)
+    order = sorted(groups, key=lambda k: (0 if k[0] == "imprint" else 1, k[1]))
     _P(doc, "region_scale", rel={"kind": "scaled", "ref": 1.0, "by": "overall_length", "by_ref": REF_L}, unit="1",
        note="region outlines are stored at the reference scale")
     for op, kind, view in order:
@@ -273,7 +276,8 @@ def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6
         else:
             params["material"] = items[0]["value"]
             label = f"Imprint: {kind.replace('_', ' ')} outline ({len(items)} region(s), {view} view)"
-        feats.append({"id": fid, "op": f"{op}_projection", "inputs": [last], "params": params, "component": "body",
+        feats.append({"id": fid, "op": f"{op}_projection", "inputs": [last] + (["body.skin"] if op == "pocket" else []),
+                      "params": params, "component": "body",
                       "label": label, "region": {"kind": kind, "view": view, "material": params.get("material")}})
         last = fid
     if region_feats:
