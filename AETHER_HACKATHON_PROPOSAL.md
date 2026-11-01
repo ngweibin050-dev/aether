@@ -1,4 +1,4 @@
-# AETHER Holography Roadmap: from a simulated desk to a holographic workbench
+# AETHER Holography Roadmap: from a simulated lab to holographic hardware implementation
 
 Ng Wei Bin · November 2026 · hackathon proposal
 
