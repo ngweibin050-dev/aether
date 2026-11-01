@@ -8,135 +8,81 @@ or recalled rather than checked are labelled *assumed*. Where a note and the eng
 used and the disagreement is stated.
 
 Sources are cited inline as file names. The theory notes v4–v13 and the two notes of 30 Oct were written during the
-hackathon (27 Oct – 1 Nov 2026) as research, not product code; `theory/AETHER_Physics_Record.md` and
-`proposal/AETHER_Decision_Log.md` are pre-event background (23–26 Oct).
+hackathon (27 Oct – 1 Nov 2026) as research, not product code; `theory/AETHER_Physics_Record.md` are pre-event background (23–26 Oct).
 
 ---
 
 ## 1. Problem Statement
 
-A designer who builds a machine in CAD sees it on a flat screen. Depth is inferred from shading and rotation; the eyes
-always focus on the glass. Headsets give stereo depth but put a device on the face, and stereo screens still make the
-eye focus on the panel while the two eyes converge somewhere else.
+**Bridging the Gap Between 2D Mechanical Drawings and 3D Understanding**
 
-AETHER's goal is a **workbench that shows a true hologram**: the full light wavefront of the object, so the eye
-focuses at the object's real depth and each eye sees its own side, with the object standing on or just above the
-desk where hands can reach it. Nothing is worn and nothing is released into the air.
+Mechanical knowledge is often trapped in two-dimensional drawings. Understanding how a machine is constructed from these drawings can be challenging, particularly when dealing with century-old patents, incomplete documentation, single-view illustrations, or assemblies with hidden components.
 
-## 2. The AETHER Desk concept
+A conventional reconstruction workflow requires engineers to manually interpret the drawing, identify individual components, estimate missing dimensions and depths, construct each part, and determine how the components fit together. This process is time-consuming, requires specialist experience, and leaves room for interpretation errors.
 
-- **A flat holographic panel lying in the desk**, viewed by a seated user about 70 cm away
-  (`theory/AETHER_Physics_v13_Desk_Front_zh.md`).
-- **Eye-tracked:** the hologram only has to be correct inside a small eye box around each tracked pupil, which cuts
-  the required pixel count by orders of magnitude (`theory/AETHER_Physics_Record.md` §2.4, §8;
-  `theory/AETHER_Physics_v10_Remaining_Six_zh.md` §2).
-- **One-dimensional (1D) holography:** true holography (coherent) in the vertical direction; in the horizontal
-  direction, columns are mutually incoherent and each eye gets its own view. This is what makes the computation and
-  the modulator speed fit (`theory/AETHER_Physics_v8_Card_Battery_zh.md`, `..._v9_1D_Focus_zh.md`).
-- **The image sits on the panel**, partly above and partly below the glass, inside the zone where 1D holography still
-  gives natural focus (section 3.3). Hands interact from the front and the sides (section 3.2).
-- **The design software and AI come first.** AETHER Lab, built during the hackathon, already turns one paper machine
-  drawing into a 3D assembly with Meta's models and scores how sharp each part would look on this desk (section 4).
+**The challenge becomes even greater when:**
+- Information is missing: Old drawings may contain no scale, incomplete dimensions, or insufficient views.
+- Components are hidden: Shafts, bearings, internal structures, and connections may not be visible.
+- Spatial relationships are unclear: A flat drawing does not immediately communicate depth, alignment, or assembly relationships.
+- Understanding takes time: Engineers and students must mentally reconstruct the machine before they can meaningfully inspect or explain it.
 
-## 3. Physics summary
+The result is a significant gap between what a drawing shows and what a person needs to understand.
 
-### 3.1 The Window Law (geometry of any true hologram)
 
-> *A point P is seen only if the line from the eye through P, extended backwards, passes through the panel.*
-> (`theory/AETHER_Physics_Record.md` §8.1, "H1")
+## 2. Target User
+**Primary users**
+- Mechanical engineers: For preliminary reconstruction and understanding of legacy mechanical designs.
+- Engineering students and educators: For visualising mechanical assemblies and learning how individual components interact.
 
-The record itself labels this an application of the known Kirchhoff–Helmholtz integral, a *candidate constraint*
-whose arithmetic is reproducible but which has not been reviewed by a Fourier-optics expert (§8, status note of
-26 Oct). Consequence for the desk: the usable cross-section at height h is at most W·(d − h)/d for a panel of width W
-seen from distance d; a 27″ panel (59.8 × 33.6 cm) at 70 cm gives 60 × 34 cm at the surface and 51 × 29 cm at
-10 cm height (`theory/AETHER_Physics_v13_Desk_Front_zh.md` §1).
+**Secondary users**
+- Product and industrial designers: For exploring mechanical concepts from sketches and technical illustrations.
+- Maintenance and restoration technicians: For gaining an initial understanding of older machinery when original documentation is limited.
+- Researchers and historians of engineering: For studying historical mechanisms and patent designs.
 
-**Engine check:** `lab.window_check` reproduces the rule (test 6: a point inside the window is visible, outside it is
-not).
+## 3. Our Solution - AETHER Lab
 
-### 3.2 Hands in the image
+AETHER Lab is an AI-powered mechanical reconstruction and holographic simulation workbench. It transforms mechanical drawings into interactive 3D assemblies, helps users understand how the machine is constructed, and explores how those assemblies could be viewed through AETHER's future holographic display.
 
-The light of an image point comes from a small patch of the panel along the line panel → point → pupil
-(about 0.3 mm wide at 5 cm height, 0.7 mm at 10 cm). A hand **in front of** the object occludes it correctly; a hand
-**behind or inside** it blocks light that should appear in front of the hand: a depth conflict no software can fix
-(`theory/AETHER_Physics_v13_Desk_Front_zh.md` §4). Interaction rule: work from the front and the sides; pull parts
-towards the user. **Engine check:** test 6 ("hand behind a point → conflict, in front → natural").
+**A. AI-powered drawing interpretation**
 
-### 3.3 The sharp zone of a 1D desk
+AETHER Lab uses a coordinated pipeline of Meta AI models:
+- Muse Spark: Interprets the mechanical drawing, identifies visible components, and generates a structured part description.
+- Muse Wonder: Acts as an engineering completion model, inferring missing depth, thickness, hidden shafts, bearings, and possible component relationships. Inferred details are explicitly distinguished from information visible in the original drawing.
+- SAM 3.1: Supports image segmentation for identifying and isolating components in photographs.
+- Muse Voice Transcribe: Enables voice-based commands and interaction.
+- Muse Image: Generates supporting conceptual illustrations to help users understand individual components. These illustrations are not treated as measured 3D geometry.
 
-In 1D holography the horizontal light comes from the panel plane, so an image point at distance D from the eye with
-the panel at distance d has an astigmatism of |1/D − 1/d|. The depth budget follows (`..._v9_1D_Focus_zh.md`):
+**B. Parametric 3D reconstruction**
 
-  Δz ≈ Δmax · d²   (the usable depth grows with the square of the viewing distance)
+AETHER's geometry engine converts the interpreted components into structured 3D geometry and assembles them into an interactive model.
 
-| Quantity | Note | Engine (used) |
-|---|---|---|
-| Full 2D hologram, eye model (4 mm pupil, 530 nm, 15 c/deg) | 0.855 (`..._v13_Desk_Front_zh.md` §2) | 0.855 (test 4) |
-| 1D desk, image 5 cm above the panel, % of full 2D | 89 % (`..._v13_Desk_Front_zh.md` §2, 70 cm table) | **94 %** (test 4) |
-| 1D desk, 15 cm above | 59 % (same table) | **61 %** (test 4) |
-| Sharp zone, ≥ 80 % of full 2D | about ±10 cm around the surface (`..._v13_Desk_Front_zh.md` §2) | **−108 … +87 mm**, computed along each point's own line of sight for an eye at (0, −450, 540) mm looking down ~50° (`theory/AETHER_Lab_Audit_Fixes_2026-10-30_zh.md` §2; shown in the Lab UI) |
+Users can inspect individual components, rotate the assembly, explore internal structures through section cuts and exploded views, and examine how parts fit together.
 
-The note's table uses vertical height; the engine uses the oblique line of sight of a seated viewer, which is why it
-is stricter above the panel. The engine's numbers are the ones to use.
+The reconstructed model can also be exported in GLB and STL formats for further inspection and downstream workflows.
 
-**Independent check in the engine:** a true-scale wave simulation of the 1D desk panel (coherent vertical
-sub-hologram, incoherent columns) matches the analytic eye model within about 1 %: 0.855 vs 0.855 for a point on the
-panel, 0.775 vs 0.776 at 0.62 m (test 14; `..._Lab_Audit_Fixes_2026-10-30_zh.md` §4). This validates the eye model
-against itself in two independent methods; it is not a measurement with a real eye.
+**C. Geometry and optical evaluation**
 
-Floating an object 25 cm above the desk (the "film" version) needs full 2D holography, about 2 × 10⁸ pixels and a
-kilohertz-rate large-area phase modulator that does not exist today (`..._v13_Desk_Front_zh.md` §3: "Desk 2", a
-second-stage research item).
+AETHER Lab does more than generate a 3D visualisation. It applies computational checks to examine the reconstructed geometry against the source drawing, including how well the generated parts correspond to the original drawing views.
 
-### 3.4 Speckle
+Its wave-optics simulation engine then explores the viewing characteristics of the reconstructed assembly under different holographic display configurations.
 
-Coherent light produces speckle (grain). The visibility threshold is a contrast of about 3.2–4.4 % for a still image
-and 4.8–6.9 % for a moving one (Verschaffelt et al. 2015, cited in `..._v11_Speckle_zh.md` §1).
+Users can:
+- Run a focus sweep to examine how different depths come into focus.
+- Inspect simulated holographic output at different focal planes.
+- Compare the simulated 1D AETHER Desk against a full 2D/3D hologram reference.
+- Evaluate optical characteristics such as visibility, sharpness, viewing region, and speckle.
 
-- **Single-frame floor (Theorem S1):** C ≈ 0.67 · λ / (D·θ): about 0.30 for a 4 mm pupil averaged over 1′
-  (`..._v11_Speckle_zh.md` §2). One frame cannot be speckle-free.
-- **Spectral width does not help a thin phase panel (Theorem S2):** 0 → 6 % bandwidth changed the contrast only from
-  0.291 to 0.289 (`..._v11_Speckle_zh.md` §3).
-- **Smooth-phase holograms remove speckle but also the focus cue** (sharpness at 0.5 D defocus stays 91 % instead of
-  13 % for a real object) — rejected (`..._v11_Speckle_zh.md` §4; Wang et al. 2024).
-- **Sparse point groups work:** show every k-th point per frame and cycle the k groups. For 1D holography (only the
-  vertical is coherent) k = 3 gives **2.7 %** at focus and 5.0 % at 0.5 D defocus with correct focus cues, at the cost
-  of k = 3 times the frames (`..._v11_Speckle_zh.md` §4, §5). **Engine:** the Lab's 3 × 3 sparse-group model reports
-  2.6–3.5 % on the live demo scenes (Physics panel, Nov 1).
-- **Frame budget:** with k = 3, a heated liquid crystal (~0.6 ms, ~555 frames/s) serves 1–2 viewers
-  (`..._v11_Speckle_zh.md` §5; `..._v13_Desk_Front_zh.md` §5).
+These optical results are computational simulations, not measurements from a physical holographic display (but helpful for [→ AETHER_LONG_TERM_PROPOSAL.md](AETHER_LONG_TERM_PROPOSAL.md))
 
-### 3.5 Phase-only encoding
+D. Towards a new way of interacting with engineering
 
-A phase-only panel cannot write the complex field directly. In the desk geometry (projected vertical pitch 34.6 µm,
-eye box 10.7 mm at 0.7 m, 4 mm pupil) the naive encodings fail: kinoform MTF 0.041 (ideal 0.855), double-phase 0.103,
-most of the light becoming haze (`theory/AETHER_Phase_Only_Pupil_GS_and_3D_Rebuild_2026-10-30_zh.md` §1).
+AETHER Lab brings together AI-assisted reconstruction, interactive 3D engineering, and computational holography in one workbench.
 
-**Pupil-band phase retrieval (pupil-GS):** because the eye is tracked, only the 4.6 mm band around the pupil must be
-right; a Gerchberg–Saxton loop with a "don't care" region outside the band solves one phase-only column. Degree-of-
-freedom count: the band needs 0.86 N real conditions for N phase unknowns, so a near-exact solution exists when eye
-box / pupil band > 2 (here 2.33) (same note §2). **Engine (test 17):** pupil-GS 0.852 vs complex modulation 0.855 for
-a point on the panel, 0.771 vs 0.775 at 8 cm in front; kinoform 0.041 / 0.143. Cost: light efficiency — image error
-2.2 % at η = 0.05 of the brightest column's light, 40 % at η = 0.5 (same note §2), i.e. several times more backlight;
-the eye needs only microwatts (`..._v8_Card_Battery_zh.md`). Open: compute (200 FFTs per column per sub-frame; ~20 s
-for 160 × 160 on a CPU), tracking error beyond 0.3 mm, real liquid-crystal quantisation and fringing (not modelled).
+It is the first software stage of the broader AETHER vision: a future in which engineers can move beyond viewing mechanical designs on conventional flat displays and interact with spatially reconstructed objects through a holographic workbench.
 
-### 3.6 Light, power and pixels
+## 4. Technical Results (measured IN THIS HACKATHON, will improve in the newer version)
 
-- **Light to the eye:** about 0.24 µW (indoor, 200 cd/m²) to 1.2 µW (outdoor) per eye for a card-sized window at
-  40 cm, because tracking sends light only into the pupil (`..._v8_Card_Battery_zh.md`; luminous efficacy and optical
-  efficiency *assumed*).
-- **Coherence needed by a 1D sub-hologram:** bandwidth ≤ 56 nm and source angle ≤ 0.27 mrad (card case; same note),
-  so a small micro-LED can replace a laser in principle.
-- **Desk pixels:** vertical 45 µm (eye box 7–10 mm), about 7,500 rows × 4,000 columns ≈ 3 × 10⁷
-  (`..._v13_Desk_Front_zh.md` §5). Engine: eye box 8.2 mm at a 45 µm pitch (test 4).
-- **Liquid-crystal speed (checked constants):** 0.6 ms measured for a fast heated phase LC; 0.96 ms at room
-  temperature by recalculation (`..._Master_Report_v4-v10_zh.md` §2, §3.1).
-
-## 4. What AETHER Lab already proves in software (measured IN THIS HACKATHON)
-
-AETHER Lab (`aether-lab/`, built 27 Oct – 3 Nov 2026) is the software half of the desk: it produces the 3D content and
-predicts how it would look on the desk. All numbers below are from `aether-lab/docs/RESULTS.md` (live runs with Meta's
+All numbers below are from `aether-lab/docs/RESULTS.md` (live runs with Meta's
 API and a Modal T4 GPU) or from the test suite (`python tests/test_physics.py`, 35 tests passing on 1 Nov).
 
 | What | Measured |
@@ -151,7 +97,51 @@ API and a Modal T4 GPU) or from the test suite (`python tests/test_physics.py`, 
 These prove the **software pipeline** and the **simulation**. They do not prove that a real panel or a real eye
 behaves as simulated.
 
-## 5. What is not built, only simulated, or assumed 
+## 5. Real World Impact
+
+AETHER Lab aims to deliver measurable benefits across engineering, education, and mechanical preservation.
+
+### Expected Benefits
+| Target users | Expected benefits | Proposed impact targets |
+|---|---|---|
+| Mechanical engineers | Automate initial drawing interpretation and 3D assembly reconstruction, reducing repetitive modelling work. | **Around 30% less time** to produce a preliminary, inspectable 3D assembly. |
+| Engineering students | Improve understanding of mechanical components through interactive 3D models, exploded views, and AI-guided explanations. | **10 percentage points higher accuracy** in identifying components and understanding assembly relationships. |
+| Designers | Quickly transform early mechanical sketches into 3D concepts for visual inspection and refinement. | **40% less time** spent on initial concept visualisation. |
+| Maintenance and restoration technicians | Make legacy machinery easier to understand when original CAD files or complete documentation are unavailable. | Enable preliminary assembly understanding through interactive 3D models and AI-guided explanations. |
+| Engineering researchers | Convert historical patent drawings into inspectable digital models. | Generate initial 3D assemblies in approximately 109–161 seconds in AETHER Lab's recorded demonstrations. |
+
+These figures represent proposed performance targets rather than measured outcomes. They define the improvements AETHER Lab aims to achieve and will be evaluated through subsequent user testing.
+
+### Preliminary User Evaluation
+
+An exploratory pilot evaluation was conducted with Evan Lim, a Faculty of Engineering student, to assess AETHER Lab's effectiveness in mechanical drawing interpretation and understanding.
+
+| Evaluation metric | Without AETHER Lab | With AETHER Lab |
+|---|---:|---:|
+| Task completion time | 35 minutes | 5 minutes |
+| Correct answers | 7/10 (70%) | 9/10 (90%) |
+| Confidence level | 3/5 | 4/5 |
+
+**Key findings:**
+- **85.7% reduction in task completion time**, from 35 minutes to 5 minutes.
+- **20-percentage-point improvement in assessment score**, from 70% to 90%.
+- **20% increase in confidence rating**, from 3/5 to 4/5.
+
+**Participant feedback:**
+
+The participant highlighted AETHER Lab's usefulness for rapid prototyping and mechanical drawing interpretation. In particular, two reconstruction approaches were identified:
+
+- **Trace Mode:** Follows the original mechanical drawing more closely, but may not always produce mechanically logical interpretations.
+- **Interpret Mode:** Focuses on understanding the intended mechanism and generating a conceptual assembly quickly, although the resulting geometry may require further refinement.
+
+The participant also noted that reconstruction performance may vary depending on drawing quality and the completeness of the original information. Well-depicted drawings are generally easier to interpret than incomplete or ambiguous sketches.
+
+**Conclusion:** This preliminary evaluation suggests that AETHER Lab can help users understand and reconstruct mechanical assemblies more efficiently. Further testing with additional participants and a wider range of mechanical drawings is necessary to validate these findings.
+
+*Evaluation sample: 1 participant. Results represent an exploratory pilot and should not be generalised to all engineering users.*
+
+
+## 6. Future Work - What is not built, only simulated, or assumed 
 
 **Not built:** any holographic panel, backlight, eye tracker for the desk, or the printed film of section 6.
 **Only simulated:** every sharpness, speckle, sharp-zone and phase-only number above, with a diffraction-limited eye
@@ -166,7 +156,7 @@ model (no ocular aberrations), a 1′ spatial average for speckle, and ideal tra
 - in AETHER Lab: real sizes of patent drawings (they have no scale; sizes are model scale), depths and thicknesses
   added by the engineer's completion (labelled "guessed" in every part).
 
-## 6. Staged roadmap (WHAT TO BUILD IN LONG TERM)
+**Staged roadmap (WHAT TO BUILD IN LONG TERM)**
 
 | Stage | What | Proves | Needs | Status |
 |---|---|---|---|---|
@@ -177,20 +167,29 @@ model (no ocular aberrations), a 1′ spatial average for speckle, and ideal tra
 
 Order is set by risk: stage 1 answers the largest open question (real-eye focus) at the lowest cost.
 
-## 7. Risks and open problems
+## 7. Risks and Limitations
 
-1. **Real-eye focus on 1D holograms** is unmeasured (section 5). If the eye does not focus as modelled, the sharp zone
-   shrinks.
-2. **Speckle vs viewers:** sparse groups need ~3× the frames; with today's heated LC about 1–2 viewers
-   (`..._v11` §5). More viewers need faster modulators (MEMS phase mirrors reported at 1.44 kHz, `..._v11` §7).
-3. **Phase-only encoding cost:** pupil-GS needs several times more backlight and heavy per-frame computation; real LC
-   effects not modelled (section 3.5).
-4. **Patents:** SeeReal US12298522B2 (single-parallax hologram encoding with tracking) is active to about 2038 and is
-   the main risk; Samsung US10416762B2 (beam-steering backlight) to about 2036
-   (`references/AETHER_Patents_Holographic_Window_2026-10-27.md`, preliminary, not legal advice).
-5. **Hands:** a hand behind or inside the image causes a depth conflict that software cannot fix (section 3.2).
-6. **Not pursued:** images in empty air away from a panel need the air itself to emit light, which all known pathways
-   only reach as plasma (`..._Master_Report_v4-v10_zh.md` §1); this roadmap stays with a panel the user looks through.
+### A. Current AETHER Lab Limitations
+
+| Limitation | Impact |
+|---|---|
+| Missing drawing dimensions and scale | Real-world dimensions cannot always be recovered from the original drawing. |
+| Inferred hidden geometry | Reconstructed components may require further engineering verification. |
+| Imperfect drawing interpretation | Complex, ambiguous, or incomplete drawings may reduce reconstruction quality. |
+| Simulated holographic output | Optical performance has not yet been validated using physical holographic hardware. |
+
+### B. Long-Term AETHER Desk Challenges
+
+| Challenge | What Needs to Be Solved |
+|---|---|
+| Real-eye focus | Validate simulated focus behaviour through physical experiments and eye-focus measurements. |
+| Speckle | Reduce unwanted interference patterns while maintaining sufficient display frame rates. |
+| Optical efficiency | Improve display brightness while reducing computational and power requirements. |
+| Hand interaction | Resolve depth conflicts and occlusion between users' hands and holographic images. |
+
+**Additional Research Considerations**
+
+Patent restrictions, optical display technologies, and the feasibility of free-space holographic imaging require further investigation as AETHER progresses towards physical hardware development. These topics will be addressed in the long-term AETHER research roadmap.
 
 ## 8. References
 

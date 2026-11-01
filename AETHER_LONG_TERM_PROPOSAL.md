@@ -2,7 +2,8 @@
 
 **Author:** Ng Wei Bin  
 **Project:** AETHER Lab (Meta AI Builders Hackathon 2026)  
-**Status:** Long-term vision document. The software half (Stage 0) is complete. All hardware stages are future work.  
+**Status:** Long-term vision document. The software half (Stage 0) is complete. All hardware stages are future work.
+**Prerequisite:** Long-term vision needs investment or funds to plan and execute  
 **Note on honesty:** Every number in this document traces to one of the theory notes listed in the References section. Where a value is not yet experimentally verified, it is labelled **(assumed)** or **(simulated)**. Nothing has been invented.
 
 ---
@@ -21,7 +22,15 @@
 
 ## The Vision
 
-AETHER Lab is a two-part system. The software half — converting a hand-drawn sketch into a layered 3D assembly using Meta's Muse Spark and Muse Wonder models — was built during the hackathon and runs today. The hardware half, described in this document, is the long-term target: the **AETHER Desk**, a flat holographic panel embedded in a workbench surface, and the **AETHER Card**, a bank-card-sized personal holographic window. On the desk, an engineer or designer reaches directly into a floating 3D image with bare hands — no headset, no glasses, no markers. The card fits in a wallet and turns any flat surface into a personal holographic window tethered to a phone or laptop. Both devices are built around the same core technology: a phase liquid-crystal panel that reconstructs a true hologram — one that delivers the correct focus cue to each eye, not a depth-faked stereo image. AETHER Lab, the software already running, is the front end: it takes a sketch, builds the 3D scene, and streams it frame-by-frame to whichever display is present.
+A designer who builds a machine in CAD sees it on a flat screen. Depth is inferred from shading and rotation; the eyes
+always focus on the glass. Headsets give stereo depth but put a device on the face, and stereo screens still make the
+eye focus on the panel while the two eyes converge somewhere else.
+
+AETHER's goal is a **workbench that shows a true hologram**: the full light wavefront of the object, so the eye
+focuses at the object's real depth and each eye sees its own side, with the object standing on or just above the
+desk where hands can reach it. Nothing is worn and nothing is released into the air.
+
+AETHER is a two-part system. The software half **AETHER Lab** — converting a hand-drawn sketch into a layered 3D assembly using Meta's Muse Spark and Muse Wonder models — was built during the hackathon and runs today. The hardware half, described in this document, is the long-term target: the **AETHER Desk**, a flat holographic panel embedded in a workbench surface, and the **AETHER Card**, a bank-card-sized personal holographic window. On the desk, an engineer or designer reaches directly into a floating 3D image with bare hands — no headset, no glasses, no markers. The card fits in a wallet and turns any flat surface into a personal holographic window tethered to a phone or laptop. Both devices are built around the same core technology: a phase liquid-crystal panel that reconstructs a true hologram — one that delivers the correct focus cue to each eye, not a depth-faked stereo image. AETHER Lab, the software already running, is the front end: it takes a sketch, builds the 3D scene, and streams it frame-by-frame to whichever display is present.
 
 ---
 
