@@ -262,7 +262,7 @@ def build_assembly(state, name, parts, position=(0, 0, 70), replace=True, rotati
     _bump(state)
     lo, hi = geometry.bounds(state["parts"])
     return {"assembly": name, "parts": made, "size_mm": _clean(np.round(hi - lo, 1)),
-            "note": "Rebuilt from one drawing view: outlines and positions traced, depth rebuilt from what each part is "
+            "note": "Rebuilt from one drawing view: positions and sizes from the drawing, depth rebuilt from what each part is "
                     "(see each part's eng.dims for what was read and what was assumed)."
             if any(sp.get("eng") for sp in parts) else
             "Parametric approximation built from primitives, not manufacturer CAD data."}
@@ -361,6 +361,189 @@ def import_three_view(state, front, top, side, width_mm=80.0, name="three-view p
                          "depth (y)": [rep["size_mm"][1], "top view proportion"],
                          "height (z)": [rep["size_mm"][2], "front view proportion"]}, "joints": []}
     return {**res, **rep}
+
+
+PART_COLOURS = ["#8fc7f0", "#5f8fd0", "#e0a35a", "#6cc4a8", "#c77fb8", "#d7d06a", "#7a7fe0", "#e07a6a",
+                "#58b8c8", "#a8c86a", "#b89a7a", "#9aa8bc"]
+
+
+def _piece_name(key, c, size, nose_min):
+    """A readable name from where a part sits: which view's region it is, front / middle / rear, upper / lower,
+    left / right. Region 0 of a view is its largest (the main skin)."""
+    view, region, side = key
+    L, W, H = size
+    along = (c[0] / L + 0.5) if nose_min else (0.5 - c[0] / L)          # 0 at the nose, 1 at the tail
+    where = "front" if along < 1 / 3 else "rear" if along > 2 / 3 else "middle"
+    level = "upper" if c[2] > H * 0.12 else "lower" if c[2] < -H * 0.12 else "mid-height"
+    lr = {"L": " left", "R": " right"}.get(side, "")
+    if view == "under":
+        return "underbody"
+    if view in ("end_min", "end_max"):
+        face = "front face" if (view == "end_min") == nose_min else "rear face"
+        return f"{face} {region + 1}" if region else face
+    if view == "top":
+        return "top skin" if region == 0 else f"top panel {region} · {where}"
+    return f"side skin{lr}" if region == 0 else f"side panel {region} · {where} {level}{lr}"
+
+
+def import_sheet(state, image, length_mm=180.0, name="Model from three-view drawing", voxels=200, replace=True,
+                 front_panel=None, namer=None, px_per_voxel=None, decimate_to=None, names=None, measure=True,
+                 smooth_iters=None, smooth_clamp_px=0.7):
+    """One sheet holding several orthographic views (side, front/rear, top) -> a model built from parts (sheet.py).
+    The views are found, matched and oriented automatically; every closed region the drawing's lines make becomes
+    its own part (with its own panel lines), the wheels become tyre + rim, all under one group.
+    px_per_voxel / decimate_to: the fine build (sheet.sheet_to_solid). On Modal the parts are built without names
+    (namer and names None, measure False: the Meta key never leaves this computer); apply_sheet_names then names them
+    and measures the delivered meshes here. Returns the report, the check image (data URL) when measured, and
+    "_frame" (what the measurement needs) when not. Raises ValueError when the views do not agree."""
+    import base64
+    from . import sheet
+    if isinstance(image, str) and image.startswith("data:"):
+        image = base64.b64decode(image.split(",", 1)[1])
+    V, F, rep, chk, seg, pieces = sheet.sheet_to_solid(image, float(length_mm), int(voxels), front_panel=front_panel,
+                                                       namer=namer, px_per_voxel=px_per_voxel, decimate_to=decimate_to,
+                                                       smooth_iters=smooth_iters, smooth_clamp_px=smooth_clamp_px)
+    if rep["size_disagreement_pct"] > 15:    # checked before anything in the scene changes
+        raise ValueError(f"the views disagree on size by {rep['size_disagreement_pct']}% - not one object's three views")
+    if replace:                              # a new design from a drawing replaces the scene, like build_assembly
+        state["parts"] = []
+    off = (V.min(0) + V.max(0)) / 2
+    size = V.max(0) - V.min(0)
+    group = _part("group", {}, name, _clean((0, 0, float(size[2] / 2) + 2)))
+    nose_min = rep.get("nose", "").startswith("left")
+    group["eng"] = {"kind": "three-view model", "from_drawing": True,
+                    "dims": {"length (x)": [rep["size_mm"][0], "given"],
+                             "width (y)": [rep["size_mm"][1], "top view proportion"],
+                             "height (z)": [rep["size_mm"][2], "side view proportion"]}, "joints": [],
+                    "sheet": {"off": _clean(off), "size": _clean(size), "length_mm": float(rep["size_mm"][0]),
+                              "nose_min": nose_min, "end_roles": rep.get("end_roles") or {}}}
+    state["parts"].append(group)
+    order = sorted(pieces, key=lambda k: (["side", "top", "end_min", "end_max", "under"].index(k[0]), k[1], k[2]))
+    for k in order:                                          # named by position here; _name_sheet_parts names them
+        pv, pf, pl = pieces[k]
+        c = (pv.min(0) + pv.max(0)) / 2
+        vi = ["side", "top", "end_min", "end_max", "under"].index(k[0])
+        p = _part("mesh", {"vertices": np.round(pv - c, 3).ravel().tolist(), "faces": pf.ravel().tolist(),
+                           "lines": np.round(pl.reshape(-1, 3) - c, 2).ravel().tolist()},
+                  _piece_name(k, c - off, size, nose_min), _clean(c - off), parent=group["id"])
+        p["color"] = ("#5b6675" if k[0] == "under" else
+                      PART_COLOURS[(vi * 5 + k[1]) % len(PART_COLOURS)] if k[1] else PART_COLOURS[0])
+        p["eng"] = {"kind": "sheet region", "region": [k[0], int(k[1]), k[2]], "joints": []}
+        state["parts"].append(p)
+    for i, w in enumerate(rep.get("wheels", [])):            # wheels found in the side view, as real wheels
+        for side in (-1, 1):
+            at = [w["x"] - off[0], side * (w["y_outer"] - w["width"] / 2) - off[1], w["z"] - off[2]]
+            tag = "front" if i == 0 else "rear" if i == len(rep["wheels"]) - 1 else str(i + 1)
+            if not nose_min:
+                tag = {"front": "rear", "rear": "front"}.get(tag, tag)
+            tyre = _part("cylinder", {"radius": round(w["r"], 2), "height": round(w["width"], 2)},
+                         f"tyre {tag} {'left' if side > 0 else 'right'}", _clean(at), (90, 0, 0), parent=group["id"])
+            tyre["color"] = "#39424f"
+            rim = _part("cylinder", {"radius": round(w["r"] * 0.66, 2), "height": round(w["width"] * 0.98, 2)},
+                        tyre["name"].replace("tyre", "rim"), _clean(at), (90, 0, 0), parent=group["id"])
+            rim["color"] = "#d8e2ee"
+            state["parts"] += [tyre, rim]
+    state["selected"] = group["id"]
+    _bump(state)
+    frame = rep.pop("_frame")
+    frame["gray"] = np.clip(frame["gray"], 0, 255).astype(np.uint8)          # compact when it travels from Modal
+    rn = names if names is not None else rep.get("region_names") or {}
+    rep["view_match_voxel_pct"] = rep.pop("view_match_iou_pct")
+    out = {"id": group["id"], "faces": int(len(F)), "parts_built": len(order), **rep}
+    if rn or measure:
+        out.update(_name_sheet_parts(state, group["id"], rn, frame))
+    if measure:
+        out.update(_sheet_view_match(state, group["id"], frame))
+    else:
+        out["_frame"] = frame
+    return out
+
+
+def _name_sheet_parts(state, group_id, rn, frame=None):
+    """Names, kinds, materials and recesses of a sheet model's region parts from Muse Spark's region names
+    rn = {view role: {region index: name}} (empty: parts keep their position names and colours). A named recess
+    (an intake, a window, a lamp) sinks that part's surface by a typical proportion: geometry, so it comes before the
+    view match is measured; vertices on a drawn view's outline (frame given) are not sunk, so the silhouette the view
+    match measures keeps the drawn outline. Returns {"part_names", "region_names", "detail"}."""
+    from . import detail
+    g = _find(state, group_id)
+    sh = g["eng"]["sheet"]
+    off, er = np.asarray(sh["off"]), sh["end_roles"]
+    rn = {role: {int(i): str(v) for i, v in (m or {}).items()} for role, m in (rn or {}).items()}
+    names, kinds, recessed = [], {}, {}
+    for p in [q for q in state["parts"] if q.get("parent") == group_id and (q.get("eng") or {}).get("region")]:
+        view, region, side = p["eng"]["region"]
+        what = (rn.get(er.get(view, view)) or {}).get(region) if view != "under" else "underbody"
+        nm = (f"{what} {'left' if side == 'L' else 'right'}" if side and what else what) or p["name"]
+        if what and nm in names:                             # two regions with one name: number them
+            nm = f"{nm} {sum(x.startswith(nm) for x in names) + 1}"
+        names.append(nm)
+        kind = detail.kind_of(what) if what else "paint"
+        if what and rn:                                      # named by Muse Spark: one paint, real materials
+            pos = np.asarray(p["position"], float)
+            V = np.asarray(p["params"]["vertices"], float).reshape(-1, 3) + pos + off
+            Fc = np.asarray(p["params"]["faces"], int).reshape(-1, 3)
+            V2, depth = detail.recess(V, Fc, kind, float(sh["length_mm"]), off)
+            if frame is not None:
+                from . import sheet
+                keep = sheet.outline_vertices(V, frame)
+                V2[keep] = V[keep]
+            p["params"]["vertices"] = np.round(V2 - pos - off, 3).ravel().tolist()
+            if depth:
+                recessed[nm] = depth
+            p["color"] = "#5b6675" if view == "under" else detail.colour(kind, what, "#6f93bd")
+            if kind == "glass":
+                p["material"] = "glass"
+            p["name"] = nm
+        kinds[kind] = kinds.get(kind, 0) + 1
+    _bump(state)
+    return {"part_names": names[:40], "region_names": rn,
+            "detail": {"named_by": "Muse Spark (numbered regions of each view)" if rn else "position only (no names)",
+                       "kinds": kinds, "recessed_mm": dict(list(recessed.items())[:30]),
+                       "note": ("Recess depths come from what each part is (typical proportions for an intake, a "
+                                "window, a lamp), not from the drawing, which shows no depth")}}
+
+
+def _sheet_view_match(state, group_id, frame):
+    """OFFICIAL view match of a sheet model: the delivered meshes (every visible part the UI receives, in the hull's
+    frame = group frame + off) rasterised into each drawn view; plus the check image drawn from them."""
+    import base64
+    import io
+    from . import sheet
+    off = np.asarray(_find(state, group_id)["eng"]["sheet"]["off"])
+    delivered = []
+    for p in state["parts"]:
+        if p.get("parent") != group_id or not p.get("visible", True):
+            continue
+        Vl, Fl = geometry.local_mesh(p)
+        M = geometry.matrix(p)
+        delivered.append((np.asarray(Vl) @ M[:3, :3].T + M[:3, 3] + off, Fl))
+    masks = sheet.mesh_view_masks(delivered, frame)
+    # 3-D surface check of the same meshes (quality.py): folds and steps no single view's outline shows
+    from . import quality
+    n = np.cumsum([0] + [len(v) for v, _ in delivered])
+    Va = np.concatenate([v for v, _ in delivered])
+    Fa = np.concatenate([np.asarray(f, int) + n[i] for i, (_, f) in enumerate(delivered)])
+    Vw, Fw = quality._weld(Va, Fa)
+    surface = {"folds": quality.folds(Vw, Fw), "staircase_px_6px_steps": quality.mesh_staircase(
+        Vw, Fw, float(_find(state, group_id)["eng"]["sheet"]["length_mm"]) / frame["shapes"]["side"][1])}
+    chk, iou = sheet.overlay(np.asarray(frame["gray"], float), frame["views"], ["side", "top", "front"], None,
+                             projected=masks)
+    buf = io.BytesIO()
+    chk.convert("RGB").save(buf, "JPEG", quality=85)
+    return {"view_match_iou_pct": iou, "delivered_triangles": int(sum(len(Fl) for _, Fl in delivered)),
+            "surface_check": surface,
+            "view_match_note": ("measured on the delivered meshes (what the UI shows), each view's own pixels; "
+                                "view_match_voxel_pct is the voxel field before meshing, for reference"),
+            "_check": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}
+
+
+def apply_sheet_names(state, group_id, names, frame):
+    """The local second half of a sheet model built on Modal: Muse Spark's region names (asked here, in parallel with
+    the build) applied to the parts, then the official view match measured on what the UI receives."""
+    out = _name_sheet_parts(state, group_id, names or {}, frame)
+    out.update(_sheet_view_match(state, group_id, frame))
+    return out
 
 
 def set_display(state, preset=None, pitch_um=None, wavelength_nm=None, samples=None, distance_mm=None,
@@ -593,7 +776,7 @@ def eye_view(state, focus_z_mm=None, display="desk1d", eye_x_mm=None, eye_y_mm=N
     return {"display": DISPLAY_NAMES.get(display, display), "eye_mm": E, "focus_z_mm": round(r["focus_z_mm"], 1),
             "lasers_nm": r["lasers_nm"],
             "sharpness_vs_full_2d_pct": round(100 * r["sharpness_vs_2d"], 1),
-            "in_focus_vs_full_2d_pct": None if r["in_focus_vs_2d"] != r["in_focus_vs_2d"] else round(100 * r["in_focus_vs_2d"], 1),
+            "in_focus_vs_full_2d_pct": None if r["in_focus_vs_2d"] != r["in_focus_vs_2d"] else round(min(100.0, 100 * r["in_focus_vs_2d"]), 1),
             "in_focus_area_pct": round(100 * r["in_focus_share"], 1),
             "sharpness_note": "1D desk vs a full 2D hologram at the same eye focus (100 % = as sharp as a full 2D "
                               "hologram; depth-of-field blur that a real object also has is not counted)",
@@ -613,7 +796,16 @@ def desk_wave_view(state, focus_z_mm=None, k=3, encode="none", n=240):
     R = _render(state, E)
     w = desk_wave.view(state, focus_z_mm, rendered=R, k=int(k), encode=encode)
     m = retina.retina(state, focus_z_mm, "desk1d", int(k), False, rendered=R, color=False)
-    return {"focus_z_mm": round(w["focus_z_mm"], 1), "encode": w["encode"], "subframes": w["k"],
+    extra = {}
+    if encode != "none":                        # how far the phase-only panel is from ideal complex modulation
+        ref = desk_wave.view(state, focus_z_mm, rendered=R, k=int(k), encode="none")["image"]
+        img = w["image"]
+        sc = float((ref * img).sum() / max((img * img).sum(), 1e-30))
+        lit = ref > 0.05 * ref.max()
+        extra = {"error_vs_complex_pct": round(100 * float(np.linalg.norm(sc * img - ref) / max(np.linalg.norm(ref), 1e-30)), 1),
+                 "haze_in_dark_pct": round(100 * float((sc * img)[~lit].mean() / max(ref[lit].mean(), 1e-30)), 2) if lit.any() and (~lit).any() else None,
+                 "pupil_band_error": w.get("pupil_band_error"), "pupil_band_efficiency": w.get("pupil_band_efficiency")}
+    return {"focus_z_mm": round(w["focus_z_mm"], 1), "encode": w["encode"], "subframes": w["k"], **extra,
             "projected_pitch_um": w["pitch_projected_um"], "eye_box_mm": w["eye_box_mm"],
             "model": "true-scale 1D wave simulation of the desk panel (vertical: coherent sub-holograms at the real pitch "
                      "and distance; horizontal: incoherent columns). Simulation, not a measurement.",
@@ -631,12 +823,15 @@ def focus_sweep(state, steps=7, display="desk1d", speckle=True, k=3, color=True)
     for z in zs:
         r = retina.retina(state, float(z), display, int(k), bool(speckle), rendered=R, color=bool(color))
         imgs.append(_rgb_png(r["image"], state["desk"]["wavelength_nm"]))
-        sharp.append(round(100 * r["sharpness_vs_2d"], 1))
+        f = r["in_focus_vs_2d"]
+        # only what the eye is focused on (within +-0.25 D); capped at 100: out of focus, the 1D desk's horizontal
+        # (at the panel) can be sharper than a defocused full 2D image, which is not a quality gain worth reporting
+        sharp.append(None if f != f else round(min(100.0, 100 * f), 1))
         inf.append(round(100 * r["in_focus_share"], 1))
     return {"display": DISPLAY_NAMES.get(display, display), "depths_mm": [round(float(z), 1) for z in zs],
             "share_sharp_pct": sharp, "in_focus_area_pct": inf, "lasers_nm": r["lasers_nm"], "speckle_contrast_pct": round(100 * r["speckle_contrast"], 1),
-            "parts_outside_window_pct": round(100 * r["outside_window"], 1), "sharpness_note": "share_sharp_pct = 1D desk vs a full 2D hologram at the same eye focus (100 % = as sharp as full "
-                              "2D; normal depth-of-field blur is not counted); in_focus_area_pct = share of the visible "
+            "parts_outside_window_pct": round(100 * r["outside_window"], 1), "sharpness_note": "share_sharp_pct = the part of the design the eye is focused on (+-0.25 D), 1D desk vs a full 2D "
+                              "hologram at the same focus, capped at 100 % (= as sharp as full 2D); in_focus_area_pct = share of the visible "
                               "design within the eye's +-0.25 D depth of field at that focus",
             "_images": {"sweep": imgs}}
 
@@ -855,20 +1050,57 @@ def meshes(state):
         V, F = geometry.local_mesh(p)
         if len(V):
             out[p["id"]] = {"v": np.round(V, 3).astype(np.float32).ravel().tolist(), "f": F.ravel().tolist()}
+            if p.get("params", {}).get("lines"):
+                out[p["id"]]["l"] = p["params"]["lines"]
     return out
 
 
 TOOLS = {f.__name__: f for f in (add_part, update_part, delete_part, clear_scene, build_assembly, turn_gear, list_parts,
-                                  import_mesh, import_three_view, set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
+                                  import_mesh, import_three_view, import_sheet, set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
                                   focus_sweep, eye_view, lab_focus_sweep, lab_eye_view, window_check, hand_check, desk_check,
                                   search_column_width, desk_score, speckle_compare, export_film)}
 HEAVY = {"make_hologram", "propagate", "desk_wave_view", "focus_sweep", "eye_view", "lab_focus_sweep", "lab_eye_view", "desk_check", "search_column_width",
-         "speckle_compare", "desk_score"}
+         "speckle_compare", "desk_score", "import_sheet"}       # import_sheet: the three-view solid at 1 px per voxel
+
+
+_UNITS = ("_mm", "_um", "_nm", "_cm", "_m", "_pct", "_deg")      # an argument named with a unit is a number
+
+
+def check_args(name, args):
+    """A tool call's arguments against the tool's own signature: None if they fit, else an error the model can act on
+    (unknown or missing argument names, a number that is not a number). Checked before anything runs, locally or on
+    Modal, so a bad argument is never mistaken for an old engine."""
+    import inspect
+    if name not in TOOLS:
+        return f"unknown tool '{name}'; tools: {', '.join(sorted(TOOLS))}"
+    if not isinstance(args or {}, dict):
+        return f"{name}: arguments must be a JSON object, got {type(args).__name__}"
+    sig = [p for p in inspect.signature(TOOLS[name]).parameters.values() if p.name != "state"]
+    known = {p.name: p for p in sig}
+    unknown = [k for k in (args or {}) if k not in known]
+    missing = [p.name for p in sig if p.default is inspect.Parameter.empty and p.name not in (args or {})]
+    errs = []
+    if unknown:
+        errs.append(f"unknown argument(s) {unknown}")
+    if missing:
+        errs.append(f"missing required argument(s) {missing}")
+    for k, v in (args or {}).items():
+        d = known[k].default if k in known else None
+        numeric = (isinstance(d, (int, float)) and not isinstance(d, bool)) or k.endswith(_UNITS)
+        if numeric and v is not None and not isinstance(v, (list, dict)):
+            try:
+                float(v)
+            except (TypeError, ValueError):
+                errs.append(f"'{k}' must be a number, got {v!r}")
+    if errs:
+        return f"{name}: " + "; ".join(errs) + f". Allowed arguments: {', '.join(known)}"
+    return None
 
 
 def run(state, name, args):
-    if name not in TOOLS:
-        return {"error": f"unknown tool {name}"}
+    bad = check_args(name, args)
+    if bad:
+        return {"error": bad, "error_kind": "bad_args"}
     try:
         return TOOLS[name](state, **(args or {}))
     except Exception as e:
