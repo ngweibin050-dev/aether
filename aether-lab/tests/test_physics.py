@@ -868,6 +868,43 @@ def test_fill_holes_fast():
     assert np.array_equal(f, g) and dt < 1.0
 
 
+def test_demo_drawings_replayed():
+    """36. The demo drawings D and C, rebuilt from their saved Muse Spark readings (no API): outline (recall and parts
+    precision against the drawing), surface (no pixel staircase on any part) and time (rebuild < 5 s), at today's
+    measured baselines (D run 12: 83.8 / 77.0 %, C run 3: 74.3 / 72.7 %, 0 %, 0.7-1.8 s) with a small margin: a regression
+    guard on the real demo inputs. Which fix each threshold needs is shown by the synthetic tests: the staircase by
+    test 27 (a raw pixel trace scores > 5 %), the time by test 35 (the old hole fill takes ~9 s on a comb frame; on
+    these saved readings it takes only ~3 s, the 16-38 s came with deeper completions). Skipped when the saved runs
+    (output/, not in the public repository) are absent."""
+    import base64
+    import json
+    import os
+    import time
+    from pathlib import Path
+    import vision
+    from engine import circles, geometry, interpret, lab, quality, rebuild
+    from tests.run_reference import INPUTS, OUT
+    cases = {"patent_US929594_fig1": ("run12", 80, 75), "heldout_US1770035_fig1": ("run3", 72, 70)}   # min recall, min precision
+    if not all((OUT / n / r / "replay.json").exists() for n, (r, _, _) in cases.items()):
+        print("  SKIPPED: the saved reference runs are not in this copy")
+        return
+    for name, (run, min_rec, min_prec) in cases.items():
+        rp = json.loads((OUT / name / run / "replay.json").read_text(encoding="utf-8"))
+        im = vision.load_image("data:x;base64," + base64.b64encode((Path(__file__).parent / INPUTS[name][0]).read_bytes()).decode(), 1024)
+        parts = interpret.parts_from_read(rp["read_parts_px"], *im.size, rp["mm_per_px"], ink=circles.ink_mask(im)[0])
+        t = time.time()
+        specs, rep = rebuild.rebuild(parts, rp["drawing_mm"], rp.get("completion"), frame_cell_mm=rp["mm_per_px"])
+        dt = time.time() - t
+        chk, _ = interpret.drawing_check(im, rep.pop("_silhouette"), rp["mm_per_px"])
+        st = lab.default_state()
+        lab.build_assembly(st, "replay", specs, position=[0, 0, 0], rotation=[0, 0, 0])
+        worst = max(quality.part_staircase(V, F, rp["mm_per_px"])[0]
+                    for p, V, F in geometry.scene_meshes(st["parts"]) if p["type"] != "group" and len(F))
+        rec, prec = chk["drawing_lines_on_built_parts_pct"], chk["outline_on_ink_pct"]["parts"]
+        print(f"  {name} {run}: rebuild {dt:.1f} s, recall {rec} %, parts precision {prec} %, worst staircase {worst} %")
+        assert rec >= min_rec and prec >= min_prec and worst == 0 and dt < 5
+
+
 def test_machine_reading():
     """A dense one-view machine sheet: circles measured on the ink, close-up readings merged, pins sized by their part."""
     from PIL import Image, ImageDraw

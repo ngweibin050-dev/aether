@@ -11,4 +11,4 @@
 
 专利图纸没有比例尺，所以尺寸都是"模型比例，真实尺寸未知"。长期全息路线见 [docs/HOLOGRAPHY_ROADMAP.md](docs/HOLOGRAPHY_ROADMAP.md)。
 
-运行：`python server.py`，打开 http://localhost:8765（Meta key 放在 `.env`，绝不提交）。测试：`python tests/test_physics.py`（35 项）。
+运行：`python server.py`，打开 http://localhost:8765（Meta key 放在 `.env`，绝不提交）。测试：`python tests/test_physics.py`（36 项）。

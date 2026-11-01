@@ -28,7 +28,7 @@ Built during the Meta AI Builders Hackathon 2026 (Oct 26 – Nov 4) by Ng Wei Bi
 | NASA X-2 three-view (**held out**, first untouched run) | view match | 92.6 / 65.8 / 95.1 % |
 | NASA X-2 after the fix it revealed (no longer held out) | view match | 99.7 / 95.5 / 99.6 % |
 | All built parts | pixel staircase on part outlines | 0.00 % |
-| Test suite | `python tests/test_physics.py` | 35 / 35 pass |
+| Test suite | `python tests/test_physics.py` | 36 / 36 pass |
 
 **Honest misses:** parts precision on B (62.9 %) is below our 70 % target (dense section drawing); C's recall
 (73.6 %) is below 75 % (a tighter silhouette covers fewer lines by accident); a full run takes 100–160 s against a
@@ -70,7 +70,7 @@ Every step in the UI shows which model (or engine) did it and in how many second
    by hand). `AETHER_COMPUTE=local` exists only for the offline tests.
 3. `python server.py`, then open http://localhost:8765 (the built UI is in `ui/dist`; Node is only needed to change
    it: `cd ui && npm install && npm run build`).
-4. Tests: `python tests/test_physics.py` (35 tests, no API key needed); `python tests/smoke_meta.py` (live Meta API).
+4. Tests: `python tests/test_physics.py` (36 tests, no API key needed); `python tests/smoke_meta.py` (live Meta API).
 
 ## Honesty
 
