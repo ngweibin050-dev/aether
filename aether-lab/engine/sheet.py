@@ -137,16 +137,33 @@ def _drop_long_lines(m, frac):
     return m
 
 
+def _in_thin_shape(m, y, cols, near=(3, 10), share=0.5):
+    """True when the horizontal line at row y is one side of a thin closed shape, not a lone ruled line: in at least
+    `share` of its columns another stroke runs 3-10 px above or below it. A wing seen edge-on in a front view is two or
+    three such strokes (outline + centre line, NASA's X-2: 3 strokes within 10 px in every column); a ground line has
+    nothing beside it except where a wheel stands on it."""
+    H = m.shape[0]
+    if not len(cols):
+        return False
+    up = m[max(y - near[1], 0):max(y - near[0] + 1, 0), cols].any(0)
+    dn = m[min(y + near[0], H):min(y + near[1] + 1, H), cols].any(0)
+    return float(np.mean(up | dn)) >= share
+
+
 def _drop_ground_line(m):
     """Remove straight horizontal lines spanning most of the view (ground / centre lines). A thin line drawn at an
     angle to the pixel grid, or resampled, wanders between two rows and breaks up, so rows are judged together
-    with their neighbours."""
+    with their neighbours. A row that is one side of a thin closed shape (a wing seen edge-on spans the whole front
+    view) is not a ground line (_in_thin_shape)."""
+    m0 = m
     m = m.copy()
     W = m.shape[1]
-    band = m.copy()
-    band[1:] |= m[:-1]
-    band[:-1] |= m[1:]
+    band = m0.copy()
+    band[1:] |= m0[:-1]
+    band[:-1] |= m0[1:]
     for y in np.nonzero(band.sum(1) >= 0.8 * W)[0]:
+        if _in_thin_shape(m0, y, np.nonzero(band[y])[0]):
+            continue
         m[max(0, y - 1):y + 2] = False
     return m
 
@@ -172,6 +189,8 @@ def _drop_ground_under(m, min_frac=0.4, max_thick=5, bottom_frac=0.15):
             lo, hi = max(y - max_thick // 2 - 1, 0), min(y + max_thick // 2 + 2, H)
             thick = m[max(y - 8, 0):min(y + 9, H), a:b].sum(0)
             if np.mean(thick <= max_thick + 1) < 0.8:             # not thin: a body edge, not a ground line
+                continue
+            if _in_thin_shape(m, y, np.arange(a, b)):              # one side of a wing seen edge-on
                 continue
             # only a line that runs PAST the object's own outline is ground: the object's extent is measured in the band
             # just above the line; a part's own flat bottom edge spans exactly that band and stays
