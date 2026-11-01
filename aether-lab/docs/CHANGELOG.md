@@ -4,6 +4,25 @@ All work below was done during the Meta AI Builders Hackathon 2026 (Oct 26 – N
 
 ## 2026-11-01
 
+- **Muse Wonder** (`muse-wonder-1.0`) reads the dense drawing and does the engineer's completion (reading effort low);
+  a failed call falls back to Muse Spark and the step label names both. Recall +8-16 points on B / D / C, precision
+  -11 to -14 on D / C (RESULTS.md). Test 34.
+- **Exports**: GLB (metres, y up, part records in node extras), STL (mm), one-page build report (File menu). Test 33.
+- **Demo menu**: D, C, G live (warm-up first; machines are then explained); the last successful live run of each is
+  kept and can be shown only as a RECORDED run (banner, labels).
+- **Thin wings are not ground lines**: a horizontal line with another stroke 3-10 px beside it is one side of a thin
+  closed shape (X-2's front-view wing) and is not erased. X-2 92.6 / 65.8 / 95.1 -> 99.7 / 95.5 / 99.6 %.
+- **Models stand on the display surface**: every build and import ends with `place_on_base` (lowest point at z = 0;
+  build_assembly's position z = height of the lowest point). "Place on base" (Object menu, Shift+B). A model taller than
+  the sharp zone above the surface, or moved below it by the design loop, says why part of it is behind the surface.
+  Test 32.
+- **Every step shows who did it and how long**: "Muse Spark · read drawing · 28 s", "Modal T4 GPU · eye focus sweep",
+  "Muse Voice Transcribe · speech to text"; finished steps stay in the chat. Voice "Explain this machine" opens Explain.
+- **Gear pairs in sections**: edge-on gears pair by geometry (parallel axes, overlapping faces, axis gap = r1 + r2 or
+  R - r); the engineer's completion may name missing pairs, built as "guessed" with the reason; ratios only from
+  counted teeth, else "ratio unknown". Explain says which pairs were measured or guessed.
+- **Plausibility filter**: shafts / pistons / springs thinner than 1 % of the machine take their box estimate or are
+  dropped, listed in the report. Test 31.
 - **Explain this machine** (`explain.py`, `/api/explain`, `ui/ExplainPlayer.jsx`): Muse Spark explains the BUILT model
   in 5–10 steps; every part id and number is checked against the model in code, one retry, invalid steps dropped and
   counted. The step player highlights each step's parts (others x-ray), moves the camera (front / top / iso / section),

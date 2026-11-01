@@ -39,7 +39,10 @@ OUT = ROOT / "output" / "reference"
 CALLS = []
 # which reading code produced a run, so before / after numbers are never mixed in one mean
 from engine import interpret as _interp  # noqa: E402
-PIPELINE = ("step 3 closing: as step 3 final + gear / wheel count as one kind in the agreement"
+PIPELINE = ("Muse Wonder reads the drawing and completes the unseen views (Part A rebuild, section gear pairs, "
+            "plausibility filter)" + (f"; reading effort {agent.READ_EFFORT}" if getattr(agent, "READ_EFFORT", None) else "")
+            if getattr(agent, "READ_MODEL", agent.MODEL) != agent.MODEL else
+            "step 3 closing: as step 3 final + gear / wheel count as one kind in the agreement"
             if hasattr(_interp, "SAME_THING") else
             "step 3 final: two readings + agreement, outlines fitted to the ink, edge-on round parts, measured gear "
             "module, reading deadline" if hasattr(_interp, "fit_box_to_ink")
@@ -203,6 +206,9 @@ def _stat(xs):
     return f"{mu:.1f} (min {min(xs):g}, max {max(xs):g}, spread {100 * (max(xs) - min(xs)) / mu:.0f} %)" if mu else f"{mu:g}"
 
 
+NOTES_MARK = "<!-- Hand-written notes below; tests/run_reference.py keeps them when it rewrites the tables above. -->"
+
+
 def summary():
     """docs/RESULTS.md from the saved runs of the public inputs, output/reference/RESULTS_internal.md from the
     third-party ones (numbers only from result.json files)."""
@@ -263,7 +269,10 @@ def _summary(names, p, public):
             for s in r["stages"]:
                 st.setdefault(s["stage"], []).append(s["s"])
         out += ["Time per stage (s, mean over runs): " + ", ".join(f"{k} {statistics.mean(v):.1f}" for k, v in st.items()), ""]
-    if public:
+    if public:                                   # the hand-written notes below the marker are kept as they are
+        old = p.read_text(encoding="utf-8") if p.exists() else ""
+        notes = old.split(NOTES_MARK, 1)[1].split("## How to read these numbers", 1)[0].strip("\n") if NOTES_MARK in old else ""
+        out += [NOTES_MARK, "", notes, ""]
         out += ["## How to read these numbers", "",
                 "- **Recall** (`drawing_lines_on_built_parts_pct`): share of the drawing's lines (inside the machine's area) "
                 "that lie on a built part or frame, front view. A big housing can inflate it, so it is always shown with precision.",
@@ -292,7 +301,8 @@ def _summary(names, p, public):
                 "the horizontal tail and the wings, and the nose wheel. These are surfaces only a few pixels thick in one view: "
                 "filling each view's outline closes 2 px gaps and erodes back, which removes a thin surface from that view, "
                 "and a visual hull keeps only what every view shows, so it disappears from the solid. The nose wheel is not "
-                "connected to the body in the side view, and only the largest connected outline per view is kept. Not tuned yet.",
+                "connected to the body in the side view, and only the largest connected outline per view is kept. (Before "
+                "Nov 1; fixed since by the 1-px build without blur and the detached-parts rule: 100 / 99.5 / 98.9 %.)",
                 ""]
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("\n".join(x for x in out if x is not None) + "\n", encoding="utf-8")

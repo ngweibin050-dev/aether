@@ -88,6 +88,46 @@ Mean and spread over 3 runs (spread = (max − min) / mean):
 
 Time per stage (s, mean over runs): classify_upload 0.1, read_drawing 43.2, measure_circles 0.0, complete_views 30.4, rebuild_3d 1.3, desk_score 3.7, focus_sweep 11.3
 
+## patent_US1699653_fig1 (inputs/US1699653_fig1.png) — Muse Wonder reads the drawing and completes the unseen views (Part A rebuild, section gear pairs, plausibility filter)
+
+| run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 13 | 2026-11-01 15:36:43 | yes | machine | 104 | 121 | 88.7 | 72.4 / 31.1 | — | 9 | 12 | False (81.4) | 14 (1) | 101156 | 205.1 (+115) | — |
+| 14 | 2026-11-01 15:40:08 | yes | machine | 107 | 124 | 88.5 | 58.2 / 32.1 | — | 5 | 11 | False (82.2) | 14 (1) | 106008 | 586.6 (+497) | — |
+
+Mean and spread over 2 runs (spread = (max − min) / mean):
+
+- parts read (after agreement, merge and the circle check): 105.5 (min 104, max 107, spread 3 %)
+- parts built: 122.5 (min 121, max 124, spread 2 %)
+- recall, drawing lines on built parts %: 88.6 (min 88.5, max 88.7, spread 0 %)
+- precision, parts %: 65.3 (min 58.2, max 72.4, spread 22 %); frames %: 31.6 (min 31.1, max 32.1, spread 3 %)
+- gear pairs: 7.0 (min 5, max 9, spread 57 %)
+
+- total time s: 395.9 (min 205.1, max 586.6, spread 96 %) (target 90 s: 0/2 runs within it)
+- Spark calls: 14.0 (min 14, max 14, spread 0 %); tokens: 103582.0 (min 101156, max 106008, spread 5 %)
+
+Time per stage (s, mean over runs): classify_upload 0.7, read_drawing 284.4, measure_circles 0.2, complete_views 31.0, rebuild_3d 37.5, desk_score 3.2, focus_sweep 13.6
+
+## patent_US1699653_fig1 (inputs/US1699653_fig1.png) — Muse Wonder reads the drawing and completes the unseen views (Part A rebuild, section gear pairs, plausibility filter); reading effort low
+
+| run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 15 | 2026-11-01 15:57:30 | yes | machine | 107 | 125 | 87.7 | 56.2 / 34.2 | — | 11 | 11 | False (83.4) | 13 (0) | 64091 | 114.6 (+25) | — |
+| 16 | 2026-11-01 15:59:25 | yes | machine | 107 | 127 | 81.8 | 64.7 / 32.8 | — | 7 | 11 | False (82.2) | 13 (0) | 63921 | 98.9 (+9) | — |
+
+Mean and spread over 2 runs (spread = (max − min) / mean):
+
+- parts read (after agreement, merge and the circle check): 107.0 (min 107, max 107, spread 0 %)
+- parts built: 126.0 (min 125, max 127, spread 2 %)
+- recall, drawing lines on built parts %: 84.8 (min 81.8, max 87.7, spread 7 %)
+- precision, parts %: 60.5 (min 56.2, max 64.7, spread 14 %); frames %: 33.5 (min 32.8, max 34.2, spread 4 %)
+- gear pairs: 9.0 (min 7, max 11, spread 44 %)
+
+- total time s: 106.8 (min 98.9, max 114.6, spread 15 %) (target 90 s: 0/2 runs within it)
+- Spark calls: 13.0 (min 13, max 13, spread 0 %); tokens: 64006.0 (min 63921, max 64091, spread 0 %)
+
+Time per stage (s, mean over runs): classify_upload 0.6, read_drawing 29.3, measure_circles 0.0, complete_views 24.4, rebuild_3d 31.6, desk_score 3.0, focus_sweep 7.8
+
 ## patent_US929594_fig1 (inputs/US929594_fig1.png) — one reading per image (before step 3)
 
 | run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
@@ -172,6 +212,25 @@ Mean and spread over 3 runs (spread = (max − min) / mean):
 
 Time per stage (s, mean over runs): classify_upload 0.2, read_drawing 35.3, measure_circles 0.0, complete_views 27.0, rebuild_3d 4.1, desk_score 8.3, focus_sweep 13.3
 
+## patent_US929594_fig1 (inputs/US929594_fig1.png) — Muse Wonder reads the drawing and completes the unseen views (Part A rebuild, section gear pairs, plausibility filter); reading effort low
+
+| run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 13 | 2026-11-01 16:01:51 | yes | machine | 131 | 147 | 84.3 | 64.1 / 67.5 | — | 0 | 12 | True (90.4) | 13 (0) | 66104 | 101.9 (+12) | — |
+
+Mean and spread over 1 runs (spread = (max − min) / mean):
+
+- parts read (after agreement, merge and the circle check): 131
+- parts built: 147
+- recall, drawing lines on built parts %: 84.3
+- precision, parts %: 64.1; frames %: 67.5
+- gear pairs: 0
+
+- total time s: 101.9 (target 90 s: 0/1 runs within it)
+- Spark calls: 13; tokens: 66104
+
+Time per stage (s, mean over runs): classify_upload 0.9, read_drawing 29.8, measure_circles 0.0, complete_views 35.0, rebuild_3d 13.8, desk_score 3.7, focus_sweep 8.7
+
 ## nasa_x3_three_view (inputs/NASA_X-3_three_view.png) — one reading per image (before step 3)
 
 | run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
@@ -246,19 +305,22 @@ Time per stage (s, mean over runs): classify_upload 10.3, read_views 104.5, desk
 | 14 | 2026-11-01 01:45:45 | yes | three_view | — | 44 | — | — / — | 99.9/99.2/99.1 | — | — | True (94.5) | 2 (0) | 8339 | 53.0 (-37) | — |
 | 15 | 2026-11-01 01:46:39 | yes | three_view | — | 44 | — | — / — | 99.2/98.6/95.8 | — | — | True (93.9) | 2 (0) | 9814 | 35.6 (-54) | — |
 | 16 | 2026-11-01 01:47:14 | yes | three_view | — | 44 | — | — / — | 99.9/99.2/99.1 | — | — | True (94.5) | 2 (0) | 8365 | 34.3 (-56) | — |
+| 17 | 2026-11-01 01:53:19 | yes | three_view | — | 44 | — | — / — | 100.0/99.7/98.9 | — | — | True (94.5) | 2 (0) | 7417 | 250.0 (+160) | — |
+| 18 | 2026-11-01 01:57:29 | yes | three_view | — | 44 | — | — / — | 100.0/99.7/98.9 | — | — | True (94.5) | 2 (0) | 9265 | 79.3 (-11) | — |
+| 19 | 2026-11-01 01:58:49 | yes | three_view | — | 44 | — | — / — | 100.0/99.7/98.9 | — | — | True (94.5) | 2 (0) | 8763 | 31.6 (-58) | — |
 
-Mean and spread over 6 runs (spread = (max − min) / mean):
+Mean and spread over 9 runs (spread = (max − min) / mean):
 
 
 - parts built: 44.0 (min 44, max 44, spread 0 %)
 
 
 
-- view IoU % (min of the three views): 98.4 (min 95.8, max 99.1, spread 3 %)
-- total time s: 66.5 (min 34.3, max 111.7, spread 116 %) (target 90 s: 4/6 runs within it)
-- Spark calls: 2.0 (min 2, max 2, spread 0 %); tokens: 8779.7 (min 8331, max 9814, spread 17 %)
+- view IoU % (min of the three views): 98.5 (min 95.8, max 99.1, spread 3 %)
+- total time s: 84.4 (min 31.6, max 250, spread 259 %) (target 90 s: 6/9 runs within it)
+- Spark calls: 2.0 (min 2, max 2, spread 0 %); tokens: 8680.3 (min 7417, max 9814, spread 28 %)
 
-Time per stage (s, mean over runs): classify_upload 0.4, read_views 55.9, desk_score 3.7
+Time per stage (s, mean over runs): classify_upload 0.5, read_views 54.7, desk_score 22.8
 
 ## heldout_US1770035_fig1 (inputs/heldout/US1770035_fig1.png) — step 3 final: two readings + agreement, outlines fitted to the ink, edge-on round parts, measured gear module, reading deadline
 
@@ -281,7 +343,26 @@ Mean and spread over 3 runs (spread = (max − min) / mean):
 
 Time per stage (s, mean over runs): classify_upload 0.3, read_drawing 42.1, measure_circles 0.0, complete_views 39.6, rebuild_3d 11.8, desk_score 5.9, focus_sweep 10.9
 
-## heldout_nasa_x36_three_view (inputs/heldout/NASA_X-36_three_view.png; no longer held out since Nov 1, see below) — step 3 closing: as step 3 final + gear / wheel count as one kind in the agreement
+## heldout_US1770035_fig1 (inputs/heldout/US1770035_fig1.png) — Muse Wonder reads the drawing and completes the unseen views (Part A rebuild, section gear pairs, plausibility filter); reading effort low
+
+| run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 2026-11-01 16:03:55 | yes | machine | 104 | 119 | 89.3 | 69.3 / 42.4 | — | 4 | 12 | True (81.0) | 13 (0) | 67926 | 110.5 (+20) | — |
+
+Mean and spread over 1 runs (spread = (max − min) / mean):
+
+- parts read (after agreement, merge and the circle check): 104
+- parts built: 119
+- recall, drawing lines on built parts %: 89.3
+- precision, parts %: 69.3; frames %: 42.4
+- gear pairs: 4
+
+- total time s: 110.5 (target 90 s: 0/1 runs within it)
+- Spark calls: 13; tokens: 67926
+
+Time per stage (s, mean over runs): classify_upload 0.9, read_drawing 26.6, measure_circles 0.0, complete_views 28.0, rebuild_3d 34.6, desk_score 2.8, focus_sweep 8.6
+
+## heldout_nasa_x36_three_view (inputs/heldout/NASA_X-36_three_view.png) — step 3 closing: as step 3 final + gear / wheel count as one kind in the agreement
 
 | run | date | ok | route | parts read | parts built | recall % | precision % parts / frames | view IoU % (side/top/front) | gear pairs | hidden parts added | desk pass (min %) | Spark calls (failed) | Spark tokens | total s (target 90) | errors |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
@@ -299,6 +380,8 @@ Mean and spread over 1 runs (spread = (max − min) / mean):
 - Spark calls: 2; tokens: 8349
 
 Time per stage (s, mean over runs): classify_upload 0.2, read_views 29.9, desk_score 4.4
+
+<!-- Hand-written notes below; tests/run_reference.py keeps them when it rewrites the tables above. -->
 
 ## Nov 1 — Part A (no pixel staircase) and the 3-D surface check
 
@@ -386,6 +469,124 @@ inventing one. The model's own odd values are passed on as they are (e.g. a trac
 the explanation is only as good as the model. The illustration is shown small, labelled "AI illustration — concept, not
 the measured model"; it is not a result.
 
+## Nov 1 — rebuild slowdown found and fixed
+
+C's rebuild had gone from ~4 s to 17-38 s (live: "AETHER engine · rebuild each part in 3D" 79-210 s while other work
+ran). Cause: since Part A the frames are drawn on the drawing's pixel grid (C: 1195 x 944 cells instead of ~1 mm), and
+`outline.fill_holes` flooded from the border one whole-image pass per pixel of the longest background path: 2.8-5.3 s
+per frame, four frames per rebuild (profiled: 63 s of 81 s under the profiler). Now reach spreads along whole runs,
+rows then columns: 0.30-0.45 s per frame, identical pixels (500 random masks and C's four frames), C's rebuild 6.2 s.
+Test 35.
+
+## Nov 1 — C gear pairs and the plausibility filter
+
+**Why C had no meshing pair:** C is a section; every gear in it is cut edge-on (axis in the drawing plane), and the
+pairing rule only paired gears seen face-on. Now (`engine/rebuild.py`):
+- geometry: two edge-on gears mesh when their axes are parallel, their faces overlap along the axis by half the
+  narrower face, and the axis gap is r1 + r2 within 25 % (internal ring: R - r within 10 %, axes >= 0.3 r apart). The
+  25 % is what C's real sun / planet pairs read (the box is the tip outline, widened by hatching). Found on C's saved
+  readings: run 1: 0 pairs, run 2: 1, run 3: 0; B and D unchanged (B 2-3 face-on pairs per run, D 0).
+- otherwise the engineer's completion names the pairs (part numbers + one-line reason); they are built as
+  "guessed by Muse Spark" with that reason. On C run 3 a new completion proposed c-q, d-q top, d-q bottom.
+- a ratio is given only when both tooth counts were counted (read or FFT); C's were assumed from the size, so every
+  pair says "ratio unknown".
+- Live C (2026-11-01, upload 93.4 s, 44 parts): 3 pairs, 2 from the geometry, 1 guessed; Explain in the browser
+  12.7 s, 6 steps, 0 rejected; its transmission step says which pairs were measured and which guessed, and that the
+  ratio is unknown because the teeth were not counted.
+
+**Plausibility filter:** a shaft, piston or spring thinner than 1 % of the machine is a mis-measured width (the "two
+drawn sides" were hatching or two close lines: C's pins n, ~20 mm in the drawing, measured 1.4-1.7 mm). Its box
+estimate is used when that is plausible, else the part is dropped; each change is listed in `report["implausible"]`.
+Replayed on all saved readings (same readings, filter off -> on):
+
+| input | runs | width from the box estimate | dropped | recall % | parts precision % |
+|---|---|---|---|---|---|
+| B US1699653 | 9 | 0 | 0 | 76.32 -> 76.32 | 62.87 -> 62.87 |
+| D US929594 | 9 | 31 | 12 | 72.41 -> 72.30 | 77.17 -> 77.84 |
+| C US1770035 | 3 | 5 | 0 | 73.63 -> 73.63 | 80.43 -> 80.43 |
+
+The 0.4 mm shaft in D's live explanation was a 1.3 mm traced width (0.56 % of the 234 mm press) shown after the model
+was scaled onto the desk; with the filter it takes its box estimate or is dropped. Test 31 covers both.
+
+## Nov 1 — X-2 front view fixed (held-out result = the first run; after-fix reported separately)
+
+**Held-out result (unchanged, the number to quote):** NASA Bell X-2, first untouched run with the code of that day:
+side 92.6 · top 65.8 · front 95.1 %, 29.8 s.
+
+Cause: X-2's front view draws the wing edge-on as a thin closed outline (upper line, centre line, lower line within
+10 px) spanning almost the whole view. The ground-line rule (`_drop_ground_line`: a row with ink over >= 80 % of the
+width) erased it as if it were the line the aircraft stands on, so the front view kept only fuselage and fins, and the
+visual hull carved the outer wings away. Fix (`sheet._in_thin_shape`, both ground-line rules): a horizontal line with
+another stroke 3-10 px above or below it in at least half of its columns is one side of a thin closed shape, not a
+ground line. Test 25 (ground line erased, flat bottom kept) still passes.
+
+| NASA X-2 three-view | side | top | front | time |
+|---|---|---|---|---|
+| first run, held out (before the fix) | 92.6 | 65.8 | 95.1 | 29.8 s |
+| after the fix (X-2 was used to find it, so this is not a held-out number) | 99.7 | 95.5 | 99.6 | 242 s incl. a Modal redeploy |
+| G (X-3) after the fix, unchanged | 100.0 | 99.5 | 98.9 | 32.6 s |
+
+The same fix stopped erasing the tyres' outer lines in the car sheet's end view (internal only): 90.7 -> 99.0 %; its
+region names were regenerated by a live Muse Spark naming (18.1 s) because the region numbers changed. Remaining on
+X-2: the tips of the horizontal tail (a thin wedge past the fuselage in the side view, only partly filled) are carved
+from the top view. No public three-view is held out any more.
+
+## Nov 1 — Muse Voice Transcribe, real speech (owner's test)
+
+| what was said | transcript returned by Muse Voice Transcribe | time | result |
+|---|---|---|---|
+| "make me a iPhone design" | "make me a iPhone design。" (exact words; a Chinese full stop added) | 34 s end to end, owner's stopwatch: transcription + Muse Spark + 15-part build + focus sweep | 15 parts, 75 x 148.2 x 13.5 mm, 94.7-96.3 % sharp, 0 % off-window |
+
+The transcription alone was not timed in that test; the UI now shows it on the message ("Muse Voice Transcribe ·
+speech to text · N s"), and a trailing CJK full stop is removed before the text goes to Muse Spark. The model is a
+simplified parametric smartphone shape, not manufacturer data (the reply says so); the demo and README say
+"smartphone". Voice can start the explanation: a transcript like "Explain this machine" opens the Explain step player
+(phrase rule checked on 6 phrases; not yet tried with the microphone).
+
+## Nov 1 — Muse Wonder reads the dense drawing and does the engineer's completion
+
+`muse-wonder-1.0` (Meta's most capable reasoning model; same endpoint and request format as Muse Spark; probed
+2026-11-01: image input, strict json_schema, json_object, temperature, seed, reasoning_effort all accepted) now reads
+the drawing (whole sheet + 4 close-ups, each twice) and completes the unseen views. A failed Muse Wonder call is
+retried on Muse Spark, and the step label then says "Muse Wonder + Muse Spark (fallback)". Live runs, 2026-11-01:
+
+| input | reading | runs | recall % | parts precision % | read_drawing s | total s |
+|---|---|---|---|---|---|---|
+| B | Muse Wonder, default effort | 2 | 88.6 | 65.3 (72.4, 58.2) | 284.4 | 205, 587 |
+| B | Muse Wonder, effort low (now the default) | 2 | 84.8 | 60.5 (56.2, 64.7) | 29.3 | 115, 99 |
+| D | Muse Wonder, effort low | 1 | 84.3 | 64.1 | 29.8 | 102 |
+| C | Muse Wonder, effort low | 1 | 89.3 | 69.3 | 26.6 | 111 |
+| B / D / C | Muse Spark readings replayed through the same rebuild (mean of saved runs) | 9 / 9 / 3 | 76.3 / 72.3 / 73.6 | 62.9 / 77.8 / 80.4 | ~35-60 | ~96-116 |
+
+Muse Wonder reads more parts (D: 131 kept vs ~80): recall rises 8-16 points on all three drawings; parts precision
+does not rise on B and falls 11-14 points on D and C (more parts whose outline is not on a drawn line). At its default
+effort the reading takes ~5 x longer for +4 points recall and +5 points precision on B. Costs ~3-5 x Muse Spark per
+token (dev.meta.ai pricing). One run each on D and C: not yet a mean. Reading model and effort are switchable without
+code changes (META_READ_MODEL, META_READ_EFFORT, META_COMPLETE_MODEL).
+
+**Decision (owner, Nov 1): Muse Spark keeps reading the drawing; Muse Wonder does the engineer's completion (medium
+effort).** F1 of recall and parts precision, Muse Spark (replayed) -> Muse Wonder (low effort, live): B 68.9 -> 70.6,
+D 75.0 -> 72.8, C 76.9 -> 78.0 (single live runs on D and C). The Muse Wonder reading rows above stay as a measured
+comparison; no more Muse Wonder reading runs were made.
+
+## Nov 1 — Demo menu: two full passes with the current code
+
+Each pass, through the server exactly as the Demo menu runs it (warm-up, upload, Explain for the machines); real key,
+Modal T4. Reading: Muse Spark; completion: Muse Wonder (medium effort); explanation: Muse Spark; illustration: Muse
+Image (in parallel). Sizes on D and C are model scale (300 mm assumed: the patents have no scale).
+
+| demo | pass | read drawing / views | completion | rebuild | build total | Explain (steps, rejected) | total |
+|---|---|---|---|---|---|---|---|
+| D press | 1 | 30.4 s | 35.0 s | 5.9 s | 93.3 s | 17.2 s (6, 0) | 110.5 s |
+| D press | 2 | 29.8 s | 38.5 s | 5.0 s | 95.0 s | 13.9 s (6, 0) | 108.9 s |
+| C gearbox | 1 | 34.3 s | 47.2 s | 5.6 s | 109.1 s | 12.0 s (6, 0) | 121.1 s |
+| C gearbox | 2 | 41.9 s | 74.8 s | 5.2 s | 141.2 s | 20.2 s (6, 0) | 161.4 s |
+| G X-3 | 1 | 40.9 s (Modal) | — | — | 53.1 s | — | 53.1 s |
+| G X-3 | 2 | 39.3 s (Modal) | — | — | 50.6 s | — | 50.6 s |
+
+No step failed in either pass. The last successful run of each demo is kept by the server and can be shown from the
+Demo menu only as a RECORDED run (banner "RECORDED run · … · not live", and the same label on the explanation).
+
 ## How to read these numbers
 
 - **Recall** (`drawing_lines_on_built_parts_pct`): share of the drawing's lines (inside the machine's area) that lie on a built part or frame, front view. A big housing can inflate it, so it is always shown with precision.
@@ -393,5 +594,5 @@ the measured model"; it is not a result.
 - **Parts read**: parts kept after the reading(s), duplicate merge and the circle check (before hubs and frame plates are added). Its spread across runs is the stability target (≤ 15 %).
 - **Total s**: wall time of the whole upload (routing, reading, completion, rebuild, desk score, focus sweep) on Modal T4; the target is 90 s; the number in brackets is how far over or under it is.
 - **Ground-line rule** (three-view sheets): the line an object is drawn standing on is not part of the object. A straight horizontal line in the lowest 15 % of a view's ink, at least 40 % of the view's width and at most 5 px thick, is erased before the view is filled, but ONLY if it runs past the object's own outline (measured in the band just above it) on at least one side; a part's own flat bottom edge stays. Where a wheel stands on it, the line's pixels stay. Both cases are test 25. Separate outlines (a nose wheel drawn apart from the fuselage) are kept if they lie inside the main outline's box (+15 %) and do not touch the view's crop edge (a neighbouring view reaching into the crop does).
-- **NASA X-3 view match** (86–93 % vs ≥ 95 % on the car sheet): the red areas in its check image are the tips of the horizontal tail and the wings, and the nose wheel. These are surfaces only a few pixels thick in one view: filling each view's outline closes 2 px gaps and erodes back, which removes a thin surface from that view, and a visual hull keeps only what every view shows, so it disappears from the solid. The nose wheel is not connected to the body in the side view, and only the largest connected outline per view is kept. (Before Nov 1; fixed since by the 1-px build without blur and the detached-parts rule: 100 / 99.6 / 99.0, see the Nov 1 section.)
+- **NASA X-3 view match** (86–93 % vs ≥ 95 % on the car sheet): the red areas in its check image are the tips of the horizontal tail and the wings, and the nose wheel. These are surfaces only a few pixels thick in one view: filling each view's outline closes 2 px gaps and erodes back, which removes a thin surface from that view, and a visual hull keeps only what every view shows, so it disappears from the solid. The nose wheel is not connected to the body in the side view, and only the largest connected outline per view is kept. (Before Nov 1; fixed since by the 1-px build without blur and the detached-parts rule: 100 / 99.5 / 98.9 %.)
 

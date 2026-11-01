@@ -17,6 +17,30 @@ from engine import geometry, lab
 API = os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
 MODEL = os.environ.get("META_MODEL", "muse-spark-1.3")
 VOICE_MODEL = os.environ.get("META_VOICE_MODEL", "muse-voice-transcribe-1.0")
+# Muse Wonder (Meta's most capable reasoning model, same endpoint and request format as Muse Spark; probed 2026-11-01:
+# image input, strict json_schema, json_object, temperature, seed and reasoning_effort all accepted) does the
+# engineer's completion (medium effort); Muse Spark reads the drawing (Muse Wonder reading raised recall but lowered
+# precision on D and C: F1 B 68.9 -> 70.6, D 75.0 -> 72.8, C 76.9 -> 78.0, RESULTS.md). If a Muse Wonder call fails,
+# that call is retried on Muse Spark and the step says so. Switches: META_READ_MODEL, META_READ_EFFORT, META_COMPLETE_MODEL.
+READ_MODEL = os.environ.get("META_READ_MODEL", MODEL)            # owner's decision, Nov 1: Muse Spark reads (RESULTS.md)
+COMPLETE_MODEL = os.environ.get("META_COMPLETE_MODEL", "muse-wonder-1.0")
+COMPLETE_EFFORT = os.environ.get("META_COMPLETE_EFFORT", "medium")      # owner's decision, Nov 1
+READ_EFFORT = os.environ.get("META_READ_EFFORT") or None          # Muse Wonder reading: "low" 29 s per reading, default 284 s
+MODEL_NAMES = {"muse-wonder-1.0": "Muse Wonder", "muse-spark-1.3": "Muse Spark", "muse-spark-1.2": "Muse Spark 1.2"}
+READ_USED = []                                   # which model answered each reading call of the current upload
+
+
+def model_name(m):
+    return MODEL_NAMES.get(m, m)
+
+
+def who(models):
+    """'Muse Wonder', or 'Muse Wonder + Muse Spark (fallback)' when some calls fell back."""
+    names = []
+    for m in models:
+        if model_name(m) not in names:
+            names.append(model_name(m))
+    return " + ".join(names[:1] + [n + " (fallback)" for n in names[1:]]) or "Muse Spark"
 MAX_STEPS = 10
 
 SYSTEM = """You are AETHER, the assistant inside a holographic 3D design desk (AETHER 2.0).
@@ -52,7 +76,9 @@ _PART = {"type": "object", "properties": {
     "color": {"type": "string", "description": "surface colour as hex, e.g. #b87333 copper, #c4cbd4 aluminium (used in the full-colour hologram)"}},
     "required": ["name", "type", "params"]}
 SCHEMAS = [
-    ("build_assembly", "Create a new assembly from parametric parts (text-to-CAD). Replaces the scene by default.",
+    ("build_assembly", "Create a new assembly from parametric parts (text-to-CAD). Replaces the scene by default. "
+                       "position [x, y, z]: z is the height of the model's LOWEST point above the display surface "
+                       "(0 = standing on it; 100 = floating 10 cm above it).",
      {"name": {"type": "string"}, "parts": {"type": "array", "items": _PART}, "position": _V3,
       "replace": {"type": "boolean"}}, ["name", "parts"]),
     ("add_part", "Add one part.", {"type": {"type": "string", "enum": sorted(geometry.BUILDERS)},
@@ -140,30 +166,44 @@ class SparkError(RuntimeError):
 STEADY = {"temperature": 0, "seed": 7}
 
 
-def _spark_json(content, schema=None, name="answer", seed=None, timeout=90, retries=1, effort=None):
+def _spark_json(content, schema=None, name="answer", seed=None, timeout=90, retries=1, effort=None, model=None):
     """One Muse Spark call that must answer with a JSON object: temperature 0, a fixed seed, and a strict JSON schema
     when one is given (else json_object). Invalid JSON is retried once with the parse error shown to the model.
     effort: reasoning_effort ("low" for long structured answers: a strict schema on the engineer's completion made the
     model write 29k tokens in 144 s; json_object + low gave a valid answer in 36 s, measured 2026-10-31).
     Temperature 0 and a seed do NOT make the answer repeatable (two seeds never gave the same text), which is why
     drawings are read twice and only agreed parts are kept.
-    Returns (object, {"calls", "retried", "s"}); raises SparkError with the reason."""
+    model: another Meta model on the same endpoint (Muse Wonder); if it fails, the call is made again on Muse Spark
+    and meta["model"] / meta["fallback"] say so.
+    Returns (object, {"calls", "retried", "s", "model"}); raises SparkError with the reason."""
+    if model and model != MODEL:
+        try:
+            return _spark_json_on(model, content, schema, name, seed, timeout, retries, effort)
+        except SparkError as e:
+            obj, meta = _spark_json_on(MODEL, content, schema, name, seed, timeout, retries, effort)
+            meta["fallback"] = f"{model_name(model)} failed ({str(e)[:160]}); answered by {model_name(MODEL)}"
+            return obj, meta
+    return _spark_json_on(MODEL, content, schema, name, seed, timeout, retries, effort)
+
+
+def _spark_json_on(model, content, schema=None, name="answer", seed=None, timeout=90, retries=1, effort=None):
+    """One JSON call on one model (see _spark_json)."""
     import time
     fmt = ({"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": schema}} if schema
            else {"type": "json_object"})
     msgs = [{"role": "user", "content": content}]
-    meta = {"calls": 0, "retried": False}
+    meta = {"calls": 0, "retried": False, "model": model}
     t0 = time.time()
     for attempt in range(retries + 1):
-        body = {"model": MODEL, "messages": msgs, "response_format": fmt, **STEADY,
+        body = {"model": model, "messages": msgs, "response_format": fmt, **STEADY,
                 **({"seed": seed} if seed is not None else {}), **({"reasoning_effort": effort} if effort else {})}
         try:
             meta["calls"] += 1
             r = _post("/chat/completions", body, timeout=timeout)
         except urllib.error.HTTPError as e:
-            raise SparkError(f"Muse Spark HTTP {e.code}: {e.read().decode(errors='ignore')[:200]}") from e
+            raise SparkError(f"{model_name(model)} HTTP {e.code}: {e.read().decode(errors='ignore')[:200]}") from e
         except Exception as e:                                   # timeout, connection reset
-            raise SparkError(f"Muse Spark did not answer ({type(e).__name__}: {str(e)[:120]}; limit {timeout} s)") from e
+            raise SparkError(f"{model_name(model)} did not answer ({type(e).__name__}: {str(e)[:120]}; limit {timeout} s)") from e
         txt = r["choices"][0]["message"].get("content") or ""
         try:
             obj = json.loads(txt[txt.index("{"):txt.rindex("}") + 1])
@@ -176,7 +216,7 @@ def _spark_json(content, schema=None, name="answer", seed=None, timeout=90, retr
         meta["retried"] = True
         msgs = msgs + [{"role": "assistant", "content": txt[:4000]},
                        {"role": "user", "content": f"That was not valid JSON ({err}). Answer again with the JSON object only."}]
-    raise SparkError(f"Muse Spark answered twice without valid JSON ({err})")
+    raise SparkError(f"{model_name(model)} answered twice without valid JSON ({err})")
 
 
 def chat(state, history, user_text, out_dir=".", on_step=None, tools=None):
@@ -239,6 +279,7 @@ def _text_of(content):
 MACHINE_HINTS = ["gear", "wheel", "lever", "shaft", "pin", "frame"]
 READ_DEADLINE_S, READ_HARD_LIMIT_S = 60, 120     # reading stage: go on with what is back / wait no longer for a whole-sheet reading
 LAST_BUILD = {}
+LAST_REPORT = {}                                 # the last build's checks for the one-page report (engine/export.py)
 LAST_IMAGE = {}                                  # the drawing the current machine was built from (Explain shows it to Muse Spark)
 
 
@@ -407,6 +448,9 @@ def _sheet_to_design(state, history, data_url, prompt, size_mm, out_dir, step):
             "size_mm": res["size_mm"], "check": check, "note": res["note"], "precision": res["precision"],
             "parts_built": res["parts_built"], "part_names": res["part_names"], "detail": res.get("detail")}
     sam = {"tool": "read_views", "args": {"prompt": prompt, "length_mm": res["size_mm"][0]}, "result": info}
+    LAST_REPORT.clear()
+    LAST_REPORT.update({"kind": "three-view sheet", "view_match_iou_pct": iou, "image_data_url": data_url, "fit": fit,
+                        "scale_known": False, "scale_source": f"assumed: length {res['size_mm'][0]:g} mm (no scale on the sheet)"})
     images = {"sam_check": chk}
     step({"stage": "tool", "tool": "desk_score"})
     score = compute.run(state, "desk_score", {})
@@ -470,7 +514,8 @@ def _spark_read_drawing(im, hints, where="", max_n=40, seed=None):
             + " teeth and ends are null when they do not apply."},
            {"type": "image_url", "image_url": {"url": vision._data_url(im, "JPEG")}}]
     try:
-        obj, _ = _spark_json(msg, READ_SCHEMA, "drawing_reading", seed=seed)
+        obj, meta = _spark_json(msg, READ_SCHEMA, "drawing_reading", seed=seed, model=READ_MODEL, effort=READ_EFFORT)
+        READ_USED.append(meta["model"])
     except SparkError as e:
         if isinstance(e.__cause__, urllib.error.HTTPError) and e.__cause__.code == 400:
             return None
@@ -521,7 +566,8 @@ def _read_machine(data_url, hints, step):
     tw, th = int(Wh * 0.62), int(Hh * 0.62)               # 2 x 2 tiles, ~24 % overlap
     tiles = [(x0, y0, x0 + tw, y0 + th) for y0 in (0, Hh - th) for x0 in (0, Wh - tw)]
     names = ["top left", "top right", "bottom left", "bottom right"]
-    step({"stage": "tool", "tool": "read_drawing"})
+    READ_USED.clear()
+    step({"stage": "tool", "tool": "read_drawing", "who": model_name(READ_MODEL)})
 
     def whole(seed):
         return _spark_read_drawing(im, hints, "", 40, seed=seed)
@@ -591,7 +637,8 @@ def _read_machine(data_url, hints, step):
         else:
             k = ra or rb or []
         close.append((k, f"close-up {names[i]}"))
-    step({"stage": "done", "tool": "read_drawing", "error": "; ".join(failed)[:300] if failed else None})
+    step({"stage": "done", "tool": "read_drawing", "error": "; ".join(failed)[:300] if failed else None,
+          "who": who(READ_USED)})
     n_whole = len(parts)
     merged = interpret.merge_reads([(parts, "whole sheet")] + close, W, H)
     step({"stage": "tool", "tool": "measure_circles"})
@@ -637,11 +684,18 @@ def _fit_to_desk(state, group_id, target_pct=80):
     g["scale"] = [s, s, s]
     lo, hi = geometry.bounds(mine)
     H = float(hi[2] - lo[2])
-    bottom = 2.0 if H <= 0.92 * zone[1] else (zone[0] + zone[1]) / 2 - H / 2
+    # on the display surface when it fits above it; a model taller than the sharp zone above the surface is centred in
+    # the zone, which reaches behind the surface (an AETHER Desk image may sit behind the display) - said in the note
+    bottom = 0.0 if H <= 0.92 * zone[1] else (zone[0] + zone[1]) / 2 - H / 2
     g["position"] = [float(g["position"][0] - (lo[0] + hi[0]) / 2), float(g["position"][1] - (lo[1] + hi[1]) / 2),
                      float(g["position"][2] + bottom - lo[2])]
     lab._bump(state)
-    return {"scale": round(s, 3), "sharp_zone_mm": zone, "height_mm": round(H, 1)}
+    out = {"scale": round(s, 3), "sharp_zone_mm": zone, "height_mm": round(H, 1), "bottom_z_mm": round(bottom, 1)}
+    if bottom < 0:
+        out["note"] = (f"The model is {H:.0f} mm tall, more than the sharp zone above the display ({zone[1]:.0f} mm), so it is "
+                       f"centred in the sharp zone: its lowest {-bottom:.0f} mm are behind the display surface, where a "
+                       "hologram can also be shown sharply.")
+    return out
 
 
 def _interpret_read(im, read, size_mm, mmpx, src):
@@ -680,10 +734,13 @@ Decide, from what each part is and how machines like this are built:
   gear / wheel / pulley centre that has none (type "shaft", at_mm [x, y], radius_mm, z_from_mm, z_to_mm reaching
   the housing walls), bearings where shafts pass the walls (type "bearing"), spacers between stacked parts, a base
   plate or feet if it would not stand (type "block", box_mm [x1, y1, x2, y2], z_from_mm, z_to_mm).
+- gear_pairs: every pair of gears that mesh, by part number n (in a section the gears are cut edge-on: a sun meshing
+  with its planets, a planet with the ring), with a one-line reason. List only pairs you can see meshing.
 No two solids may intersect except a shaft through its bore. For every added part give "reason": one line an
 engineer would write, naming the part numbers it serves (e.g. "shaft: gear 3 has no axle", "bearing: shaft 12 passes
 the housing wall"). Fields that do not apply are null. Answer with one JSON object only:
-{{"machine_depth_mm": 0, "parts": [{{"n": 1, "z_mm": 0, "thickness_mm": 0}}], "added": [], "reasoning": "one sentence"}}"""
+{{"machine_depth_mm": 0, "parts": [{{"n": 1, "z_mm": 0, "thickness_mm": 0}}], "added": [],
+ "gear_pairs": [{{"a": 1, "b": 2, "reason": "one line"}}], "reasoning": "one sentence"}}"""
 
 _ADDED = {"type": "object", "additionalProperties": False,
           "required": ["type", "label", "reason", "at_mm", "radius_mm", "box_mm", "z_from_mm", "z_to_mm"], "properties": {
@@ -709,7 +766,7 @@ def _spark_complete(im, parts):
     msg = [{"type": "text", "text": COMPLETE.format(parts=rows)},
            {"type": "image_url", "image_url": {"url": vision._data_url(im.convert("RGB"), "JPEG")}}]
     try:
-        out, _ = _spark_json(msg, None, "engineer_completion", seed=1, timeout=120, effort="low")
+        out, meta = _spark_json(msg, None, "engineer_completion", seed=1, timeout=150, effort=COMPLETE_EFFORT, model=COMPLETE_MODEL)
     except SparkError as e:
         return None, str(e)
     # json_object, not the strict schema (too slow, see _spark_json): check the shape here, keep only usable entries
@@ -718,6 +775,9 @@ def _spark_complete(im, parts):
     out["parts"] = [p for p in out["parts"] if isinstance(p, dict) and str(p.get("n", "")).isdigit()]
     out["added"] = [a for a in out.get("added") or [] if isinstance(a, dict) and isinstance(a.get("z_from_mm", 0), (int, float))
                     and isinstance(a.get("z_to_mm", 0), (int, float))]
+    out["gear_pairs"] = [g for g in out.get("gear_pairs") or [] if isinstance(g, dict) and isinstance(g.get("a"), int)
+                         and isinstance(g.get("b"), int)]
+    out["_model"] = meta["model"]
     return out, None
 
 
@@ -766,9 +826,10 @@ def _blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, st
         return info["error"], [sam], images, history
     completion, c_err = None, None
     if info.get("mode") == "interpret":          # one view: the expert completes the other two
-        step({"stage": "tool", "tool": "complete_views"})
+        step({"stage": "tool", "tool": "complete_views", "who": model_name(COMPLETE_MODEL)})
         completion, c_err = _spark_complete(im, info["parts"])
-        step({"stage": "done", "tool": "complete_views", "error": c_err})
+        step({"stage": "done", "tool": "complete_views", "error": c_err,
+              "who": who([(completion or {}).get("_model") or COMPLETE_MODEL])})
     LAST_BUILD.clear()                           # what the rebuild got, so a run can be replayed offline (tests/run_reference)
     LAST_IMAGE.clear()
     LAST_IMAGE["data_url"] = data_url
@@ -800,6 +861,12 @@ def _blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, st
             st_len, st_steps = st_len + l_, st_steps + s_
     check["staircase_pct"] = round(100 * st_steps / max(st_len, 1e-9), 2)
     check["frame_outline_max_dev_px"] = round(rep["checks"].get("frame_outline_max_dev_mm", 0.0) / info["mm_per_px"], 2)
+    LAST_REPORT.clear()
+    LAST_REPORT.update({"kind": "machine drawing", "check": check, "gear_pairs": rep.get("gear_pairs"),
+                        "implausible": rep.get("implausible"), "image_data_url": data_url,
+                        # a patent drawing has no scale: sizes are model mm unless a dimension on it was read
+                        "scale_known": str(info.get("scale_source", "")).startswith("read from"),
+                        "scale_source": info.get("scale_source")})
     sam["result"]["check"] = check
     images["sam_check"] = vision._data_url(check_img, "JPEG")
     built = compute.run(state, "build_assembly", {"name": "Machine from drawing", "parts": specs,
@@ -906,6 +973,10 @@ def optimize(state, target_pct=80, max_rounds=3, on_step=None):
                       "design_z_mm": score["design_z_mm"], "eye_sharpness_at_top_pct": after_sharp},
             "parts": score["parts"], "target_pct": target_pct, "rows": score["rows"],
             "note": "Muse Spark changed the design; the wave-optics eye model scored each round. Simulation, not a measurement.",
+            **({"below_surface_note": f"The design now reaches {-score['design_z_mm'][0]:.0f} mm behind the display surface on "
+                                      "purpose: the desk's sharp zone extends behind it, and an AETHER Desk hologram may be "
+                                      "shown there (it is still seen through the panel)."}
+               if score["design_z_mm"][0] < -0.1 else {}),
             "_images": images}
 
 

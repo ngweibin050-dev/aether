@@ -109,7 +109,7 @@ def test_see_inside():
     st = lab.default_state()
     lab.build_assembly(st, "box in a ball", [
         {"name": "shell", "type": "sphere", "params": {"radius": 30}},
-        {"name": "core", "type": "box", "params": {"w": 12, "d": 12, "h": 12}}], position=(0, 0, 60))
+        {"name": "core", "type": "box", "params": {"w": 12, "d": 12, "h": 12}}], position=(0, 0, 30))   # bottom at 30: centre 60
 
     def core_visible():
         P, owner, vis = lab._samples(st)
@@ -461,12 +461,10 @@ def test_three_view_sheet():
     print(f"  {r['views_found']} views, size disagreement {r['size_disagreement_pct']}%, match {iou}, "
           f"size {r['size_mm']} mm, wheels at x = {[w['x'] for w in r['wheels']]} mm")
     assert r["views_found"] >= 3 and r["size_disagreement_pct"] < 6
-    # the hull (voxel field) matches every view; the delivered meshes (official, tyres and rims included) match side
-    # and top. TEMPORARY, 2026-11-01: the tyre cylinders stick out sideways in the end views (lateral wheel position
-    # is estimated from the end view's lowest rows), so the end view is held at >= 90 until the hull pass rebuilds
-    # the wheels (tyre + rim + wheel arch cut)
+    # the hull (voxel field) and the delivered meshes (official, tyres and rims included) match every view. The end
+    # view was held at >= 90 until the ground-line rule stopped erasing the tyres' outer lines there (Nov 1: 99.0 %)
     assert min(r["view_match_voxel_pct"].values()) >= 95
-    assert iou["side"] >= 95 and iou["top"] >= 95 and iou["front"] >= 90
+    assert iou["side"] >= 95 and iou["top"] >= 95 and iou["front"] >= 95
     assert len(r["wheels"]) == 2 and r["wheels"][0]["x"] < 0 < r["wheels"][1]["x"]
     assert sum(p["type"] == "cylinder" for p in st["parts"]) == 8          # 4 tyres + 4 rims
     assert 0.4 < r["size_mm"][1] / r["size_mm"][0] < 0.6 and 0.2 < r["size_mm"][2] / r["size_mm"][0] < 0.35
@@ -627,7 +625,7 @@ def test_smooth_body_stays_smooth():
 def test_explain_grounded():
     """30. Explain this machine (explain.py, no API): the validator rejects a step naming a part the model does not have
     and a step with a number that is not in the model (an invented 300 mm); a measured size, the tooth counts and the
-    ratio computed from them pass. A first answer with a bad step is retried once; a step still bad is dropped and
+    ratio computed from them pass; with no scale on the drawing a size in mm must say "model scale, real size unknown"; teeth assumed from the size give "ratio unknown". A first answer with a bad step is retried once; a step still bad is dropped and
     counted. If Muse Image fails, the explanation is still returned, with the reason and no picture."""
     import agent
     import explain
@@ -642,7 +640,13 @@ def test_explain_grounded():
         P("s2", "output shaft b", "shaft", {"diameter_mm": [16.0, "traced"]}),
         P("b1", "bearing", "added", {"bore_mm": [12.0, "engineer: shaft size"]}, reason="a shaft needs a bearing in the wall")]}
     fx = explain.facts(st)
-    assert fx["gear_pairs"] == [{"gear_a": "g1", "gear_b": "g2", "teeth_a": 20, "teeth_b": 30, "ratio_b_to_a": 1.5, "ratio_a_to_b": 0.67}]
+    gp = fx["gear_pairs"]
+    assert len(gp) == 1 and (gp[0]["gear_a"], gp[0]["gear_b"], gp[0]["ratio_b_to_a"]) == ("g1", "g2", 1.5)
+    # teeth assumed from the size (not counted): no ratio, said so
+    st2 = {"parts": [dict(p, eng={**p["eng"], "dims": {**p["eng"]["dims"], "teeth": [p["eng"]["dims"]["teeth"][0], "assumed from the size"]}})
+                     if p["id"] == "g2" else p for p in st["parts"]]}
+    gp2 = explain.facts(st2)["gear_pairs"][0]
+    assert "ratio_b_to_a" not in gp2 and gp2["ratio"].startswith("unknown")
     assert fx["parts"][0]["dims"]["thickness_mm"]["src"] == "guessed" and fx["parts"][0]["dims"]["width_mm"]["src"] == "measured"
     good = {"title": "Gears slow it down", "text": "The 20-tooth pinion drives the 30-tooth wheel. That is a 1.5 to 1 reduction.",
             "parts": ["g1", "g2"], "camera": "front", "explode": False}
@@ -651,6 +655,14 @@ def test_explain_grounded():
     errs = explain.validate({"steps": [good, bad_id, invented]}, fx)
     print(f"  validator: good {errs[0]}, bad id {errs[1]}, invented number {errs[2]}")
     assert errs[0] == [] and any("g9" in e for e in errs[1]) and any("300" in e for e in errs[2])
+    # a patent drawing has no scale: a size in mm must say "model scale, real size unknown" (or use proportions)
+    bare = dict(good, text="The input shaft is 12 mm across. It drives the pinion.", parts=["s1"])
+    said = dict(good, text="The input shaft is 12 mm across (model scale, real size unknown). It drives the pinion.", parts=["s1"])
+    e_unknown = explain.validate({"steps": [bare, said]}, fx)
+    e_known = explain.validate({"steps": [bare]}, explain.facts(st, {"known": True, "source": "read from 2 dimension(s)"}))
+    print(f"  no scale: bare mm {e_unknown[0]}, labelled {e_unknown[1]}; scale read: bare mm {e_known[0]}")
+    assert fx["scale"]["real_size_known"] is False and any("model scale" in e for e in e_unknown[0])
+    assert e_unknown[1] == [] and e_known[0] == []
     base = [dict(good, title=f"Step {k}") for k in "ABCDEF"]
     answers = [{"machine": "reducer", "steps": base + [invented]}, {"machine": "reducer", "steps": base + [bad_id]}]
     calls = []
@@ -669,6 +681,191 @@ def test_explain_grounded():
     assert len(r["steps"]) == 6 and len(r["rejected_steps"]) == 1 and "g9" in str(r["rejected_steps"])
     assert r["illustration"]["data_url"] is None and r["illustration"]["error"]
     assert r["illustration"]["label"] == "AI illustration — concept, not the measured model"
+
+
+def test_plausible_parts_and_section_gears():
+    """31. Rebuild sanity on a one-view reading (no API): a shaft whose traced width is < 1 % of the machine takes its
+    box estimate when that is plausible and is dropped when it is not (both listed in report["implausible"]); two gears
+    cut edge-on in a section, axes parallel, faces overlapping, axis gap = r1 + r2, are recorded as a meshing pair from
+    the geometry, with "ratio unknown" since their teeth were not counted; a pair proposed by the engineer's completion
+    is recorded as guessed, with its reason."""
+    from engine import rebuild
+    base = {"confidence": 1, "angle_deg": 0.0, "interpreted": True}
+    P = [dict(base, n=1, label="housing", kind="frame", centre_mm=[0, 0], length_mm=200, width_mm=120, elongation=1.7),
+         dict(base, n=2, label="shaft a", kind="shaft", centre_mm=[0, -40], length_mm=150, width_mm=1.2, elongation=125,
+              width_source="two drawn sides", width_estimate_mm=10.0),
+         dict(base, n=3, label="hairline", kind="shaft", centre_mm=[0, 50], length_mm=80, width_mm=0.9, elongation=89,
+              width_source="two drawn sides", width_estimate_mm=1.0),
+         dict(base, n=4, label="sun", kind="gear", centre_mm=[-20, 0], length_mm=30, width_mm=10, radius_mm=15,
+              tip_radius_mm=15, edge_on=True, face_mm=10, axis_deg=0.0, view_note="section", elongation=3),
+         dict(base, n=5, label="planet", kind="gear", centre_mm=[-20, 35], length_mm=40, width_mm=10, radius_mm=20,
+              tip_radius_mm=20, edge_on=True, face_mm=10, axis_deg=0.0, view_note="section", elongation=4),
+         dict(base, n=6, label="output", kind="gear", centre_mm=[60, 0], length_mm=40, width_mm=12, radius_mm=20,
+              tip_radius_mm=20, edge_on=True, face_mm=12, axis_deg=0.0, view_note="section", elongation=3.3)]
+    comp = {"gear_pairs": [{"a": 5, "b": 6, "reason": "planet drives the output through the carrier"}]}
+    specs, rep = rebuild.rebuild(P, [240, 160], comp)
+    acts = {x["label"]: x["action"] for x in rep["implausible"]}
+    print(f"  implausible: {rep['implausible']}")
+    print(f"  gear pairs: {rep['gear_pairs']}")
+    assert acts == {"shaft a": "width from the box estimate", "hairline": "dropped"}
+    assert not any("hairline" in s_["name"] for s_ in specs)
+    sa = next(s_ for s_ in specs if s_["name"].startswith("shaft a"))
+    assert sa["params"]["radius"] == 5.0 and "estimated from the box" in sa["eng"]["dims"]["diameter_mm"][1]
+    src = {(g["a"], g["b"]): g for g in rep["gear_pairs"]}
+    assert src[(4, 5)]["source"].startswith("geometry: edge-on") and src[(4, 5)]["ratio"].startswith("unknown")
+    assert src[(5, 6)]["source"].startswith("guessed by Muse Spark") and "carrier" in src[(5, 6)]["source"]
+    assert (4, 6) not in src and (6, 4) not in src                     # far apart: no pair
+    sun = next(s_ for s_ in specs if s_["name"].startswith("sun"))
+    assert any(j["type"] == "gear_mesh" and "geometry" in j["source"] for j in sun["eng"]["joints"])
+
+
+def test_models_stand_on_base():
+    """32. Every build route leaves the model standing on the display surface: the lowest point of the whole group is
+    at z = 0 (within 0.1 mm), x / y as built. Routes: text-to-CAD (a 160 mm motor built around its origin, which used to
+    sink half through the surface), text-to-CAD asked to float 100 mm up (its lowest point at 100), an imported mesh,
+    a three-view sheet; a drawing rebuild stood upright and fitted to the desk stands on it too, unless it is taller than
+    the sharp zone above the surface: then it is centred in the zone and the fit says why part of it is behind it."""
+    import io
+    import numpy as np
+    from PIL import Image, ImageDraw
+    import agent
+    import vision
+    from engine import geometry, lab, rebuild
+    from tests.synth_drawing import drawing
+    def bottom(st):                                    # the model just built (the default scene has others)
+        g = lab._find(st, st["selected"])
+        while g.get("parent"):
+            g = lab._find(st, g["parent"])
+        return float(geometry.bounds(lab.subtree(st, g["id"]))[0][2])
+    got = {}
+    st = lab.default_state()
+    lab.build_assembly(st, "motor", [{"type": "cylinder", "name": "stator", "params": {"radius": 60, "height": 160}},
+                                     {"type": "cylinder", "name": "shaft", "params": {"radius": 8, "height": 220}}])
+    got["text-to-CAD"] = bottom(st)
+    st = lab.default_state()
+    lab.build_assembly(st, "motor", [{"type": "box", "name": "b", "params": {"w": 40, "d": 40, "h": 40}}], position=[0, 0, 100])
+    got["text-to-CAD, 100 mm up"] = bottom(st) - 100
+    st = lab.default_state()
+    V = np.array([[x, y, z] for x in (-20, 20) for y in (-20, 20) for z in (-30, 30)], float)
+    F = [[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6], [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]]
+    lab.import_mesh(st, "box", V.ravel().tolist(), np.array(F).ravel().tolist(), size_mm=0)
+    got["mesh import"] = bottom(st)
+    im = Image.new("L", (900, 560), 255)
+    d = ImageDraw.Draw(im)
+    d.ellipse((60, 40, 420, 130), outline=0, width=2)
+    d.ellipse((60, 260, 420, 410), outline=0, width=2)
+    d.ellipse((600, 40, 750, 130), outline=0, width=2)
+    b = io.BytesIO()
+    im.save(b, "PNG")
+    st = lab.default_state()
+    lab.import_sheet(st, b.getvalue(), 120, measure=False)
+    got["three-view sheet"] = bottom(st)
+    dim, objs, mmpx = drawing()
+    info, _ = vision.blueprint_parts(dim, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
+    specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
+    st = lab.default_state()
+    lab.build_assembly(st, "Machine from drawing", specs, position=[0, 0, 0], rotation=[90, 0, 0])
+    fit = agent._fit_to_desk(st, st["selected"])
+    below = bottom(st)
+    print(f"  lowest point per route (mm): { {k: round(v, 3) for k, v in got.items()} }; drawing rebuild fitted to "
+          f"the desk: lowest point {below:.1f} mm, note: {fit.get('note')}")
+    assert all(abs(v) <= 0.1 for v in got.values()), got
+    # fitted to the desk: on the surface, or (taller than the sharp zone above it) centred in the zone, said so
+    assert abs(below) <= 0.1 or (below < 0 and "behind the display surface" in fit["note"] and abs(below - fit["bottom_z_mm"]) <= 0.1)
+
+
+def test_export_files():
+    """33. Export (engine/export.py): the STL holds every visible triangle in millimetres with the scene's bounds; the GLB
+    is valid glTF 2.0 (header, JSON + BIN chunks), one node per part, positions in metres with y up, and each node's
+    extras carry the part's sizes with their source (measured / assumed); the one-page report lists the parts and
+    separates measured from guessed sizes."""
+    import json
+    import struct
+    import numpy as np
+    import vision
+    from engine import export, geometry, lab, rebuild
+    from tests.synth_drawing import drawing
+    im, objs, mmpx = drawing()
+    info, _ = vision.blueprint_parts(im, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
+    specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
+    st = lab.default_state()
+    lab.build_assembly(st, "synthetic", specs, rotation=[90, 0, 0])
+    meshes = [(p, V, F) for p, V, F in geometry.scene_meshes(st["parts"]) if p["type"] != "group" and len(F)]
+    lo, hi = geometry.bounds(st["parts"])
+    b = export.stl(st)
+    n = struct.unpack("<I", b[80:84])[0]
+    T = np.frombuffer(b[84:], dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])["v"].reshape(-1, 3)
+    assert n == sum(len(F) for _, _, F in meshes) and len(b) == 84 + 50 * n
+    assert np.allclose(T.min(0), lo, atol=0.01) and np.allclose(T.max(0), hi, atol=0.01)
+    g = export.glb(st)
+    magic, ver, total = struct.unpack("<4sII", g[:12])
+    jl, jt = struct.unpack("<I4s", g[12:20])
+    doc = json.loads(g[20:20 + jl])
+    bl, bt = struct.unpack("<I4s", g[20 + jl:28 + jl])
+    assert (magic, ver, total, jt, bt) == (b"glTF", 2, len(g), b"JSON", b"BIN\x00") and bl == doc["buffers"][0]["byteLength"]
+    assert len(doc["nodes"]) == len(meshes)
+    mx = np.max([doc["accessors"][m["primitives"][0]["attributes"]["POSITION"]]["max"] for m in doc["meshes"]], 0)
+    mn = np.min([doc["accessors"][m["primitives"][0]["attributes"]["POSITION"]]["min"] for m in doc["meshes"]], 0)
+    assert np.allclose(mx, [hi[0] / 1000, hi[2] / 1000, -lo[1] / 1000], atol=1e-5)      # (x, z, -y) in metres
+    assert np.allclose(mn, [lo[0] / 1000, lo[2] / 1000, -hi[1] / 1000], atol=1e-5)
+    srcs = [v[1] for nd in doc["nodes"] for v in nd["extras"]["dims"].values() if isinstance(v, list)]
+    assert any("assumed" in str(x) for x in srcs) and any("assumed" not in str(x) for x in srcs)
+    page = export.report_html(st, {"gear_pairs": rep["gear_pairs"]}, [{"label": "read_drawing", "s": 28.0}])
+    assert f"{len(meshes)} parts" in page and "guessed / assumed" in page and "Muse Spark" in page
+    assert " × ".join(f"{v:.1f}" for v in (hi - lo)) in page            # world size (the group's rotation applied)
+    assert "model scale, real size unknown" in page                      # no dimension read: the report says so
+    print(f"  STL {n} triangles ({len(b) / 1e6:.2f} MB), GLB {len(doc['nodes'])} nodes ({len(g) / 1e6:.2f} MB), "
+          f"report {len(page) / 1e3:.0f} kB; bounds {np.round(lo, 1)} .. {np.round(hi, 1)} mm")
+
+
+def test_wonder_fallback():
+    """34. The engineer's completion asks Muse Wonder (the reading stays on Muse Spark); when a Muse Wonder call fails, the
+    same call is made on Muse Spark and the result says so (meta["model"], meta["fallback"]), and the step label names
+    both ("Muse Wonder + Muse Spark (fallback)"). No API: the HTTP call is replaced."""
+    import agent
+    sent = []
+    def fake_post(path, body, timeout=120):
+        sent.append(body["model"])
+        if body["model"] == "muse-wonder-1.0":
+            raise TimeoutError("preview model busy")
+        return {"choices": [{"message": {"content": '{"view": "front", "parts": [], "dimensions": []}'}}]}
+    real = agent._post
+    agent._post = fake_post
+    try:
+        obj, meta = agent._spark_json("read", None, "t", model="muse-wonder-1.0")
+    finally:
+        agent._post = real
+    print(f"  calls {sent}; answered by {meta['model']}; {meta['fallback']}")
+    assert sent == ["muse-wonder-1.0", "muse-spark-1.3"] and meta["model"] == "muse-spark-1.3" and "Muse Wonder failed" in meta["fallback"]
+    assert agent.who(["muse-wonder-1.0", "muse-spark-1.3"]) == "Muse Wonder + Muse Spark (fallback)"
+    assert agent.who(["muse-wonder-1.0"] * 10) == "Muse Wonder"
+    assert agent.READ_MODEL == "muse-spark-1.3" and agent.COMPLETE_MODEL == "muse-wonder-1.0"     # owner's decision, Nov 1
+
+
+def test_fill_holes_fast():
+    """35. Hole filling (outline.fill_holes) gives the same pixels as the plain flood from the border on 500 random
+    masks, and fills a 1200 x 950 frame with a long winding pocket in well under a second: the per-pixel flood took
+    2.8-5.3 s per frame on C's frames (four per rebuild), which made C's rebuild 4 s -> 17-38 s after Part A."""
+    import time
+    import numpy as np
+    from engine import outline as ol
+    rng = np.random.default_rng(0)
+    for _ in range(500):
+        m = rng.random(tuple(rng.integers(1, 60, 2))) < rng.uniform(0.1, 0.8)
+        assert np.array_equal(ol.fill_holes(m), ol.fill_holes_flood(m))
+    m = np.zeros((950, 1200), bool)
+    m[5:945, 5:1195] = True
+    for i in range(20, 1180, 12):                      # a comb: the outside reaches deep between the teeth
+        m[(15 if (i // 12) % 2 else 0):(950 if (i // 12) % 2 else 935), i:i + 5] = False
+    m[400:420, 600:640] = False                        # ... and one enclosed hole
+    t = time.time()
+    f = ol.fill_holes(m)
+    dt = time.time() - t
+    t = time.time()
+    g = ol.fill_holes_flood(m)
+    dt0 = time.time() - t
+    print(f"  500 random masks identical; comb frame: {dt:.2f} s (flood {dt0:.2f} s)")
+    assert np.array_equal(f, g) and dt < 1.0
 
 
 def test_machine_reading():

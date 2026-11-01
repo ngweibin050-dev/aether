@@ -4,7 +4,9 @@ Every number below is from `docs/RESULTS.md` (saved live runs: real Meta key, Mo
 method (outer edge of the built silhouette within 2 px of the drawing's ink; see RESULTS.md, "How to read").
 
 ## Step 0 — baseline (done 2026-10-31)
-Code read, 23 tests passing, Meta smoke test passing (SAM 3.1, voice with silence only, design loop 54.3 % -> 81.0 %).
+Code read, 23 tests passing, Meta smoke test passing (SAM 3.1, voice with a silent clip, design loop 54.3 % -> 81.0 %).
+Voice with real speech: tested by the owner on Nov 1 ("make me a iPhone design" -> transcript exact, 34 s to the
+finished reply; RESULTS.md).
 
 ## Step 1 — reference runs (done)
 `tests/run_reference.py` runs the UI's own upload function with the real key and saves JSON + images per run.

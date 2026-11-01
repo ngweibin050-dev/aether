@@ -41,7 +41,8 @@ Write 5 to 10 steps in this order:
 1. what the machine is (from the drawing and the parts; say if that is your reading),
 2. the frame / housing that holds everything,
 3. where the power comes in,
-4. how the motion is passed on (use the gear pairs' measured tooth counts and the ratio given),
+4. how the motion is passed on: the gear pairs (say if a pair was guessed, and why); give a ratio only where
+   the JSON gives one, else say the ratio is unknown because the teeth were not counted,
 5. the output (what moves at the end, and how),
 6. last step: what was guessed and why (thicknesses, depths, parts added by the engineer).
 
@@ -50,6 +51,9 @@ Rules (checked by a program; a step that breaks one is rejected):
 - Sizes are in mm: write the unit (e.g. "12 mm"). Every number you write must appear in the JSON (a size, a tooth
   count, a ratio, a count, a drawing label). Do not convert units, do not add up or estimate. If a number is not
   there, describe it in words.
+- "scale" says whether the real size is known. When real_size_known is false (a patent drawing has no scale), prefer
+  proportions ("the output wheel is about three times the pinion"); a step that gives a size in mm must say "model
+  scale, real size unknown" in that step.
 - "text": 2 to 4 plain sentences. "title": at most 6 words, no number unless it is in the JSON.
 - "camera": front (the drawing's view), top, iso (3/4 view) or section (cut through the middle).
 - "explode": true when parts hide each other and pulling them apart helps.
@@ -63,8 +67,9 @@ def _src(s):
     return "guessed" if any(w in str(s).lower() for w in GUESSED) else "measured"
 
 
-def facts(state):
-    """The built model as Muse Spark sees it, and the numbers a step may use."""
+def facts(state, scale=None):
+    """The built model as Muse Spark sees it, and the numbers a step may use. scale: {"known": bool, "source": str}
+    (None: not known, as for any patent drawing without a dimension)."""
     parts = [p for p in state["parts"] if p.get("type") != "group" and p.get("visible", True)]
     by_name = {p["name"]: p for p in parts}
     out, kinds = [], {}
@@ -91,15 +96,23 @@ def facts(state):
             if x.get("type") != "gear_mesh" or not q or frozenset((p["id"], q["id"])) in seen:
                 continue
             seen.add(frozenset((p["id"], q["id"])))
-            za = ((e.get("dims") or {}).get("teeth") or [None])[0]
-            zb = (((q.get("eng") or {}).get("dims") or {}).get("teeth") or [None])[0]
-            pr = {"gear_a": p["id"], "gear_b": q["id"], "teeth_a": za, "teeth_b": zb}
-            if za and zb:
-                pr["ratio_b_to_a"] = round(zb / za, 2)
-                pr["ratio_a_to_b"] = round(za / zb, 2)
+            ta = (e.get("dims") or {}).get("teeth") or [None, ""]
+            tb = ((q.get("eng") or {}).get("dims") or {}).get("teeth") or [None, ""]
+            pr = {"gear_a": p["id"], "gear_b": q["id"], "teeth_a": ta[0], "teeth_b": tb[0],
+                  "pair_found_by": "guessed" if "guess" in str(x.get("source", "")) else "measured geometry",
+                  "pair_reason": str(x.get("source", ""))[:160]}
+            if ta[0] and tb[0] and _src(ta[1]) == _src(tb[1]) == "measured":     # ratios from counted teeth only
+                pr["ratio_b_to_a"] = round(tb[0] / ta[0], 2)
+                pr["ratio_a_to_b"] = round(ta[0] / tb[0], 2)
+            else:
+                pr["ratio"] = "unknown: tooth counts were not measured"
             pairs.append(pr)
     shafts = [f["id"] for f in out if f["kind"] in ("shaft", "axle", "rod")]
-    return {"parts": out, "gear_pairs": pairs, "shafts": shafts, "count_by_kind": kinds, "parts_total": len(out)}
+    known = bool((scale or {}).get("known"))
+    sc = {"real_size_known": known, "note": (f"sizes are real mm: {scale.get('source')}" if known else
+                                             "sizes are model mm only: the drawing states no scale or dimension"
+                                             + (f" ({scale.get('source')})" if (scale or {}).get("source") else ""))}
+    return {"scale": sc, "parts": out, "gear_pairs": pairs, "shafts": shafts, "count_by_kind": kinds, "parts_total": len(out)}
 
 
 def _numbers_in(obj):
@@ -124,6 +137,7 @@ def _numbers_in(obj):
 
 
 NUMBER = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)(?![\w])")
+SIZE_MM = re.compile(r"\d(?:[.,]\d+)?\s*mm\b", re.I)
 
 
 def validate(plan, fx):
@@ -131,7 +145,8 @@ def validate(plan, fx):
     does not exist, text outside 2-4 sentences. A number written is accepted when some fact rounds to it at the
     precision written (25 for 25.4 is accepted, 26 is not); 1 and 2 are always accepted (one of, two gears)."""
     ids = {p["id"] for p in fx["parts"]}
-    allowed = _numbers_in(fx) | {1.0, 2.0}
+    allowed = _numbers_in({k: v for k, v in fx.items() if k != "scale"}) | {1.0, 2.0}
+    scale_known = (fx.get("scale") or {}).get("real_size_known", True)
     out = []
     for s in plan.get("steps") or []:
         bad = []
@@ -145,6 +160,9 @@ def validate(plan, fx):
             dec = len(m.split(".")[1]) if "." in m else 0
             if not any(abs(round(v, dec) - x) < 1e-9 for v in allowed):
                 bad.append(f"number {m} is not in the model data")
+        if not scale_known and SIZE_MM.search(f"{s.get('title', '')} {s.get('text', '')}") and \
+                "model scale" not in f"{s.get('title', '')} {s.get('text', '')}".lower():
+            bad.append("a size in mm without \"model scale, real size unknown\" (the drawing has no scale)")
         if s.get("camera") not in CAMERAS:
             bad.append(f"camera {s.get('camera')!r}")
         n = len([x for x in re.split(r"(?<=[.!?])\s+", (s.get("text") or "").strip()) if x])
@@ -185,13 +203,13 @@ def illustrate(prompt, limit_s=IMAGE_LIMIT_S):
     return "data:image/jpeg;base64," + d["b64_json"], s
 
 
-def explain(state, image=None, with_illustration=True, on_step=None):
+def explain(state, image=None, with_illustration=True, on_step=None, scale=None):
     """-> {"machine", "steps", "rejected_steps", "retried", "timing", "illustration", "facts_summary"}.
     image: the drawing (data URL) the model was built from, shown to Muse Spark. Raises agent.SparkError when Muse
     Spark gives no usable explanation (fewer than 5 valid steps after one retry)."""
     step = on_step or (lambda e: None)
     t0 = time.time()
-    fx = facts(state)
+    fx = facts(state, scale)
     if not fx["parts"]:
         raise ValueError("there is no model to explain")
     pool = cf.ThreadPoolExecutor(2)
@@ -231,5 +249,5 @@ def explain(state, image=None, with_illustration=True, on_step=None):
     pool.shutdown(wait=False, cancel_futures=True)
     return {"machine": plan.get("machine", ""), "steps": keep, "rejected_steps": rejected, "retried": retried,
             "spark_calls": meta["calls"], "timing": {"spark_s": t_spark, "total_s": round(time.time() - t0, 1)},
-            "illustration": ill, "facts_summary": {"parts": fx["parts_total"], "gear_pairs": len(fx["gear_pairs"]),
+            "illustration": ill, "scale": fx["scale"], "facts_summary": {"parts": fx["parts_total"], "gear_pairs": len(fx["gear_pairs"]),
                                                    "count_by_kind": fx["count_by_kind"]}}
