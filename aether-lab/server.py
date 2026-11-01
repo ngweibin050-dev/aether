@@ -65,6 +65,17 @@ def restore(parts):
     return out
 HISTORY = []
 PROGRESS = {"running": False, "steps": []}
+LAST_STEPS = []                                  # the last finished run's steps, for the build report
+# the demo inputs (public domain, docs/INPUTS.md); real sizes are not on the drawings: assumed, and labelled so
+DEMOS = {"D": ("tests/inputs/US929594_fig1.png", "machine", 300, "Metal drawing press", "US Patent 929,594, Fig. 1 (public domain)"),
+         "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)"),
+         "G": ("tests/inputs/NASA_X-3_three_view.png", "three_view", 180, "Douglas X-3 three-view", "NASA Dryden graphic (public domain)")}
+REC = OUT / "recorded"                           # the last successful live demo runs, replayed ONLY with a "recorded" label
+
+
+def _recorded(demo_id):
+    f = REC / f"{demo_id}.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
 LOCK = threading.Lock()
 
 
@@ -75,8 +86,10 @@ def on_step(e):
     if e["stage"] == "thinking":
         s.append({"label": "Muse Spark", "state": "run", "t0": now})
     elif e["stage"] == "tool":
-        s.append({"label": e["tool"], "state": "run", "t0": now})
+        s.append({"label": e["tool"], "state": "run", "t0": now, **({"who": e["who"]} if e.get("who") else {})})
     elif s:
+        if e.get("who"):                         # the model that actually answered (a fallback is named)
+            s[-1]["who"] = e["who"]
         s[-1]["state"] = "error" if e.get("error") else "ok"
         s[-1]["s"] = round(now - s[-1].get("t0", now), 1)
         if isinstance(e.get("error"), str):
@@ -107,6 +120,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {**PROGRESS, "now": time.time()})     # server clock, for the live step timers
         if path == "/api/state":
             return self._send(200, {"state": lean(STATE), "compute": compute.where(), "gpu": compute.status})
+        if path == "/api/demos":
+            return self._send(200, {"demos": [{"id": k, "kind": v[1], "size_mm": v[2], "title": v[3], "source": v[4],
+                                               "image": f"/demo/{k}.png", "recorded_at": (_recorded(k) or {}).get("recorded_at")}
+                                              for k, v in DEMOS.items()]})
+        if path.startswith("/demo/") and path[6:-4] in DEMOS and path.endswith(".png"):
+            return self._send(200, (ROOT / DEMOS[path[6:-4]][0]).read_bytes(), "image/png")
+        if path == "/api/demo/recorded":
+            demo_id = self.path.split("id=")[-1][:4]
+            rec = _recorded(demo_id)
+            if not rec:
+                return self._send(404, {"error": f"no recorded run of demo {demo_id} yet"})
+            with LOCK:
+                STATE.clear()
+                STATE.update(rec["state"])
+                STATE["version"] = int(STATE.get("version", 0)) + 1000
+            return self._send(200, {**{k: v for k, v in rec.items() if k != "state"}, "state": lean(STATE)})
+        if path in ("/api/export.glb", "/api/export.stl", "/api/report.html"):   # downloads of the current scene
+            from engine import export
+            with LOCK:
+                if path.endswith(".glb"):
+                    body, ctype = export.glb(STATE), "model/gltf-binary"
+                elif path.endswith(".stl"):
+                    body, ctype = export.stl(STATE), "model/stl"
+                else:
+                    body = export.report_html(STATE, agent.LAST_REPORT, LAST_STEPS).encode()
+                    ctype = "text/html; charset=utf-8"
+            return self._send(200, body, ctype)
         if path == "/api/meshes":
             return self._send(200, {"version": STATE["version"], "meshes": lab.meshes(STATE),
                                     "offsets": lab.explode_offsets(STATE)})
@@ -132,15 +172,26 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 detail = e.read().decode(errors="ignore")[:300] if hasattr(e, "read") else ""
                 return self._send(500, {"error": f"{type(e).__name__}: {e} {detail}"})
+        if self.path == "/api/warm":               # demo: wake the Modal GPU container (and redeploy if out of date)
+            compute.warm()
+            compute.prewarm()
+            return self._send(200, {"warming": compute.where() == "modal", "gpu": compute.status})
         if self.path == "/api/explain":            # Muse Spark explains the built machine (explain.py), off the lock
             try:
                 with LOCK:
                     snap = {"parts": [dict(p) for p in STATE["parts"]]}
                 PROGRESS.update(running=True, steps=[])
                 try:
-                    res = explain.explain(snap, agent.LAST_IMAGE.get("data_url"), on_step=on_step)
+                    res = explain.explain(snap, agent.LAST_IMAGE.get("data_url"), on_step=on_step,
+                                          scale={"known": agent.LAST_REPORT.get("scale_known", False),
+                                                 "source": agent.LAST_REPORT.get("scale_source")})
                 finally:
                     PROGRESS["running"] = False
+                demo_id = json.loads(raw or b"{}").get("demo_id")
+                if demo_id in DEMOS and _recorded(demo_id):            # kept with that demo's recorded run
+                    rec = _recorded(demo_id)
+                    rec["explain"] = res
+                    (REC / f"{demo_id}.json").write_text(json.dumps(rec, default=str), encoding="utf-8")
                 return self._send(200, res)
             except Exception as e:
                 traceback.print_exc()
@@ -173,7 +224,15 @@ class Handler(BaseHTTPRequestHandler):
                         PROGRESS["running"] = False
                         for x in PROGRESS["steps"]:
                             x["state"] = "ok" if x["state"] == "run" else x["state"]
-                    return self._send(200, {"reply": reply, "trace": trace, "images": images, "state": lean(STATE), "gpu": compute.status})
+                        if self.path == "/api/photo":
+                            LAST_STEPS[:] = [dict(x) for x in PROGRESS["steps"]]
+                    out = {"reply": reply, "trace": trace, "images": images, "state": lean(STATE), "gpu": compute.status}
+                    if body.get("demo_id") in DEMOS and not any((t.get("result") or {}).get("error") for t in trace):
+                        REC.mkdir(parents=True, exist_ok=True)       # a successful live demo run: kept as the fallback
+                        (REC / f"{body['demo_id']}.json").write_text(json.dumps(
+                            {"recorded_at": time.strftime("%Y-%m-%d %H:%M"), "reply": reply, "trace": trace, "images": images,
+                             "steps": [dict(x) for x in PROGRESS["steps"]], "state": STATE}, default=str), encoding="utf-8")
+                    return self._send(200, out)
                 if self.path == "/api/scene":          # undo / redo / bulk edits from the UI
                     STATE["parts"] = restore(body["parts"])
                     STATE["selected"] = body.get("selected")

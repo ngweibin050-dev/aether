@@ -230,8 +230,32 @@ def clear_scene(state):
     return {"parts": 0}
 
 
-def build_assembly(state, name, parts, position=(0, 0, 70), replace=True, rotation=(0, 0, 0), scale=1.0):
-    """Text-to-CAD: the agent designs an assembly as a list of parametric parts (local to the group)."""
+def subtree(state, group_id):
+    """The group and every part under it (not the rest of the scene)."""
+    ids = {group_id}
+    for _ in range(8):
+        ids |= {p["id"] for p in state["parts"] if p.get("parent") in ids}
+    return [p for p in state["parts"] if p["id"] in ids]
+
+
+def place_on_base(state, id=None, base_mm=0.0):
+    """Stand a model on the base plane (the display surface, z = 0): its whole group moves up or down so the lowest
+    point of all its parts is at base_mm; x and y stay. Every build and import ends with this (a new model used to be
+    centred on its origin, so the lower half of a 160 mm motor sat under the surface). Returns the move."""
+    gid = id or state.get("selected")
+    g = _find(state, gid)
+    while g.get("parent"):                                   # the root group of a part
+        g = _find(state, g["parent"])
+    lo, hi = geometry.bounds(subtree(state, g["id"]))
+    dz = float(base_mm) - float(lo[2])
+    g["position"] = [float(g["position"][0]), float(g["position"][1]), round(float(g["position"][2]) + dz, 3)]
+    _bump(state)
+    return {"id": g["id"], "moved_z_mm": round(dz, 2), "bottom_z_mm": float(base_mm), "height_mm": round(float(hi[2] - lo[2]), 1)}
+
+
+def build_assembly(state, name, parts, position=(0, 0, 0), replace=True, rotation=(0, 0, 0), scale=1.0):
+    """Text-to-CAD: the agent designs an assembly as a list of parametric parts (local to the group). position: x, y
+    of the group and z of the model's LOWEST point (0 = standing on the display surface)."""
     if replace:
         state["parts"] = []
     s_ = float(scale)
@@ -260,7 +284,9 @@ def build_assembly(state, name, parts, position=(0, 0, 70), replace=True, rotati
         made.append({"name": p["name"], "type": p["type"]})
     state["selected"] = group["id"]
     _bump(state)
-    lo, hi = geometry.bounds(state["parts"])
+    lo, hi = geometry.bounds(subtree(state, group["id"]))
+    if hi[2] > lo[2]:
+        place_on_base(state, group["id"], float((position or (0, 0, 0))[2]))
     return {"assembly": name, "parts": made, "size_mm": _clean(np.round(hi - lo, 1)),
             "note": "Rebuilt from one drawing view: positions and sizes from the drawing, depth rebuilt from what each part is "
                     "(see each part's eng.dims for what was read and what was assumed)."
@@ -329,7 +355,7 @@ def list_parts(state):
                       for p in state["parts"]]}
 
 
-def import_mesh(state, name, vertices, faces, target_faces=4000, position=(0, 0, 60), size_mm=80):
+def import_mesh(state, name, vertices, faces, target_faces=4000, position=(0, 0, 0), size_mm=80):
     """Inject an external mesh (GLB, STL/OBJ from CAD, or a 3D-generation API): decimate + centre.
     size_mm > 0 rescales the longest side to that size; size_mm = 0 keeps real CAD units (mm)."""
     V = np.asarray(vertices, float).reshape(-1, 3)
@@ -343,7 +369,7 @@ def import_mesh(state, name, vertices, faces, target_faces=4000, position=(0, 0,
               name, _clean(position))
     state["parts"].append(p)
     state["selected"] = p["id"]
-    _bump(state)
+    place_on_base(state, p["id"], float(position[2]))           # position z = height of its lowest point
     return {"id": p["id"], "faces_before": before, "faces_after": int(len(F))}
 
 
@@ -352,8 +378,8 @@ def import_three_view(state, front, top, side, width_mm=80.0, name="three-view p
     The front view's width is width_mm; every other size follows from the drawing's own proportions."""
     from . import hull
     V, F, rep = hull.three_view(front, top, side, width_mm, voxels)
-    if position is None:                     # stand it on the panel, inside the sharp zone
-        position = (0, 0, float(V[:, 2].max()) + 2)
+    if position is None:                     # stand it on the panel
+        position = (0, 0, 0)
     res = import_mesh(state, name, V.ravel().tolist(), F.ravel().tolist(), 6000, position, 0)
     p = next(x for x in state["parts"] if x["id"] == res["id"])
     p["eng"] = {"kind": "three-view hull", "from_drawing": True,
@@ -444,7 +470,7 @@ def import_sheet(state, image, length_mm=180.0, name="Model from three-view draw
             rim["color"] = "#d8e2ee"
             state["parts"] += [tyre, rim]
     state["selected"] = group["id"]
-    _bump(state)
+    place_on_base(state, group["id"])                          # stands on the display surface
     frame = rep.pop("_frame")
     frame["gray"] = np.clip(frame["gray"], 0, 255).astype(np.uint8)          # compact when it travels from Modal
     rn = names if names is not None else rep.get("region_names") or {}
@@ -1055,7 +1081,7 @@ def meshes(state):
     return out
 
 
-TOOLS = {f.__name__: f for f in (add_part, update_part, delete_part, clear_scene, build_assembly, turn_gear, list_parts,
+TOOLS = {f.__name__: f for f in (add_part, update_part, delete_part, clear_scene, build_assembly, place_on_base, turn_gear, list_parts,
                                   import_mesh, import_three_view, import_sheet, set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
                                   focus_sweep, eye_view, lab_focus_sweep, lab_eye_view, window_check, hand_check, desk_check,
                                   search_column_width, desk_score, speckle_compare, export_film)}
