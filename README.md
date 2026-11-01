@@ -20,7 +20,7 @@ AETHER is two things:
 
 The card form factor (bank-card sized, 5 mm thick, all-day battery) makes the same holographic display personal and portable — a window you hold up, not a desk you sit at.
 
-[→ Full hardware proposal](LONG_TERM_PROPOSAL.md)
+[→ Full hardware proposal](AETHER_LONG_TERM_PROPOSAL.md)
 
 ---
 
