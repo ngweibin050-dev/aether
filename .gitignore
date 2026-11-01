@@ -6,3 +6,6 @@ skills-lock.json
 reference/design_example/
 # graphify knowledge-graph output (local tool)
 graphify-out/
+# prompt to claude
+AETHER_Mission_Prompt.md
+CLAUDE.md
