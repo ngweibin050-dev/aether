@@ -5,7 +5,7 @@
 AETHER is two things:
 
 - **AETHER Lab** — the hackathon submission. Built Oct 26 – Nov 4. Give it one page of a century-old patent drawing and Meta's models turn it into a working 3D assembly, explain it part by part, and score how sharp every part would look on a holographic desk. [→ aether-lab/](aether-lab/)
-- **The long-term vision** — a physical desk with a true holographic panel. No headset. The eye focuses at the object's real depth. Hands reach in from the front. Grounded in the physics research done during the hackathon. [→ LONG_TERM_PROPOSAL.md](LONG_TERM_PROPOSAL.md)
+- **The long-term vision** — a physical desk with a true holographic panel. No headset. The eye focuses at the object's real depth. Hands reach in from the front. Grounded in the physics research done during the hackathon. [→ AETHER_LONG_TERM_PROPOSAL.md](AETHER_LONG_TERM_PROPOSAL.md)
 
 ---
 
