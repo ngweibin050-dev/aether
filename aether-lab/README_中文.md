@@ -6,7 +6,7 @@
 4. 先拖滑杆，按 “Calculate hologram”，再按 “Focus sweep”，拖动下方滑杆看对焦变化。
 5. 在 “Ask AETHER” 输入英文或中文问题，或者点下方示例按钮。
 
-物理测试：在此文件夹打开命令行，运行 `python -m tests.test_physics`（16 项）。
+物理测试：在此文件夹打开命令行，运行 `python -m tests.test_physics`（18 项）。
 
 2.2 新增：
 - 清晰度 = 同一焦距下 1D 桌面 ÷ 全 2D 全息（全 2D = 100%）；斜视清晰区 −108…+87 mm。
@@ -14,4 +14,5 @@
 - 选中齿轮可按 ↺ ↻ 或 Run 让相啮合的齿轮一起转。
 - 场景面板：上传按钮可导入 STL / OBJ / GLB（保持真实毫米）；“3V” 按钮导入三视图（主视、俯视、右视）生成实体。
 - 物理面板 “Desk wave check”：真实尺寸 1D 桌面波动仿真，验证眼模型。
+- 2.3：图纸重建不再扁平（机器深度、圆角实体、外壳侧壁、轮毂）；物理面板 “Phase-only” 按钮：单块纯相位面板经瞳孔带相位恢复，误差约 2%。
 - 改了 engine 后请重新 `modal deploy modal_app.py`（Windows 下先 `set PYTHONUTF8=1`）。

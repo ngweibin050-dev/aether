@@ -43,10 +43,10 @@ Physics runs on a Modal GPU by default: `modal token new`, then `modal deploy mo
 engine changes). Add `AETHER_COMPUTE=local` to `.env` to run it on this computer instead.
 
 ## Tests
-`python -m tests.test_physics` runs 16 checks (focus depth, two depths, pixel pitch and bend angle, eye model,
+`python -m tests.test_physics` runs 18 checks (focus depth, two depths, pixel pitch and bend angle, eye model,
 WRP vs direct, Window Law and hand conflict, see-inside, the design-loop score, photo silhouette measurements,
 sharpness metric, watertight outlines, involute gear mesh, drawing rebuild, wave simulation vs eye model,
-three-view import, full-2D reference).
+three-view import, full-2D reference, phase-only pupil-GS, inflated solids).
 
 Laser safety for the optional printed-film test: use only a Class 2 (<1 mW) red laser and aim it
 at a wall.

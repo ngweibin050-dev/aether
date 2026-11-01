@@ -1,4 +1,6 @@
 """Physics checks for the AETHER Lab engine. Run: python -m tests.test_physics"""
+import time
+
 import numpy as np
 
 from engine import optics, measure, eye
@@ -217,10 +219,11 @@ def test_rebuild_synthetic():
     sc = lab.desk_score(st)
     pairs = rep["gear_pairs"]
     print(f"  gear pairs {[(p.get('teeth'), p.get('contact_ratio')) for p in pairs]}, scale {fit['scale']}, "
-          f"desk worst {sc['min_sharpness_pct']}% pass {sc['pass']}")
+          f"desk worst {sc['min_sharpness_pct']}% pass {sc['pass']}, depth/width {sc['depth_ratio']}")
     gears = [s for s in specs if s["type"] == "gear"]
     assert len(gears) == 2 and pairs and all(p["contact_ratio"] > 1.2 for p in pairs)
-    assert {s["eng"]["kind"] for s in specs} >= {"gear", "pin", "frame"} and sc["pass"]
+    assert {s["eng"]["kind"] for s in specs} >= {"gear", "pin", "frame", "hub"} and sc["pass"]
+    assert sc["depth_ratio"] >= 0.3, "rebuilt mechanism is still flat"
 
 
 def json_short(x):
@@ -277,6 +280,488 @@ def test_retina_full2d_is_100():
           f"({desk['in_focus_share']:.0%} of the image in focus)")
     assert abs(full["in_focus_vs_2d"] - 1) < 0.005 and abs(full["sharpness_vs_2d"] - 1) < 0.005
     assert desk["in_focus_vs_2d"] < 1
+
+
+def test_phase_only_pupil_gs():
+    """17. One phase-only panel, solved for the tracked pupil band (pupil-GS), matches complex modulation within 2%
+    for a point on and in front of the panel; naive kinoform / double-phase do not."""
+    from engine import desk_wave
+    for D, d in ((0.7, 0.7), (0.62, 0.7)):
+        F = 2 / (1 / D + 1 / d)
+        a = desk_wave.mtf_1d(desk_wave.point_psf(D, d, F, pitch=34.6e-6, encode="pupil_gs", dth=eye.DTH), eye.DTH)
+        c = desk_wave.mtf_1d(desk_wave.point_psf(D, d, F, pitch=34.6e-6, encode="none", dth=eye.DTH), eye.DTH)
+        k = desk_wave.mtf_1d(desk_wave.point_psf(D, d, F, pitch=34.6e-6, encode="phase", dth=eye.DTH), eye.DTH)
+        print(f"  point {D} m: complex {c:.3f}, pupil-GS {a:.3f}, kinoform {k:.3f}")
+        assert abs(a - c) < 0.02 and k < 0.5 * c
+
+
+def test_inflate_solid():
+    """18. Inflated outline: a lever outline becomes a rounded solid as thick as asked, with its holes kept."""
+    from engine import geometry
+    th = np.linspace(0, 2 * np.pi, 40, endpoint=False)
+    outer = [[x, 8] for x in np.linspace(0, 100, 20)] + [[100 + 8 * np.cos(a), 8 * np.sin(a)] for a in np.linspace(np.pi / 2, -np.pi / 2, 15)] \
+        + [[x, -8] for x in np.linspace(100, 0, 20)] + [[8 * np.cos(a), 8 * np.sin(a)] for a in np.linspace(-np.pi / 2, -3 * np.pi / 2, 15)]
+    holes = [[[4 * np.cos(a), 4 * np.sin(a)] for a in th[::-1]], [[100 + 4 * np.cos(a), 4 * np.sin(a)] for a in th[::-1]]]
+    V, F = geometry.inflate([{"outer": outer, "holes": holes}], 10)
+    near_hole = np.hypot(V[:, 0], V[:, 1]) < 3
+    print(f"  size {np.ptp(V, axis=0).round(1)} mm, vertices inside the hole: {int(near_hole.sum())}")
+    assert abs(np.ptp(V[:, 2]) - 10) < 1.5 and abs(np.ptp(V[:, 0]) - 116) < 3 and not near_hole.any()
+
+
+def test_interpret_read():
+    """19. Engineer's interpretation: a drawing reading (types, boxes, axis ends) becomes clean standard parts -
+    gears, a spoked wheel, forged links, cylinders - in a housing with real depth that passes the desk score."""
+    from engine import interpret, rebuild, lab
+    import agent
+    box = lambda cx, cy, r: [cx - r, cy - r, cx + r, cy + r]
+    read = [{"label": "housing", "type": "frame", "box": [150, 330, 1450, 1160]},
+            {"label": "gear A", "type": "gear", "box": box(590, 650, 90), "teeth": 40},
+            {"label": "gear B", "type": "gear", "box": box(395, 1040, 75), "teeth": 30},
+            {"label": "flywheel", "type": "wheel", "box": box(1390, 480, 90)},
+            {"label": "drive arm", "type": "arm", "box": [720, 470, 1400, 660], "ends": [[730, 650], [1390, 480]]},
+            {"label": "cylinder", "type": "cylinder", "box": [650, 400, 750, 650], "ends": [[700, 410], [700, 640]]},
+            {"label": "pivot", "type": "pin", "box": box(730, 650, 18)}]
+    parts = interpret.parts_from_read(read, 1600, 1600, 300 / 1600)
+    specs, rep = rebuild.rebuild(parts, (300, 300))
+    st = lab.default_state()
+    lab.build_assembly(st, "M", specs, position=[0, 0, 0], rotation=[90, 0, 0])
+    agent._fit_to_desk(st, st["selected"])
+    sc = lab.desk_score(st)
+    kinds = sorted({s["eng"]["kind"] for s in specs})
+    arm = next(p for p in parts if p["label"] == "drive arm")
+    print(f"  kinds {kinds}; arm {arm['length_mm']} mm at {arm['angle_deg']} deg; depth/width {sc['depth_ratio']}, "
+          f"desk worst {sc['min_sharpness_pct']}% pass {sc['pass']}")
+    assert {"gear", "wheel", "link", "piston", "pin", "frame", "hub"} <= set(kinds)
+    assert abs(arm["angle_deg"] - 14.4) < 1 and sc["depth_ratio"] >= 0.3 and sc["pass"]
+
+
+
+def test_frame_clear_of_parts():
+    """20. A base strip drawn behind a gear (as SAM traces it) must not become a slab through the gear: the frame
+    body is cut clear of every part's silhouette (0 mm2 overlap), and the built-vs-drawing check runs."""
+    from PIL import Image, ImageDraw
+    from engine import interpret, rebuild
+    read = [{"label": "gear", "type": "gear", "box": [500, 900, 800, 1200], "teeth": 24},
+            {"label": "arm", "type": "lever", "box": [700, 400, 1300, 700], "ends": [[720, 680], [1280, 420]]},
+            {"label": "base frame", "type": "base", "box": [100, 1100, 1500, 1400]}]
+    parts = interpret.parts_from_read(read, 1600, 1600, 300 / 1600)
+    specs, rep = rebuild.rebuild(parts, (300, 300))
+    im = Image.new("RGB", (1600, 1600), "white")
+    d = ImageDraw.Draw(im)
+    d.ellipse([500, 900, 800, 1200], outline="black", width=6)
+    d.rectangle([100, 1100, 1500, 1400], outline="black", width=6)
+    check, _ = interpret.drawing_check(im, rep.pop("_silhouette"), 300 / 1600)
+    built = [p["built_as"] for p in rep["parts"] if p["built_as"].startswith("frame")]
+    print(f"  {built}; frame/part overlap {rep['checks']['frame_part_overlap_mm2']} mm2; lines on built parts "
+          f"{check['drawing_lines_on_built_parts_pct']}% (recall); built outlines on ink {check['outline_on_ink_pct']} (precision)")
+    assert rep["checks"]["frame_part_overlap_mm2"] == 0 and "base block" in built[0]
+    assert check["drawing_lines_on_built_parts_pct"] > 80
+    # precision catches what recall cannot: the arm is built but not drawn in this image, so the parts' outlines
+    # mostly lie on blank paper (recall stays high because the frame covers the drawn lines)
+    bk = check["outline_on_ink_by_kind_pct"]
+    print(f"  precision by kind: { {k: v['pct'] for k, v in bk.items()} }")
+    assert bk["link"]["pct"] < 10 and bk["link"]["px"] > 500          # the undrawn arm is caught
+    # the gear keeps its drawn size: tip 28.1 mm needs module 2.16, no ISO 54 module within 3 % -> kept measured
+    assert bk["gear"]["pct"] > 80
+
+
+
+def test_modal_engine_mismatch():
+    """21. Modal redeploys ONLY when its engine fingerprint differs from this computer's. An old engine copy: the
+    server redeploys and retries on Modal (never a local CPU result); if the redeploy fails the user gets an error.
+    A bad tool argument, or a tool error on the current engine, comes back as a clear error and deploys nothing."""
+    import os
+    import agent
+    import compute
+    from engine import lab
+    old = os.environ.get("AETHER_COMPUTE")
+    os.environ["AETHER_COMPUTE"] = "modal"
+
+    class F:
+        def __init__(self, fn):
+            self.fn = fn
+
+        def remote(self, *a):
+            return self.fn(*a)
+    new_ping = F(lambda: {"backend": "cupy-gpu", "engine": compute.LOCAL_ENGINE})
+    new_run = F(lambda st, n, a: (dict(lab.run(st, n, a), _backend="test"), st))
+    calls = []
+
+    def fake_deploy(ok):
+        def d():
+            calls.append(ok)
+            if not ok:
+                return "modal: not logged in"
+            compute._remote.update(ping=new_ping, run_tool=new_run)
+            compute.check()
+            return None
+        return d
+    saved = dict(compute._remote), dict(compute.status), compute.deploy
+    try:
+        local_runs = []
+        real_local = compute._local
+        compute._local = lambda *a: local_runs.append(a) or real_local(*a)
+        st = lab.default_state()
+        lab.run(st, "add_part", {"type": "inflate", "params": {"polygons": [{"outer": [[0, 0], [40, 0], [40, 20], [0, 20]], "holes": []}], "thickness": 8}})
+        # a. old engine, redeploy fails -> error, no CPU run
+        compute._remote.update(ping=F(lambda: "cupy-gpu"), run_tool=F(lambda st, n, a: ({"error": "KeyError: 'inflate'"}, st)))
+        compute.deploy = fake_deploy(False)
+        compute.check()
+        assert compute.status["stale"]                       # an old deploy has no fingerprint at all
+        r = compute.run(st, "desk_score", {})
+        assert "error" in r and "_ran_on" not in r
+        # b. old engine noticed after a remote error: the re-ping shows another fingerprint -> redeploy, retry on Modal
+        compute.status.update(stale=False, checked=time.time())
+        compute.deploy = fake_deploy(True)
+        r2 = compute.run(st, "desk_score", {})
+        assert r2["_ran_on"] == "modal" and not compute.status["stale"] and calls == [False, True] and not local_runs
+        # c. a bad argument from the model: a clear error, no remote call, no deploy
+        remote_calls = []
+        compute._remote["run_tool"] = F(lambda st, n, a: remote_calls.append(n) or (dict(lab.run(st, n, a), _backend="test"), st))
+        r3 = compute.run(st, "eye_view", {"focus_mm": 20})
+        r4 = compute.run(st, "eye_view", {"focus_z_mm": "high"})
+        assert r3.get("error_kind") == "bad_args" and "focus_mm" in r3["error"] and "focus_z_mm" in r3["error"]
+        assert r4.get("error_kind") == "bad_args" and not remote_calls and calls == [False, True]
+        # d. a real tool error on the current engine (same fingerprint): returned as is, no deploy
+        compute._remote["run_tool"] = F(lambda st, n, a: ({"error": "TypeError: unsupported operand"}, st))
+        r5 = compute.run(st, "desk_score", {})
+        print(f"  old engine, deploy fails -> error; deploy ok -> {r2['_ran_on']}; bad argument -> \"{r3['error'][:60]}...\"; "
+              f"tool error, same engine -> deploys {len(calls) - 2}")
+        assert "TypeError" in r5["error"] and calls == [False, True] and not local_runs
+        compute._local = real_local
+        # every argument the agent's tool schemas offer is one the engine accepts
+        import inspect
+        for d in agent.TOOL_DEFS:
+            n, props = d["function"]["name"], d["function"]["parameters"]["properties"]
+            if n in lab.TOOLS:
+                assert not [k for k in props if k not in inspect.signature(lab.TOOLS[n]).parameters], (n, props)
+    finally:
+        compute._remote.clear(); compute._remote.update(saved[0]); compute.status.update(saved[1]); compute.deploy = saved[2]
+        if old is None:
+            os.environ.pop("AETHER_COMPUTE", None)
+        else:
+            os.environ["AETHER_COMPUTE"] = old
+
+
+
+def test_three_view_sheet():
+    """22. One sheet with side, front, rear and top views of a car: the views are found and matched by size without
+    being told which is which, the solid matches every view (>= 95%), and both axles' wheels are found."""
+    import json
+    import os
+    from engine import lab
+    st = lab.default_state()
+    path = os.path.join(os.path.dirname(__file__), "car_three_view.gif")
+    if not os.path.exists(path):                       # third-party sheet, not shipped in the public repo
+        print("  SKIPPED: tests/car_three_view.gif is not in this copy")
+        return
+    src = open(path, "rb").read()
+    r = lab.import_sheet(st, src, 120)
+    iou = r["view_match_iou_pct"]
+    print(f"  {r['views_found']} views, size disagreement {r['size_disagreement_pct']}%, match {iou}, "
+          f"size {r['size_mm']} mm, wheels at x = {[w['x'] for w in r['wheels']]} mm")
+    assert r["views_found"] >= 3 and r["size_disagreement_pct"] < 6
+    # the hull (voxel field) matches every view; the delivered meshes (official, tyres and rims included) match side
+    # and top. TEMPORARY, 2026-11-01: the tyre cylinders stick out sideways in the end views (lateral wheel position
+    # is estimated from the end view's lowest rows), so the end view is held at >= 90 until the hull pass rebuilds
+    # the wheels (tyre + rim + wheel arch cut)
+    assert min(r["view_match_voxel_pct"].values()) >= 95
+    assert iou["side"] >= 95 and iou["top"] >= 95 and iou["front"] >= 90
+    assert len(r["wheels"]) == 2 and r["wheels"][0]["x"] < 0 < r["wheels"][1]["x"]
+    assert sum(p["type"] == "cylinder" for p in st["parts"]) == 8          # 4 tyres + 4 rims
+    assert 0.4 < r["size_mm"][1] / r["size_mm"][0] < 0.6 and 0.2 < r["size_mm"][2] / r["size_mm"][0] < 0.35
+    # built like a modeller: many separate parts under one group, each with its own panel lines
+    meshes = [p for p in st["parts"] if p["type"] == "mesh"]
+    print(f"  {len(meshes)} body parts, e.g. {r['part_names'][:6]}")
+    assert len(meshes) >= 20 and all(p["parent"] == r["id"] for p in meshes)
+    assert sum(len(p["params"]["lines"]) > 0 for p in meshes) >= len(meshes) // 2
+    assert len({p["color"] for p in meshes}) >= 6
+    assert all(p["parent"] == r["id"] for p in st["parts"] if p["type"] == "cylinder")
+    # named like a modeller (a fixed reading stands in for Muse Spark offline): materials and real recesses
+    names = json.load(open(os.path.join(os.path.dirname(__file__), "car_three_view_names.json")))
+    namer = lambda shown: {role: {int(k) - 1: v for k, v in names.get(role, {}).items()} for role, _, _ in shown}
+    st = lab.default_state()
+    r = lab.import_sheet(st, src, 120, front_panel=2, namer=namer)
+    d = r["detail"]
+    print(f"  named: {d['kinds']}; recessed {len(d['recessed_mm'])} parts, e.g. {list(d['recessed_mm'].items())[:4]}")
+    got = {p["name"] for p in st["parts"]}
+    assert {"door left", "door right", "windscreen", "bonnet"} <= got and any(n.startswith("headlight") for n in got)
+    assert d["kinds"].get("glass", 0) >= 3 and d["kinds"].get("intake", 0) >= 6 and len(d["recessed_mm"]) >= 8
+    deep = max(d["recessed_mm"].values())
+    assert 0.5 < deep <= 0.022 * 120 + 1e-6                                # intakes sink in, bounded by the rule
+    assert any(p.get("material") == "glass" for p in st["parts"])
+
+def test_ground_line_rule():
+    """25. A ground line under a view is not part of the object and is erased; a part's own flat bottom edge stays.
+    The line counts as ground only if it runs past the object's outline (measured just above it) on at least one side."""
+    import numpy as np
+    from engine import sheet
+    # a: a body on two wheels standing on a ground line that runs past the body on the right
+    m = np.zeros((120, 400), bool)
+    m[20:22, 40:300] = m[60:62, 40:300] = m[20:62, 40:42] = m[20:62, 298:300] = True             # body outline
+    yy, xx = np.mgrid[:120, :400]
+    for cx in (90, 250):
+        m |= np.abs(np.hypot(yy - 80, xx - cx) - 18) < 1.5                                       # wheels
+    m[98:100, 30:380] = True                                                                     # ground line, to x = 380
+    out = sheet._drop_ground_under(m)
+    assert not out[98:100, 320:380].any() and out[20:62, 40:42].all()          # line gone past the body, body kept
+    # b: a plate whose flat bottom edge is the lowest line of the view: kept
+    p = np.zeros((120, 400), bool)
+    p[30:32, 50:350] = p[90:92, 50:350] = p[30:92, 50:52] = p[30:92, 348:350] = True
+    assert sheet._drop_ground_under(p)[90:92, 50:350].all()
+    print("  ground line past the body erased, a plate's own bottom edge kept")
+
+
+def test_thin_wing_survives():
+    """26. A wing only 2 px thick in the front view survives the fine three-view build (1 px per voxel, no blur before
+    the surface): the mesh's silhouettes match all three drawn views >= 99 %. With the coarse build's two blur passes
+    it fell to 89 % (top) / 85 % (front) - the way NASA's X-36 wing tips went missing."""
+    import numpy as np
+    from engine import hull, sheet
+    L = 400
+    top = np.zeros((300, L), bool)
+    side = np.zeros((40, L), bool)
+    front = np.zeros((40, 300), bool)
+    yy, xx = np.mgrid[:300, :L]
+    top |= (np.abs(yy - 150) <= (xx - 100) * 0.5) & (xx >= 100) & (xx < 300)
+    top |= (np.abs(yy - 150) <= 6) & (xx >= 20) & (xx < 380)
+    side[17:23, 20:380] = True
+    side[19:21, 100:300] = True
+    front[17:23, 144:156] = True
+    front[19:21, 50:250] = True
+    occ, step, _ = hull.carve(side, top, front, float(L), L)
+    field = sheet.hull_field_slabs(side, top, front, False, False, occ.shape)
+    V, F, c = hull.surface_nets(field, step, blur=0, smooth=16, return_centre=True)
+    m = sheet.mesh_view_masks([(V, F)], {"grid": occ.shape, "step": step, "centre": c, "flips": {"top": False, "front": False},
+                                         "shapes": {"side": side.shape, "top": top.shape, "front": front.shape}})
+    iou = {k: round(100 * (m[k] & ref).sum() / max((m[k] | ref).sum(), 1), 1) for k, ref in (("side", side), ("top", top), ("front", front))}
+    print(f"  2-px wing at 1 px per voxel, delivered mesh: {iou}")
+    assert min(iou.values()) >= 99
+
+
+def test_clean_edges():
+    """27. No pixel staircase reaches a built part: a pixel-traced outline is vectorised into lines and arcs within
+    1.5 px of the trace (staircase 0 %), and every part of the synthetic machine (test 13) scores 0 %."""
+    import numpy as np
+    from engine import geometry, lab, outline as ol, quality, rebuild
+    import vision
+    from tests.synth_drawing import drawing
+    yy, xx = np.mgrid[:240, :300]
+    m = ((yy - 120) ** 2 + (xx - 100) ** 2 < 60 ** 2) | ((yy > 40) & (yy < 200) & (xx > 100) & (xx < 260))
+    raw = np.asarray(ol.trace(m)[0], float)
+    P, dev = ol.vectorize(raw)
+    raw_score = quality.staircase([np.r_[np.asarray(ol.simplify(raw.tolist(), 0.0)), raw[:1]]])[0]
+    clean_score = quality.staircase([np.r_[P, P[:1]]])[0]
+    print(f"  traced circle + rectangle: {len(raw)} px points -> {len(P)} (lines + arc), deviation {dev:.2f} px, "
+          f"staircase {raw_score} % -> {clean_score} %")
+    assert dev <= 1.5 and clean_score == 0 and raw_score > 5
+    im, objs, mmpx = drawing()                         # traced (SAM path): outlines from masks, vectorised
+    info, _ = vision.blueprint_parts(im, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
+    specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
+    st = lab.default_state()
+    lab.build_assembly(st, "synthetic", specs, position=[0, 0, 0], rotation=[0, 0, 0])
+    worst = max(quality.part_staircase(V, F, mmpx)[0] for p, V, F in geometry.scene_meshes(st["parts"]) if p["type"] != "group" and len(F))
+    print(f"  synthetic machine: worst part staircase {worst} %, frame outline deviation {rep['checks']['frame_outline_max_dev_mm']} mm")
+    assert worst == 0
+
+
+def test_surface_check():
+    """28. 3-D surface check of a delivered mesh (what no view's outline shows): a vertex pushed through a plate is
+    counted as a fold and keep_unflipped puts it back; a thin plate whose rim zig-zags (G's wing-edge ribs) has steps
+    that mesh_staircase finds in the top view, the same plate with a straight rim has none."""
+    import numpy as np
+    from engine import hull, quality
+    n = 12
+    yy, xx = np.mgrid[:n, :n]
+    V0 = np.c_[xx.ravel(), yy.ravel(), np.zeros(n * n)].astype(float)
+    q = np.arange(n * n).reshape(n, n)[:-1, :-1].ravel()
+    F = np.r_[np.c_[q, q + 1, q + n + 1], np.c_[q, q + n + 1, q + n]]
+    V1 = V0.copy()
+    V1[5 * n + 5, :2] += 1.6                          # dragged across its neighbours: its triangles turn over
+    bad, fixed = quality.folds(V1, F), quality.keep_unflipped(V0, V1, F)
+    print(f"  pushed vertex: {bad}; put back {fixed[1]} vertices -> {quality.folds(fixed[0], F)}")
+    assert bad["flipped_triangles"] > 0 and quality.folds(fixed[0], F)["flipped_triangles"] == 0
+    xx, yy, zz = np.mgrid[:120, :80, :12]                  # surface_nets: vertex axes = grid axes
+    V, F = hull.surface_nets((zz >= 4) & (zz < 7) & (np.abs(yy - 40) < 12) & (xx > 10) & (xx < 110), 1.0, blur=0, smooth=0)
+    rim = (V[:, 1] > V[:, 1].max() - 0.6) & (np.abs(V[:, 0]) < 40)
+    Vr = V.copy()                                     # a sawtooth on one long rim, every vertex 0.8 px in / out
+    Vr[rim, 1] += np.where(np.floor(V[rim, 0]).astype(int) % 2, -0.8, 0.0)
+    s = {nm: quality.mesh_staircase(v, F, 1.0)["top"] for nm, v in (("straight rim", V), ("sawtooth rim", Vr))}
+    print(f"  thin plate, top-view steps px: {s}")
+    assert s["straight rim"] == 0 and s["sawtooth rim"] > 50
+
+
+def test_smooth_body_stays_smooth():
+    """29. A smooth body (three ellipses) through the product's fine three-view build (lab.import_sheet, 1 px per voxel)
+    comes out smooth AND on its outlines: view match >= 99 % in every view, surface roughness (quality.roughness) RMS
+    <= 3 deg with <= 3 % of the surface bent > 10 deg. Without the anti-aliased view masks and blur_thick it was 4.9 deg /
+    8.9 %: the pixel terraces that made the car sheet look like crushed foil (12.7 deg / 35 % on that sheet)."""
+    import io
+    import numpy as np
+    from PIL import Image, ImageDraw
+    from engine import geometry, lab, quality
+    im = Image.new("L", (900, 560), 255)
+    d = ImageDraw.Draw(im)
+    d.ellipse((60, 40, 420, 130), outline=0, width=2)                  # side 360 x 90
+    d.ellipse((60, 260, 420, 410), outline=0, width=2)                 # top 360 x 150
+    d.ellipse((600, 40, 750, 130), outline=0, width=2)                 # front 150 x 90
+    b = io.BytesIO()
+    im.save(b, "PNG")
+    st = lab.default_state()
+    r = lab.import_sheet(st, b.getvalue(), 120, px_per_voxel=1.0)
+    Vs, Fs, n = [], [], 0
+    for p in st["parts"]:
+        if p.get("parent") == r["id"] and p["type"] == "mesh":
+            Vl, Fl = geometry.local_mesh(p)
+            M = geometry.matrix(p)
+            Vs.append(np.asarray(Vl) @ M[:3, :3].T + M[:3, 3])
+            Fs.append(np.asarray(Fl) + n)
+            n += len(Vl)
+    ro = quality.roughness(np.concatenate(Vs), np.concatenate(Fs))
+    print(f"  smooth body, delivered mesh: view match {r['view_match_iou_pct']}, roughness {ro}, "
+          f"surface check {r['surface_check']['folds']}")
+    assert min(r["view_match_iou_pct"].values()) >= 99
+    assert ro["rms_deg"] <= 3 and ro["bent_over_10deg_pct"] <= 3
+
+
+def test_explain_grounded():
+    """30. Explain this machine (explain.py, no API): the validator rejects a step naming a part the model does not have
+    and a step with a number that is not in the model (an invented 300 mm); a measured size, the tooth counts and the
+    ratio computed from them pass. A first answer with a bad step is retried once; a step still bad is dropped and
+    counted. If Muse Image fails, the explanation is still returned, with the reason and no picture."""
+    import agent
+    import explain
+    P = lambda i, n, k, dims=None, joints=None, reason=None: {
+        "id": i, "name": n, "type": "cylinder", "eng": {"kind": k, "dims": dims or {}, "joints": joints or [],
+                                                        **({"reason": reason} if reason else {})}}
+    st = {"parts": [
+        P("f1", "housing 1", "frame", {"width_mm": [120.0, "traced"], "thickness_mm": [8.0, "assumed from its size"]}),
+        P("s1", "input shaft a", "shaft", {"diameter_mm": [12.0, "traced"]}),
+        P("g1", "pinion 3", "gear", {"teeth": [20, "counted"], "module_mm": [2.0, "ISO 54"]}, [{"type": "gear_mesh", "with": "wheel 4"}]),
+        P("g2", "wheel 4", "gear", {"teeth": [30, "counted"], "module_mm": [2.0, "ISO 54"]}),
+        P("s2", "output shaft b", "shaft", {"diameter_mm": [16.0, "traced"]}),
+        P("b1", "bearing", "added", {"bore_mm": [12.0, "engineer: shaft size"]}, reason="a shaft needs a bearing in the wall")]}
+    fx = explain.facts(st)
+    assert fx["gear_pairs"] == [{"gear_a": "g1", "gear_b": "g2", "teeth_a": 20, "teeth_b": 30, "ratio_b_to_a": 1.5, "ratio_a_to_b": 0.67}]
+    assert fx["parts"][0]["dims"]["thickness_mm"]["src"] == "guessed" and fx["parts"][0]["dims"]["width_mm"]["src"] == "measured"
+    good = {"title": "Gears slow it down", "text": "The 20-tooth pinion drives the 30-tooth wheel. That is a 1.5 to 1 reduction.",
+            "parts": ["g1", "g2"], "camera": "front", "explode": False}
+    bad_id = dict(good, parts=["g1", "g9"])
+    invented = dict(good, text="The housing is 300 mm wide. It holds both shafts.", parts=["f1"])
+    errs = explain.validate({"steps": [good, bad_id, invented]}, fx)
+    print(f"  validator: good {errs[0]}, bad id {errs[1]}, invented number {errs[2]}")
+    assert errs[0] == [] and any("g9" in e for e in errs[1]) and any("300" in e for e in errs[2])
+    base = [dict(good, title=f"Step {k}") for k in "ABCDEF"]
+    answers = [{"machine": "reducer", "steps": base + [invented]}, {"machine": "reducer", "steps": base + [bad_id]}]
+    calls = []
+    real_json, real_post = agent._spark_json, agent._post
+    agent._spark_json = lambda content, *a, **k: (calls.append(content) or answers.pop(0), {"calls": 1, "retried": False})
+    def no_image(path, body, timeout=120):
+        raise TimeoutError("Muse Image did not answer")
+    agent._post = no_image
+    try:
+        r = explain.explain(st, image=None)
+    finally:
+        agent._spark_json, agent._post = real_json, real_post
+    print(f"  explain: {len(r['steps'])} steps kept, rejected {r['rejected_steps']}, retried {r['retried']}, "
+          f"illustration {r['illustration']}")
+    assert len(calls) == 2 and "300" in calls[1][-1]["text"] and r["retried"]
+    assert len(r["steps"]) == 6 and len(r["rejected_steps"]) == 1 and "g9" in str(r["rejected_steps"])
+    assert r["illustration"]["data_url"] is None and r["illustration"]["error"]
+    assert r["illustration"]["label"] == "AI illustration — concept, not the measured model"
+
+
+def test_machine_reading():
+    """A dense one-view machine sheet: circles measured on the ink, close-up readings merged, pins sized by their part."""
+    from PIL import Image, ImageDraw
+    from engine import circles, interpret, rebuild
+    im = Image.new("RGB", (800, 500), "white")
+    d = ImageDraw.Draw(im)
+    for _ in range(0, 800, 7):                                          # hatching must not count as circles
+        d.line([(_, 380), (_ + 60, 480)], fill=(70, 90, 200), width=1)
+    rings = [(200, 200, 80), (200, 200, 20), (520, 180, 45), (650, 330, 12), (120, 400, 10)]
+    for x, y, r in rings:
+        d.ellipse([x - r, y - r, x + r, y + r], outline=(30, 40, 160), width=2)
+    found = circles.find(im)
+    print(f"  {len(found)} circles: " + ", ".join(f"({c['cx']:.0f},{c['cy']:.0f}) r{c['r']:.0f}" for c in found))
+    for x, y, r in [(200, 200, 80), (520, 180, 45), (650, 330, 12), (120, 400, 10)]:
+        assert any(abs(c["cx"] - x) <= 3 and abs(c["cy"] - y) <= 3 and abs(c["r"] - r) <= 3 for c in found), (x, y, r)
+    big = next(c for c in found if c["r"] > 70)
+    assert any(abs(q - 20) <= 3 for q in big["rings"]), big          # the hub ring is the same part
+    assert len(found) == 4
+    # whole sheet + a close-up: duplicates merge, the close-up adds what the sheet missed, rough boxes snap
+    whole = [{"label": "flywheel", "type": "wheel", "box": [125, 128, 270, 275]},
+             {"label": "lever", "type": "lever", "box": [190, 150, 560, 230], "ends": [[200, 200], [520, 180]]}]
+    close = [{"label": "flywheel", "type": "wheel", "box": [122, 121, 279, 280]},
+             {"label": "small gear", "type": "gear", "box": [470, 130, 565, 228], "teeth": 18}]
+    parts = interpret.merge_reads([(whole, "whole sheet"), (close, "close-up")], 800, 500)
+    assert len(parts) == 3, parts
+    parts, snap = interpret.snap_circles(parts, found, 800, 500)
+    print(f"  merged {len(parts)} parts; {snap}")
+    assert snap["snapped"] == 2 and snap["added"] == 2
+    fw = next(p for p in parts if p["label"] == "flywheel")
+    assert abs((fw["box"][2] - fw["box"][0]) / 2 - 80) <= 3 and fw.get("measured")
+    # rebuilt: a measured pivot inside the lever is as long as the lever (+ collars), not the machine depth
+    P = interpret.parts_from_read(parts, 800, 500, 0.25)
+    specs, rep = rebuild.rebuild(P, [200, 125])
+    pins = [s for s in specs if s["eng"]["kind"] == "pin"]
+    assert pins and all(s["params"]["height"] <= rep["stack_depth_mm"] + 2.1 for s in pins)
+    assert not any("block" in s["name"] for s in specs)
+
+
+def test_reading_agreement():
+    """24. Muse Spark reads each image twice: a part is kept when both readings agree or a measured circle confirms it,
+    the rest is logged as dropped; an answer that is not JSON is retried once, then fails loudly (no made-up parts)."""
+    import agent
+    from engine import interpret
+    a = [{"label": "big gear", "type": "gear", "box": [100, 100, 300, 300], "teeth": 40},
+         {"label": "lever", "type": "lever", "box": [300, 120, 700, 200]},
+         {"label": "bracket", "type": "bracket", "box": [600, 400, 680, 470]}]              # only reading A: dropped
+    b = [{"label": "gear", "type": "gear", "box": [104, 96, 306, 302]},
+         {"label": "arm", "type": "arm", "box": [310, 125, 690, 210], "ends": [[320, 160], [680, 170]]},
+         {"label": "pivot pin", "type": "pin", "box": [480, 380, 520, 420]}]               # only B, on a measured circle
+    circ = [{"cx": 500.0, "cy": 400.0, "r": 21.0}]
+    kept, dropped = interpret.agree(a, b, circ)
+    labels = sorted(k["label"] for k in kept)
+    print(f"  kept {labels}; dropped {[(d['label'], d['why'][:30]) for d in dropped]}")
+    assert labels == ["big gear", "lever", "pivot pin"] and [d["label"] for d in dropped] == ["bracket"]
+    # the same one-reading bracket is kept when the drawing shows its outline (drawn lines on its box's sides)
+    import numpy as np
+    ink = np.zeros((600, 800), bool)
+    ink[400:402, 600:680] = ink[468:470, 600:680] = True
+    ink[400:470, 600:602] = ink[400:470, 678:680] = True
+    kept2, dropped2 = interpret.agree(a, b, circ, ink=ink)
+    assert "bracket" in [k["label"] for k in kept2] and not dropped2
+    assert "lines" in next(k for k in kept2 if k["label"] == "bracket")["agreed"]
+    # one object, two names (D run 7: "54 wheel" / "55 large gear", box IoU 0.82): agreement, kept as the gear
+    k3, d3 = interpret.agree([{"label": "54", "type": "wheel", "box": [0, 0, 100, 100]}],
+                             [{"label": "55 large gear", "type": "gear", "box": [4, 2, 104, 98]}], [])
+    assert len(k3) == 1 and not d3 and k3[0]["type"] == "gear"
+    g = next(k for k in kept if k["label"] == "big gear")
+    lv = next(k for k in kept if k["label"] == "lever")
+    assert g["teeth"] == 40 and abs(g["box"][2] - 303) < 1e-9 and lv["ends"] == [[320, 160], [680, 170]]
+    # JSON answers: retried once with the error shown, then a clear SparkError
+    answers, sent = [], []
+
+    def fake_post(path, body, timeout=120):
+        sent.append(body)
+        return {"choices": [{"message": {"content": answers.pop(0)}}]}
+    real = agent._post
+    agent._post = fake_post
+    try:
+        answers[:] = ["parts: gear", '{"view": "side", "parts": [], "dimensions": []}']
+        obj, meta = agent._spark_json("read", agent.READ_SCHEMA, "t")
+        assert obj["view"] == "side" and meta["retried"] and meta["calls"] == 2
+        assert sent[0]["temperature"] == 0 and sent[0]["response_format"]["json_schema"]["strict"]
+        assert "not valid JSON" in sent[1]["messages"][-1]["content"]
+        answers[:] = ["no", "still no"]
+        try:
+            agent._spark_json("read", None, "t")
+            raise AssertionError("no error")
+        except agent.SparkError as e:
+            print(f"  invalid JSON twice -> {e}")
+    finally:
+        agent._post = real
 
 
 if __name__ == "__main__":

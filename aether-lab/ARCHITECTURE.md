@@ -211,9 +211,13 @@ Checks the desk eye model with waves at true scale: vertical = coherent 1D sub-h
 p·cos(tilt) (34.6 µm), field-lens backlight, propagated to the eye box (λd/p), cut by the pupil chord, focused
 on the retina; horizontal = incoherent columns with geometric defocus per chord + column blur; Gauss–Legendre
 chords cover the round pupil. With ideal complex modulation it matches the analytic eye model within ~1 %
-(0.855/0.855 on the panel, 0.775/0.776 at 0.62 m). Phase-only encodings (double-phase, kinoform) add haze of
-0.4–1.7× the signal here, because a 10.7 mm eye box with a 4 mm pupil leaves no guard band: an open problem
-(needs complex modulation or a larger eye box), left as `encode=` experimental, default `none`.
+(0.855/0.855 on the panel, 0.775/0.776 at 0.62 m). Naive phase-only encodings (double-phase, kinoform) fail here
+(MTF 0.04–0.14, 49–93 % haze): a 10.7 mm eye box with a 4 mm pupil leaves no guard band. `encode="pupil_gs"`
+solves it for an eye-tracked pupil: band-limited Gerchberg–Saxton that fits the field only inside the pupil band
+(4.6 mm = 43 % of the eye box, so 0.86 N real conditions < N phase unknowns) with one panel-wide target amplitude
+(eta = 5 % of the brightest column's light into the band). Result: 0.849 vs 0.855 (point on panel), 0.771 vs
+0.775 (8 cm in front), scene image within 2.2 % of complex modulation, 0.2 % haze. Cost: light and ~200 FFTs per
+column and subframe.
 
 ### 3.12 Drawing → 3D (`engine/outline.py`, `engine/rebuild.py`, `engine/hull.py`)
 
@@ -222,8 +226,10 @@ chords cover the round pupil. With ideal complex modulation it matches the analy
   check, mesh phase so teeth sit in gaps (rasterised overlap < 0.5 mm²). `turn_gear` turns a gear and every gear
   meshed with it (ratio −z1/z2) or on the same pin.
 - Rebuild by kind (gear, wheel, pin, shaft, spring, piston, frame, link, plate): meshing gears share a layer, other
-  parts are layered by raster overlap; pins run along the axis; frames become back plate + hidden front plate +
-  standoffs. Each part keeps `eng.dims` with the source of every number (read from drawing / measured / assumed).
+  parts are layered by raster overlap and spread through an assumed machine depth (0.45 x the drawing's smaller
+  side); links, plates and wheels are inflated to rounded cast/forged solids (`inflate` builder); gears and wheels
+  get hubs; pins run along the axis; frames become a housing (back plate + walls along the outer contour through
+  the depth + hidden front plate). Each part keeps `eng.dims` with the source of every number (read from drawing / measured / assumed).
 - Three views (front, top, right side) → visual hull on a voxel grid → watertight surface + Taubin smoothing
   (`import_three_view`, button 3V). Hidden pockets and blind holes are filled; dashed lines are not read.
 - CAD meshes: STL / OBJ / GLB import keeps real millimetres (`import_mesh` with `size_mm = 0`). STEP: export STL.
@@ -258,6 +264,14 @@ The same rendered view is shrunk to the lab grid (1024², 8 µm), split into 8 d
   teeth, fan blades; peaks of the smoothed radial profile). Muse Spark gets these numbers plus the
   cut-out on white and rebuilds the part with `build_assembly`; if the model rejects images it gets the
   numbers only. One photo shows one side, so depth is assumed and the reply must say so.
+- **Explain this machine** (`explain.py`, `POST /api/explain`, `ui/src/ui/ExplainPlayer.jsx`). Muse Spark gets the
+  built model as facts (part ids, kinds, sizes tagged measured / guessed, reasons for added parts, gear pairs with
+  the ratio computed in code) plus the drawing, and answers 5–10 steps in a strict JSON schema. Code rejects a step
+  with an unknown part id or a number that is not in the facts, retries once and drops steps still invalid. The step
+  player selects each step's parts (x-ray for the rest), explodes or cuts, and moves the camera; it docks at the top,
+  so the viewport frames the model below it. **Muse Image** (`muse-image-1.0`, `POST /v1/images/generations`) draws
+  one concept illustration in parallel, labelled "AI illustration — concept, not the measured model", skipped after
+  30 s.
 - **Muse Voice Transcribe** handles hold-to-talk voice input: the browser re-encodes the recording to
   16 kHz mono WAV and the server posts it to `POST /v1/asr/transcribe` (multipart `request` JSON + `audio`).
 
@@ -278,6 +292,8 @@ The same rendered view is shrunk to the lab grid (1024², 8 µm), split into 8 d
 14. Wave simulation vs eye model within 2 %.
 15. Three-view L-bracket → closed solid, size within 1.5 mm, volume within 5 %.
 16. Simulated retina: full 2D = 100 %; desk 1D below it where the eye is focused.
+17. Phase-only pupil-GS matches complex modulation within 2 %; a kinoform does not.
+18. Inflated outline: rounded solid of the asked thickness, holes kept.
 
 ## 6. What was left out, and why
 - **Node-based material editor.** Holograms here are single-colour laser light, so only per-part
