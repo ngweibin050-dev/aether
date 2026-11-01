@@ -51,6 +51,9 @@ def kind_of(p):
 MIN_TEETH = 12          # fewer than ~12 involute teeth is not a working gear (undercut below 17 without shift)
 
 
+MIN_BAR = 0.01                                   # a shaft / rod thinner than 1 % of the machine is implausible
+
+
 def _teeth(p):
     """Teeth count: Spark's count if the outline's FFT agrees (or has no clear peak), else the FFT. A count below
     MIN_TEETH means the drawing was too fine or too messy to count (spokes or hatching counted instead), so the
@@ -110,6 +113,28 @@ def rebuild(parts, drawing_mm, completion=None, frame_cell_mm=1.0):
                      q["at"][0] + q["length_mm"] / 2, q["at"][1] + q["length_mm"] / 2] for q in P]) if P else np.zeros((1, 4))
     mach_w = float(min(ext[:, 2].max() - ext[:, 0].min(), drawing_mm[0]))
     mach_h = float(min(ext[:, 3].max() - ext[:, 1].min(), drawing_mm[1]))
+    # ---- plausibility: a bar (shaft, rod, piston, spring) thinner than 1 % of the machine is a mis-measured width,
+    # not a part that size: the two "drawn sides" found were hatching or two close lines (C's pins n, ~20 mm in the
+    # drawing, measured 1.4-1.7 mm; D's 1.3 mm shaft in a 234 mm press). The box estimate is used if it is plausible,
+    # else the part is dropped. Every change is listed in report["implausible"].
+    size = max(mach_w, mach_h)
+    report["implausible"] = []
+    keep = []
+    for q in P:
+        if q["k"] in ("shaft", "spring", "piston") and q["width_mm"] < MIN_BAR * size:
+            est = q.get("width_estimate_mm") or 0
+            if est >= MIN_BAR * size and q.get("width_source") == "two drawn sides":
+                report["implausible"].append({"n": q["n"], "label": q["label"], "action": "width from the box estimate",
+                                              "why": f"traced width {q['width_mm']} mm < {100 * MIN_BAR:.0f} % of the machine ({size:.0f} mm)",
+                                              "width_mm": [q["width_mm"], est]})
+                q["width_mm"] = est
+                q["w_src"] = f"estimated from the box (the traced {report['implausible'][-1]['width_mm'][0]} mm was implausible)"
+            else:
+                report["implausible"].append({"n": q["n"], "label": q["label"], "action": "dropped",
+                                              "why": f"{q['k']} {q['width_mm']} mm thick < {100 * MIN_BAR:.0f} % of the machine ({size:.0f} mm)"})
+                continue
+        keep.append(q)
+    P = keep
     # a plate, block or bracket much smaller than the machine is a part of the mechanism (a slide block, a bearing
     # bracket), not part of the frame: it gets its own layer and thickness instead of running through the depth
     for q in P:
@@ -160,6 +185,43 @@ def rebuild(parts, drawing_mm, completion=None, frame_cell_mm=1.0):
                 chk = geometry.gear_mesh_check(a["z"], b["z"], m, dist)
                 report["gear_pairs"].append({"a": a["n"], "b": b["n"], "module_mm": m, "teeth": [a["z"], b["z"]],
                                              "centre_distance_mm": round(dist, 2), "contact_ratio": chk["contact_ratio"]})
+
+    # ---- gears seen edge-on (a section): they mesh when their axes (in the drawing plane) are parallel, their faces
+    # overlap along the axis by half the narrower face, and the gap between the axis lines is r1 + r2 (external) or
+    # R - r (internal ring, axes apart by >= 0.3 r: two gears side by side on ONE axis are not a mesh). The box read
+    # is the tip outline and a section's hatching widens it: on C's sun / planet pairs the gap read 22-25 % short of
+    # r1 + r2, hence 25 % (internal: 10 %). Positions stay as drawn; only the pair is recorded, with its source.
+    def add_mesh(a, b, src):
+        if any(o is b for o, _ in a.get("meshes", [])) or any(o is a for o, _ in b.get("meshes", [])):
+            return
+        a.setdefault("meshes", []).append((b, src))
+        za, zb = a.get("z"), b.get("z")
+        known = all(q.get("z") and "assumed" not in str(q.get("z_src", "")) for q in (a, b))
+        report["gear_pairs"].append({"a": a["n"], "b": b["n"], "teeth": [za, zb], "source": src,
+                                     "ratio": round(zb / za, 2) if known else "unknown (tooth counts not measured)"})
+    edge = [g for g in P if g["k"] == "gear" and g.get("edge_on")]
+    for i, a in enumerate(edge):
+        for b in edge[i + 1:]:
+            if abs(a["axis_deg"] - b["axis_deg"]) > 1:
+                continue
+            ax = 0 if a["axis_deg"] == 0 else 1
+            gap = abs(a["at"][1 - ax] - b["at"][1 - ax])
+            lo = max(a["at"][ax] - a["face_mm"] / 2, b["at"][ax] - b["face_mm"] / 2)
+            hi = min(a["at"][ax] + a["face_mm"] / 2, b["at"][ax] + b["face_mm"] / 2)
+            if (hi - lo) < 0.5 * min(a["face_mm"], b["face_mm"]):
+                continue
+            ra, rb = a["radius_mm"], b["radius_mm"]
+            if abs(gap - (ra + rb)) <= 0.25 * (ra + rb):
+                add_mesh(a, b, f"geometry: edge-on, axis gap {gap:.1f} mm ~ r1 + r2 = {ra + rb:.1f} mm")
+            elif gap >= 0.3 * min(ra, rb) and abs(gap - abs(ra - rb)) <= 0.1 * max(ra, rb):
+                add_mesh(a, b, f"geometry: edge-on internal, axis gap {gap:.1f} mm ~ R - r = {abs(ra - rb):.1f} mm")
+    # pairs the geometry did not find: the engineer's completion may name them (part numbers), tagged guessed
+    by_n = {q["n"]: q for q in P}
+    for gp in comp.get("gear_pairs") or []:
+        a, b = by_n.get(gp.get("a")), by_n.get(gp.get("b"))
+        if a is None or b is None or a is b or a["k"] not in ("gear", "wheel") or b["k"] not in ("gear", "wheel")                 or a.get("mesh_with") is b or b.get("mesh_with") is a:
+            continue
+        add_mesh(a, b, "guessed by Muse Spark (engineer's completion): " + str(gp.get("reason") or "no reason given")[:160])
 
     # ---- thickness of every flat part
     for q in P:
@@ -263,7 +325,8 @@ def rebuild(parts, drawing_mm, completion=None, frame_cell_mm=1.0):
                            "pitch_diameter_mm": [round(q["m"] * q["z"], 2), "m z"],
                            "face_width_mm": [q["t"], "assumed: 8 x module"]}
             if q.get("mesh_with") is not None:
-                eng["joints"].append({"type": "gear_mesh", "with": name(q["mesh_with"])})
+                eng["joints"].append({"type": "gear_mesh", "with": name(q["mesh_with"]),
+                                      "source": "geometry: centre distance = m (z1 + z2) / 2"})
             if q.get("edge_on"):                 # seen edge-on: face width = the drawn short side, axis in the plane
                 spec["params"]["thickness"] = round(float(q["face_mm"]), 1)
                 spec["rotation"] = [0, 90, q["axis_deg"]]
@@ -322,7 +385,7 @@ def rebuild(parts, drawing_mm, completion=None, frame_cell_mm=1.0):
             else:
                 spec = {"type": "tube", "params": {"outer": round(w / 2, 2), "inner": round(w / 2 * 0.85, 2), "height": round(L, 1)}}
             spec.update({"position": [x, y, zc], "rotation": rot})
-            eng["dims"] = {"length_mm": [round(L, 1), "traced"], "diameter_mm": [round(w, 1), "traced"]}
+            eng["dims"] = {"length_mm": [round(L, 1), "traced"], "diameter_mm": [round(w, 1), q.get("w_src", "traced")]}
         elif k == "frame":
             continue                             # built below, around the stack
         else:                                    # wheel, link, plate: the clean profile with its holes, extruded
@@ -333,6 +396,8 @@ def rebuild(parts, drawing_mm, completion=None, frame_cell_mm=1.0):
             eng["dims"] = {"thickness_mm": [round(q["t"], 1), "assumed from its size"],
                            "outline": ["read by Muse Spark" if q.get("interpreted") else "traced",
                                        f"{q['length_mm']} x {q['width_mm']} mm"]}
+        for o, src in q.get("meshes", []):      # edge-on / guessed pairs (positions as drawn)
+            eng["joints"].append({"type": "gear_mesh", "with": name(o), "source": src})
         spec.update({"name": name(q), "eng": eng})
         specs.append(spec)
         report["parts"].append({"n": q["n"], "label": q["label"], "built_as": k + (f" z={q['z']} m={q['m']}" if k == "gear" else ""),

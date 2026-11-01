@@ -199,20 +199,24 @@ def parts_from_read(read_parts, W, H, mm_per_px, ink=None):
             # thickness across the axis: the box area spread along the axis, within sane limits ...
             thick = float(np.clip(w * h / max(L, 1e-6) * 0.35, 0.06 * L, 0.35 * L)) if L > 0 else min(w, h)
             ends_src = "axis ends read by Muse Spark"
+            thick_est, width_src = thick, "estimated from the box"
             # ... or, better, the distance between the part's two drawn sides along that axis
             if ink is not None and k in ("link", "shaft", "piston", "spring") and L > 0:
                 wpx = fit_width_to_ink(ends[0], ends[1], ink, thick / mm_per_px)
                 if wpx:
                     thick = float(wpx * mm_per_px)
+                    width_src = "two drawn sides"
                     fitted += 2
         else:
             L, ang = max(w, h), (0.0 if w >= h else 90.0)
             thick = min(w, h)
+            thick_est, width_src = thick, "the box's short side"
             ends_src = "axis assumed along the box's long side"
         p = {"n": n, "label": str(it.get("label") or k), "kind": k, "confidence": it.get("confidence", 1.0),
              "centre_mm": [round(cx, 2), round(cy, 2)], "length_mm": round(max(L, thick), 1),
              "width_mm": round(min(L, thick) if L else thick, 1), "angle_deg": round(ang, 1),
-             "elongation": round(max(L, thick) / max(min(L, thick), 1e-6), 2), "interpreted": True, "axis_source": ends_src}
+             "elongation": round(max(L, thick) / max(min(L, thick), 1e-6), 2), "interpreted": True, "axis_source": ends_src,
+             "width_source": width_src, "width_estimate_mm": round(min(L, thick_est) if L else thick_est, 1)}
         for f in ("measured", "read_from"):
             if it.get(f):
                 p[f] = it[f]
