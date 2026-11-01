@@ -62,6 +62,7 @@ export default function useShortcuts() {
         if (k === "d") return go("obj.dup");
         if (k === "s") return menu("pie-snap");
         if (k === "h") return go("obj.hideothers");
+        if (k === "b") return go("obj.placeOnBase");
         if (k === "g") return go("sel.parent");
         if (k === "]" || k === "}") return go("sel.children");
         return;

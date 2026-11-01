@@ -70,6 +70,8 @@ export const useStore = create((set, get) => ({
     set({ state: j.state, compute: j.compute, backend: j.gpu?.backend || null, modalStale: !!j.gpu?.stale, view: { ...DEFAULT_VIEW, ...(j.state.view || {}) },
           selection: j.state.selected ? [j.state.selected] : [] });
     await get().syncMeshes();
+    fetch("/api/demos").then((r) => r.json()).then((d) => set({ demos: d.demos || [] })).catch(() => {});
+    fetch("/api/warm", { method: "POST", body: "{}" }).catch(() => {});   // the GPU container starts while the lab opens
   },
 
   async syncMeshes() {
@@ -280,14 +282,7 @@ export const useStore = create((set, get) => ({
         set((s) => ({ undo: [...s.undo, { parts: before, selected: null }], redo: [] }));
       get().applyState(j.state);
       set({ view: { ...DEFAULT_VIEW, ...(j.state.view || {}) } });
-      const KEYS = { make_hologram: ["hologram", "reconstruction"], propagate: ["reconstruction"], focus_sweep: ["sweep"], eye_view: ["eye"],
-        speckle_compare: ["speckle_one", "speckle_random", "speckle_groups"], export_film: ["predicted_wall", "film_tile"],
-        optimize_for_desk: ["opt_before", "opt_after"], sam_3_1: ["sam_overlay", "sam_cutout", "sam_check"], read_views: ["sam_check"] };
-      for (const t of j.trace) {
-        const im = {};
-        for (const k of KEYS[t.tool] || []) if (j.images[k]) im[k] = j.images[k];
-        get().ingest(t.tool, { ...t.result, _images: im });
-      }
+      get().ingestTrace(j.trace, j.images);
       if (j.gpu) set({ modalStale: !!j.gpu.stale });
       if (j.trace.some((t) => t.tool === "optimize_for_desk" || t.tool === "sam_3_1" || t.tool === "read_views")) get().setPanel("physics", true);
       // a new model from a photo or drawing: bring all of it into view
@@ -303,7 +298,9 @@ export const useStore = create((set, get) => ({
       set((s) => ({ chat: [...s.chat, { role: "error", text: e.message }] }));
     } finally {
       clearInterval(poll);
-      set((s) => ({ busy: { ...s.busy, chat: false } }));
+      // the finished turn's steps stay in the chat (who did what, seconds)
+      const done = (get().progress || []).filter((x) => x.s != null);
+      set((s) => ({ busy: { ...s.busy, chat: false }, chat: done.length ? [...s.chat, { role: "timeline", steps: done }] : s.chat }));
     }
   },
   ask(text) { return get().turn("/api/chat", { text }, { role: "user", text }); },
@@ -311,16 +308,18 @@ export const useStore = create((set, get) => ({
   // illustration; the step player (ui/ExplainPlayer.jsx) highlights each step's parts
   explain: null,               // { machine, steps, rejected_steps, timing, illustration, ... }
   explainStep: 0,
-  async runExplain() {
+  async runExplain(demo_id = null) {
     if (get().busy.explain) return;
     set((s) => ({ busy: { ...s.busy, explain: true }, progress: [], explain: null }));
     const poll = setInterval(() => fetch("/api/progress").then((r) => r.json())
       .then((p) => set({ progress: p.steps || [], progressSkew: p.now ? Date.now() / 1000 - p.now : 0 })).catch(() => {}), 600);
     try {
-      const r = await fetch("/api/explain", { method: "POST", body: "{}" });
+      const r = await fetch("/api/explain", { method: "POST", body: JSON.stringify(demo_id ? { demo_id } : {}) });
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
       set({ explain: j, explainStep: 0 });
+      const done = (get().progress || []).filter((x) => x.s != null);
+      if (done.length) set((s) => ({ chat: [...s.chat, { role: "timeline", steps: done }] }));
     } catch (e) {
       get().notify(`Explain failed: ${e.message}`, "error");
     } finally {
@@ -334,11 +333,53 @@ export const useStore = create((set, get) => ({
     get().setView({ xray: false, explode: 0, section: null }, { now: true });
     get().select(null);
   },
-  askPhoto(image, prompt, size_mm, mode = "interpret", kind = "auto") {
+  askPhoto(image, prompt, size_mm, mode = "interpret", kind = "auto", demo_id = null) {
     const what = { auto: "image → 3D (AETHER decides what it is)", machine: `machine drawing → ${mode === "trace" ? "SAM 3.1 traces each part" : "read like an engineer"} → 3D assembly`,
       three_view: "three-view sheet → 3D model from named parts", part: "photo of one part → SAM 3.1 → model" }[kind];
-    return get().turn("/api/photo", { image, prompt, size_mm, mode, kind }, { role: "user", img: image,
+    set({ recorded: null });
+    return get().turn("/api/photo", { image, prompt, size_mm, mode, kind, ...(demo_id ? { demo_id } : {}) }, { role: "user", img: image,
       text: `${prompt ? prompt + ": " : ""}${what} (${size_mm} mm, assumed unless a dimension is read)` });
+  },
+  // Demo menu: the three public-domain inputs, run LIVE (a machine is then explained); the last successful live run of
+  // each is kept by the server and can be shown only as a RECORDED run (banner + chat label), never as live
+  demos: [],
+  recorded: null,              // { id, title, at } while a recorded run is on screen
+  async runDemo(id) {
+    const d = get().demos.find((x) => x.id === id);
+    if (!d || get().busy.chat) return;
+    fetch("/api/warm", { method: "POST", body: "{}" }).catch(() => {});
+    const blob = await (await fetch(d.image)).blob();
+    const image = await new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+    await get().askPhoto(image, d.kind === "three_view" ? d.title : "", d.size_mm, "interpret", d.kind, id);
+    if (d.kind === "machine" && get().chat.slice(-1)[0]?.role !== "error") {
+      const t0 = Date.now();                       // let the model's geometry arrive, then explain it
+      while (get().meshVersion !== get().state?.version && Date.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 200));
+      await get().runExplain(id);
+    }
+  },
+  // a run's tool results and images into the panels (live turns and recorded runs alike)
+  ingestTrace(trace, images) {
+    const KEYS = { make_hologram: ["hologram", "reconstruction"], propagate: ["reconstruction"], focus_sweep: ["sweep"], eye_view: ["eye"],
+      speckle_compare: ["speckle_one", "speckle_random", "speckle_groups"], export_film: ["predicted_wall", "film_tile"],
+      optimize_for_desk: ["opt_before", "opt_after"], sam_3_1: ["sam_overlay", "sam_cutout", "sam_check"], read_views: ["sam_check"] };
+    for (const t of trace || []) {
+      const im = {};
+      for (const k of KEYS[t.tool] || []) if (images?.[k]) im[k] = images[k];
+      get().ingest(t.tool, { ...t.result, _images: im });
+    }
+  },
+  async playRecorded(id) {
+    const r = await fetch(`/api/demo/recorded?id=${id}`);
+    const j = await r.json();
+    if (!r.ok) return get().notify(j.error || "no recorded run", "error");
+    const d = get().demos.find((x) => x.id === id) || { title: id };
+    set({ state: j.state, selection: [], recorded: { id, title: d.title, at: j.recorded_at }, explain: null,
+          chat: [...get().chat, { role: "ai", text: `RECORDED run of ${d.title} from ${j.recorded_at}: not live. ${j.reply || ""}`.trim() },
+                 ...(j.steps?.length ? [{ role: "timeline", steps: j.steps.filter((x) => x.s != null) }] : [])] });
+    await get().syncMeshes();
+    get().ingestTrace(j.trace, j.images);              // the panels show the recorded run's results, under the banner
+    if (j.explain) set({ explain: { ...j.explain, recorded_at: j.recorded_at }, explainStep: 0 });
+    import("./commands").then((m) => m.run("view.all"));
   },
   optimize(target_pct = 80) {
     return get().turn("/api/optimize", { target_pct, max_rounds: 3 }, { role: "user", text: `Make it sharp on the AETHER Desk (≥${target_pct}%)` });

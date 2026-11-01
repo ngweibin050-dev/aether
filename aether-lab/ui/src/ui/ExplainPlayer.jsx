@@ -41,6 +41,18 @@ function Live({ steps, skew }) {
   );
 }
 
+// A recorded demo run is on screen: say so all the time (CLAUDE.md rule 5: a saved result only with a "recorded" label)
+export function RecordedBanner() {
+  const rec = useStore((s) => s.recorded);
+  if (!rec) return null;
+  return (
+    <div className="pointer-events-auto absolute bottom-10 left-1/2 z-40 -translate-x-1/2 rounded-full border border-warn/40 bg-black/80 px-4 py-1 font-mono text-[11px] text-warn">
+      RECORDED run · {rec.title} · {rec.at} · not live
+      <button className="ml-3 text-silver underline" onClick={() => useStore.setState({ recorded: null })}>hide</button>
+    </div>
+  );
+}
+
 export default function ExplainPlayer() {
   const { midLeft, midRight } = useLayout();
   const ex = useStore((s) => s.explain);
@@ -82,9 +94,10 @@ export default function ExplainPlayer() {
     <section data-dock="top" data-mode="normal" className={`${box} flex gap-3 p-3`} style={pos}>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="label truncate">{ex.machine || "Explain this machine"}</span>
+          <span className="label truncate">{ex.recorded_at && <span className="mr-1.5 rounded bg-warn/20 px-1 text-warn">RECORDED {ex.recorded_at} · not live</span>}{ex.machine || "Explain this machine"}</span>
           <span className="readout shrink-0 text-[10.5px]">step {i + 1} / {n}</span>
         </div>
+        {ex.scale && !ex.scale.real_size_known && <div className="mt-1 font-mono text-[9.5px] text-warn">model scale · real size unknown (no scale on the drawing)</div>}
         <div className="mt-1.5 text-[14px] font-semibold text-white">{step?.title}</div>
         <p className="mt-1 text-[12.5px] leading-relaxed text-slate-200">{step?.text}</p>
         <div className="mt-2.5 flex items-center gap-1.5">

@@ -22,6 +22,7 @@ export const addPrim = (type) => {
   return S().tool("add_part", { type, params, name: type.replace("_", " "), position: S().cursor3d.map((v) => +v.toFixed(2)) });
 };
 
+const download = (url, name) => { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
 const frameSel = () => view.nav?.frame(sceneBox(S().selection.length ? S().selection : null));
 const eyeView = () => {
   const s = S().state, box = sceneBox();
@@ -68,6 +69,9 @@ export const COMMANDS = [
   { id: "file.open", menu: "File", label: "Open scene…", keys: "Ctrl O", run: openScene },
   { id: "file.save", menu: "File", label: "Save scene", keys: "Ctrl S", run: saveScene },
   { id: "file.import", menu: "File", label: "Import glTF / GLB…", run: importGLB },
+  { id: "file.glb", menu: "File", label: "Export GLB (metres, part records inside)", run: () => download("/api/export.glb", "aether-model.glb") },
+  { id: "file.stl", menu: "File", label: "Export STL (millimetres)", run: () => download("/api/export.stl", "aether-model.stl") },
+  { id: "file.report", menu: "File", label: "Build report (one page)", run: () => window.open("/api/report.html", "_blank") },
   { id: "file.film", menu: "File", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
   // Edit
   { id: "edit.undo", menu: "Edit", label: "Undo", keys: "Ctrl Z", run: () => S().undoOnce() },
@@ -135,7 +139,15 @@ export const COMMANDS = [
   { id: "in.flip", menu: "Inspect", label: "Flip section side", when: () => !!S().view.section, run: () => S().setView({ section_flip: !S().view.section_flip }, { now: true }) },
   { id: "in.explode", menu: "Inspect", label: "Explode / assemble", keys: "E", run: () => { S().setView({ explode: S().view.explode > 0.5 ? 0 : 1 }, { now: true }); setTimeout(() => view.nav?.frame(sceneBox()), 700); } },
   { id: "in.isolate", menu: "Inspect", label: "Isolate selected (local view)", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
+  { id: "demo.warm", menu: "Demo", label: "Warm up the GPU (before a demo)", run: () => fetch("/api/warm", { method: "POST", body: "{}" }).then(() => S().notify("Modal GPU warming up (20-60 s)")) },
+  { id: "demo.D", menu: "Demo", group: "Live", label: "D · Metal drawing press (US 929,594) → 3D → Explain", run: () => S().runDemo("D") },
+  { id: "demo.C", menu: "Demo", group: "Live", label: "C · Speed-reduction gearbox (US 1,770,035) → 3D → Explain", run: () => S().runDemo("C") },
+  { id: "demo.G", menu: "Demo", group: "Live", label: "G · NASA X-3 three-view → 3D", run: () => S().runDemo("G") },
+  { id: "demo.recD", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: D", run: () => S().playRecorded("D") },
+  { id: "demo.recC", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: C", run: () => S().playRecorded("C") },
+  { id: "demo.recG", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: G", run: () => S().playRecorded("G") },
   { id: "in.explainMachine", menu: "Inspect", label: "Explain this machine", run: () => S().runExplain() },
+  { id: "obj.placeOnBase", menu: "Object", label: "Place on base", keys: "Shift B", run: () => S().tool("place_on_base", { id: S().state.selected }) },
   { id: "in.reset", menu: "Inspect", label: "Reset inspection", run: () => S().setView({ xray: false, section: null, explode: 0, isolate: [] }, { now: true }) },
   // Hologram
   { id: "holo.calc", menu: "Hologram", label: "Calculate hologram", keys: "F12", run: () => S().hologram() },
@@ -164,4 +176,4 @@ COMMANDS.push(
   { id: "tools.bar", menu: "Tools", group: "Show", label: "Show tool bar under the menu", run: () => S().setDockBar() },
 );
 
-export const MENUS = ["File", "Edit", "Select", "Add", "Object", "View", "Inspect", "Hologram", "Tools"];
+export const MENUS = ["File", "Edit", "Select", "Add", "Object", "View", "Inspect", "Hologram", "Tools", "Demo"];

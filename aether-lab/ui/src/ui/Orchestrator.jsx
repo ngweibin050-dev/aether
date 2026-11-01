@@ -38,16 +38,47 @@ function summary(t) {
 }
 
 const EXAMPLES = [
-  ["Tesla-style motor", "Generate a Tesla-style motor and place it 10 cm above the screen"],
+  ["Electric motor", "Generate an electric car motor (stator, rotor, housing, shaft) and place it 10 cm above the screen"],
   ["Cut and explode it", "Cut it in half and explode it so I can see the stator and rotor"],
   ["Is it sharp on the desk?", "Can AETHER Desk show this sharply? Check the Window Law too"],
   ["How grainy?", "How grainy will it look, and do sparse point groups help?"],
 ];
 
-const STEP_LABEL = { build_assembly: "Building the model", focus_sweep: "Eye focus sweep (GPU)", eye_view: "Eye view (GPU)",
-  make_hologram: "Lab phase hologram (GPU)", desk_check: "Desk sharpness check", window_check: "Window Law check", set_view: "Changing the view",
-  sam_3_1: "SAM 3.1 cutting out the parts", classify_upload: "Measuring what the image is (drawing or photo, one view or three)", read_drawing: "Muse Spark reads the whole sheet and 4 close-ups at 2x", measure_circles: "Measuring every circle on the drawing (centres, radii, pivots)", complete_views: "Muse Spark completes the unseen views like a senior engineer (depths, planes, hidden shafts and bearings)", read_views: "Finding the side, front and top views and carving the 3D shape", layers: "Muse Spark stacks the parts in depth", rebuild_3d: "Rebuilding each part as a 3D solid (gears mesh, pins, plates)", desk_wave_view: "True-scale desk wave simulation", desk_score: "Physics scores the design (GPU)", update_part: "Muse Spark changes the design",
-  optimize_for_desk: "AI design loop" };
+// Every step says WHO did it (a Meta model, or AETHER's own engine on the Modal GPU / this computer) and WHAT.
+const GPU = "gpu";
+export const STEP = {
+  "Muse Spark": ["Muse Spark", "thinking"], update_part: ["Muse Spark", "changes the design"],
+  read_drawing: ["Muse Spark", "read drawing (sheet + 4 close-ups, twice)"], complete_views: ["Muse Wonder", "complete the unseen views"],
+  layers: ["Muse Spark", "stack the parts in depth"], "explain · Muse Spark": ["Muse Spark", "explanation"],
+  "illustration · Muse Image": ["Muse Image", "illustration"], sam_3_1: ["SAM 3.1", "outline"],
+  voice: ["Muse Voice Transcribe", "speech to text"],
+  read_views: [GPU, "find the views and carve the 3D shape (Muse Spark names the regions)"],
+  classify_upload: ["AETHER engine", "what the image is (drawing, photo, three views)"],
+  measure_circles: ["AETHER engine", "measure every circle on the ink"], rebuild_3d: ["AETHER engine", "rebuild each part in 3D"],
+  build_assembly: ["AETHER engine", "build the model"], set_view: ["AETHER engine", "change the view"],
+  window_check: ["AETHER engine", "Window Law check"], desk_score: [GPU, "desk sharpness score"],
+  focus_sweep: [GPU, "eye focus sweep"], eye_view: [GPU, "eye view"], make_hologram: [GPU, "lab phase hologram"],
+  desk_check: [GPU, "desk sharpness check"], desk_wave_view: [GPU, "true-scale desk wave simulation"],
+  optimize_for_desk: ["Muse Spark + " + GPU, "design loop"],
+};
+
+export function StepRow({ st, now }) {
+  const compute = useStore((s) => s.compute);
+  const gpu = compute === "modal" ? "Modal T4 GPU" : "local engine";
+  const [who0, what] = STEP[st.label] || ["AETHER engine", st.label.replace(/_/g, " ")];
+  const who = st.who || who0;                    // the server names the model that actually answered
+  const secs = st.s != null ? st.s : st.t0 && now ? Math.max(0, now - st.t0) : null;
+  return (
+    <div className="flex items-center gap-2 font-mono text-[10.5px]" title={st.detail || undefined}>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.state === "run" ? "animate-pulse bg-cyan-glow shadow-glow" : st.state === "error" ? "bg-bad" : "bg-ok"}`} />
+      <span className={`min-w-0 truncate ${st.state === "run" ? "text-white" : "text-silver"}`}>
+        <span className="text-cyan-glow">{who.replace(GPU, gpu)}</span> · {what}</span>
+      {st.detail && <span className="min-w-0 truncate text-rose-300">{st.detail}</span>}
+      {st.state === "run" && <SineLoader label="" className="ml-auto scale-75" />}
+      {secs != null && <span className={`${st.state === "run" ? "" : "ml-auto"} shrink-0 tabular-nums text-slate-400`}>{secs.toFixed(st.state === "run" ? 0 : 1)} s</span>}
+    </div>
+  );
+}
 
 // Muse Voice Transcribe takes 16 kHz mono WAV: decode the browser recording and re-encode it.
 async function toWav(blob, rate = 16000) {
@@ -119,20 +150,23 @@ function LiveSteps() {
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 250); return () => clearInterval(t); }, []);
   const list = steps.length ? steps : [{ label: "Muse Spark", state: "run" }];
-  const secs = (st) => st.s != null ? st.s : st.t0 ? Math.max(0, Date.now() / 1000 - skew - st.t0) : null;
-  const total = steps.length && steps[0].t0 ? Math.max(0, Date.now() / 1000 - skew - steps[0].t0) : null;
+  const now = Date.now() / 1000 - skew;
+  const total = steps.length && steps[0].t0 ? Math.max(0, now - steps[0].t0) : null;
   return (
     <div className="space-y-1 rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2">
       {total != null && <div className="flex font-mono text-[10px] text-slate-400"><span>steps</span><span className="ml-auto tabular-nums">{total.toFixed(0)} s total</span></div>}
-      {list.map((st, i) => (
-        <div key={i} className="flex items-center gap-2 font-mono text-[10.5px]" title={st.detail || undefined}>
-          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.state === "run" ? "animate-pulse bg-cyan-glow shadow-glow" : st.state === "error" ? "bg-bad" : "bg-ok"}`} />
-          <span className={`min-w-0 truncate ${st.state === "run" ? "text-white" : "text-silver"}`}>{st.label === "Muse Spark" ? "Muse Spark is thinking" : STEP_LABEL[st.label] || st.label.replace(/_/g, " ")}</span>
-          {st.detail && <span className="min-w-0 truncate text-rose-300">{st.detail}</span>}
-          {st.state === "run" && <SineLoader label="" className="ml-auto scale-75" />}
-          {secs(st) != null && <span className={`${st.state === "run" ? "" : "ml-auto"} shrink-0 tabular-nums text-slate-400`}>{secs(st).toFixed(st.state === "run" ? 0 : 1)} s</span>}
-        </div>
-      ))}
+      {list.map((st, i) => <StepRow key={i} st={st} now={now} />)}
+    </div>
+  );
+}
+
+// The finished turn's steps stay in the chat: who did what, in how many seconds.
+function Timeline({ steps }) {
+  const total = steps.reduce((a, st) => a + (st.s || 0), 0);
+  return (
+    <div className="space-y-1 rounded-xl border border-white/[0.06] bg-black/10 px-3 py-2">
+      {steps.map((st, i) => <StepRow key={i} st={st} />)}
+      <div className="flex font-mono text-[10px] text-slate-500"><span>steps</span><span className="ml-auto tabular-nums">{total.toFixed(1)} s</span></div>
     </div>
   );
 }
@@ -158,6 +192,18 @@ export default function Orchestrator() {
   }, []);
 
   const send = (q) => { const t = (q ?? text).trim(); if (!t || busy) return; setText(""); ask(t); };
+  // voice: the transcript goes to Muse Spark, tagged with the model and its seconds; "Explain this machine" (or
+  // "explain the machine / this / it") starts the step-by-step explanation directly
+  const fromVoice = (t0, sec) => {
+    const t = (t0 || "").replace(/[。．｡]+\s*$/, "").trim();   // the transcript may end with a CJK full stop
+    const via = `Muse Voice Transcribe · speech to text · ${sec.toFixed(1)} s`;
+    if (/\bexplain\b.*\b(machine|this|it|model|mechanism|gearbox)\b/i.test(t) || /^\s*explain\s*[.!。]?\s*$/i.test(t)) {
+      useStore.setState((s) => ({ chat: [...s.chat, { role: "user", text: t, via: via + " → Explain" }] }));
+      return useStore.getState().runExplain();
+    }
+    if (!t.trim() || busy) return;
+    useStore.getState().turn("/api/chat", { text: t.trim() }, { role: "user", text: t.trim(), via });
+  };
 
   async function startRec() {
     try {
@@ -168,10 +214,11 @@ export default function Orchestrator() {
         stream.getTracks().forEach((t) => t.stop());
         try {
           const blob = await toWav(new Blob(chunks, { type: r.mimeType || "audio/webm" }));
+          const t0 = performance.now();
           const res = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: blob });
           const j = await res.json();
           if (!res.ok) throw new Error(j.error);
-          send(j.text);
+          fromVoice(j.text || "", (performance.now() - t0) / 1000);
         } catch (e) { notify("Voice: " + e.message, "error"); }
         setRec(null);
       };
@@ -232,7 +279,7 @@ export default function Orchestrator() {
         {(chat.length > 0 || busy || h) && (
           <div ref={log} className="scroll-thin min-h-0 flex-1 space-y-2 overflow-y-auto py-1.5 pr-1 [mask-image:linear-gradient(transparent,#000_12px,#000_calc(100%-12px),transparent)]"
             style={lay.win.orchestrator === "max" || h ? undefined : { maxHeight: "min(32vh, 300px)" }}>
-            {chat.map((m, i) => m.role === "steps" ? (
+            {chat.map((m, i) => m.role === "timeline" ? <Timeline key={i} steps={m.steps} /> : m.role === "steps" ? (
               <div key={i} className="space-y-1">{m.trace.map((t, j) => (
                 <div key={j} className="flex min-w-0 items-center gap-2 rounded-lg border border-white/[0.06] bg-black/25 px-2 py-1 text-[11px]">
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.result.error ? "bg-bad" : "bg-cyan-glow shadow-glow"}`} />
@@ -243,7 +290,8 @@ export default function Orchestrator() {
               <div key={i} className={`whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
                 m.role === "user" ? "ml-auto w-fit max-w-[85%] border border-cyan-glow/20 bg-gradient-to-r from-sky-400/[0.10] to-violet-500/[0.10]"
                   : m.role === "error" ? "border border-bad/30 bg-bad/10 text-rose-200" : "mr-6 border border-white/[0.07] bg-white/[0.04] text-white/90"}`}>
-                {m.img && <img src={m.img} className="mb-1.5 h-20 max-w-full rounded-lg object-cover" />}{m.text}</div>
+                {m.img && <img src={m.img} className="mb-1.5 h-20 max-w-full rounded-lg object-cover" />}{m.text}
+                {m.via && <div className="mt-1 font-mono text-[9.5px] text-cyan-glow/80">{m.via}</div>}</div>
             ))}
             {busy && <LiveSteps />}
           </div>

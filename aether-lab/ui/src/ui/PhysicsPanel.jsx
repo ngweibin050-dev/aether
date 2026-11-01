@@ -82,6 +82,7 @@ function LoopCard({ opt }) {
     <p className="text-[10.5px] leading-snug text-silver">
       Worst part {b.min_sharpness_pct}% → {a.min_sharpness_pct}% · parts ok {b.parts_ok} → {a.parts_ok}/{opt.parts} · height {b.design_z_mm.join("…")} → {a.design_z_mm.join("…")} mm.
       Images: eye focused on the top of the design. Simulation, not a built display.</p>
+    {opt.below_surface_note && <p className="text-[10.5px] leading-snug text-warn">{opt.below_surface_note}</p>}
   </>;
 }
 
