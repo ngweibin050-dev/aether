@@ -13,6 +13,7 @@ history and, for files not yet committed there, from file creation times (Malays
 | Oct 30 (afternoon) | Third generation: React + three.js design desk (`ui/`), wave-optics retina (`retina.py`), true-scale desk wave simulation and phase-only pupil-GS (`desk_wave.py`), section / explode / x-ray (`cutaway.py`), drawing outlines and rebuild (`outline.py`, `rebuild.py`), three-view visual hull (`hull.py`), SAM 3.1 photo path (`vision.py`), live Meta smoke test |
 | Oct 30 – 31 (night) | Engine fingerprint and automatic Modal redeploy (`version.py`), named car parts with recesses (`detail.py`), multi-view sheet reader (`sheet.py`, `segment.py`), circle measurement on drawings (`circles.py`), engineer's interpretation of a drawing with Muse Spark close-up reading (`interpret.py`), public landing page (`ui/src/site`) |
 | Oct 31 | Modal redeploys only on a real engine change; tool arguments checked before every call; uploads routed by what the image is; reference-run harness (`tests/run_reference.py`, `docs/RESULTS.md`) |
+| Nov 1 – 3 | Part A clean edges, three-view fold guard and surface checks, Explain (Muse Spark) + Muse Image illustration, section gear pairs, plausibility filter, Muse Wonder completion, base plane, GLB / STL export and build report, demo menu with recorded fallback, holography roadmap (`docs/HOLOGRAPHY_ROADMAP.md`) |
 
 `docs/CHANGELOG.md` lists every change from Oct 31 onward in detail.
 
@@ -23,3 +24,8 @@ holography and focus, speckle, card and desk geometry; the latest are dated Oct 
 as code or as text**. AETHER Lab re-implements the models it needs (eye model, speckle groups, Window Law, sharp zone)
 from scratch in `engine/`, and every number it shows is computed by this code. No holographic display has been built:
 all optics in this repository are simulations.
+
+The theory notes v4–v13 (Oct 27–28) and the two notes of Oct 30 (phase-only pupil-GS, lab audit fixes) were written
+during the event as research, not as product code. `docs/HOLOGRAPHY_ROADMAP.md` (written Nov 1) summarises them as a
+long-term proposal; every physics number in it names the note it comes from, or the engine test that computes it.
+The physics record of Oct 23–26 it cites for the Window Law is pre-event background.
