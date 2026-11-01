@@ -113,10 +113,11 @@ aether-lab/          ← hackathon product (built Oct 26 – Nov 4)
   ARCHITECTURE.md    ← full system design
   BUILT_DURING_EVENT.md ← event timeline and what was built when
 
-LONG_TERM_PROPOSAL.md  ← hardware roadmap (desk + card device)
+AETHER_HACKATHON_PROPOSAL.md            ← hackathon proposal
+Meta AI Builders Hackathon 2026 Rules.txt           ← hackathon rules
+AETHER_LONG_TERM_PROPOSAL.md  ← hardware roadmap proposal (desk + card device)
 theory/              ← physics research notes (written during hackathon, Oct 27–30)
 references/          ← patent survey, prior art, external references
-proposal/            ← hackathon proposal drafts, decision log
 ```
 
 > The `theory/` and `references/` folders are research notes written during the hackathon as background for the physics engine and the long-term proposal. They are not product code.
