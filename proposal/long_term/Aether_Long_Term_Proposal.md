@@ -1,5 +1,0 @@
-This section will start whenever we have got enough funds to start: 
-
-| 1. Printed-film test | Print a static 1D hologram of one simple object on film (the Lab already exports a 2400 dpi film, `lab.export_film`), light it with a narrow source, look at it and measure where the eye focuses (autorefractor) | whether a real eye focuses on a 1D hologram as the model predicts; real speckle | a film print, a light source, an eye-test instrument | not done; cost not estimated in the notes |
-| 2. Desk prototype, Desk 1 | Phase liquid-crystal panel with eye tracking, 1D holography, pupil-GS encoding, sparse-group speckle reduction; image within −108 … +87 mm of the surface | the full loop with a moving viewer; frame budget; tracking latency (≤ 10–30 ms, `..._v10` §2) | a phase panel (no desk-size part identified), tracker, GPU | not started; cost not estimated in the notes |
-| 3. Desk 2 (research) | Full 2D hologram floating ~25 cm above the desk | free-floating image | a kilohertz large-area phase modulator that does not exist (`..._v13` §3) | research only |
