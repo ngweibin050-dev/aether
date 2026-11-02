@@ -230,7 +230,7 @@ def _roundtrip_child(step_path, brep_dir, names):
 
 
 # ------------------------------------------------------------------------------------------------ GLB
-def glb(components, extras_doc=None, linear=0.4, angular=0.3):
+def glb(components, extras_doc=None, linear=0.4, angular=0.3, include_edges=True):
     """components: [{"id", "name", "shape", "colour", "parent", "extras"}]; groups: {"id", "name", "group": True}.
     Returns GLB bytes: one node per component (child nodes under their group), metres, Y up; vertex normals from the
     B-rep surfaces; sharp B-rep edges as a LINES primitive."""
@@ -255,7 +255,7 @@ def glb(components, extras_doc=None, linear=0.4, angular=0.3):
         node = {"name": c["name"] if not c.get("group") else c["name"], "extras": c.get("extras", {})}
         if not c.get("group"):
             V, F, N, _ = T.mesh(c["shape"], linear, angular)
-            E = T.edges(c["shape"])
+            E = T.edges(c["shape"]) if include_edges else ()
             pos = add(conv(V), 34962, 5126, "VEC3", True)
             nrm = add(np.c_[N[:, 0], N[:, 2], -N[:, 1]].astype(np.float32), 34962, 5126, "VEC3")
             ind = add(F.astype(np.uint32).ravel(), 34963, 5125, "SCALAR")

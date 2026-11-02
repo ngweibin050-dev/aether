@@ -50,6 +50,9 @@ def assembly_validation(doc, interference=True):
     comps = [c for c in doc.data["components"] if not c.get("group")]
     res = {"components": {}, "interference": [], "all_valid": True}
     shapes = {}
+    if not comps:
+        res["all_valid"] = False
+        res["error"] = "assembly has no solid components"
     for c in comps:
         shp = doc.shapes.get(c["output"])
         if shp is None:
@@ -73,11 +76,12 @@ def assembly_validation(doc, interference=True):
                 op.Build()
                 if not op.IsDone():
                     res["interference"].append({"a": a, "b": b, "status": "check failed"})
+                    res["all_valid"] = False
                     continue
                 v = Vd.mass(op.Shape())["volume_mm3"] if not op.Shape().IsNull() else 0.0
                 if v < 1.0:
                     status = "clear" if v <= 1e-6 else "contact"
-                elif (a, b) in intended or (b, a) in intended or ("body" in (a, b) and any(x.startswith("mirror") for x in (a, b))):
+                elif (a, b) in intended or (b, a) in intended:
                     status = "intended (embedded joint)"
                 else:
                     status = "INTERFERENCE"
@@ -151,8 +155,8 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     decisions = dict(decisions or {})
     decisions.setdefault("overall_length_mm", {"value": 4500.0, "provenance": "assumed",
                                                "note": "placeholder: the sheet states no dimension (user default)"})
-    decisions.setdefault("end_view_scale", {"value": "per_view", "provenance": "user_confirmed",
-                                            "note": "end views fitted at their own scale (user default)"})
+    decisions.setdefault("end_view_scale", {"value": "per_view", "provenance": "assumed",
+                                            "note": "automatic per-view fitting; differing scales not independently confirmed"})
 
     # 2. AI stages: S1 view roles
     t = time.time()
@@ -355,11 +359,23 @@ def components_for_export(doc):
     return out
 
 
+def quality_assessment(reprojection):
+    """Separate silhouette measurements from unverified quality claims."""
+    views = ("side", "top", "front", "rear")
+    scores = {v: reprojection.get(v, {}).get("iou") for v in views}
+    complete = all(isinstance(scores[v], (int, float)) for v in views)
+    return {"silhouette_iou": scores,
+            "silhouette_threshold_0_9_met": all(scores[v] >= 0.9 for v in views) if complete else None,
+            "drawing_detail_fidelity": "not verified", "dimensional_accuracy": "not verified",
+            "blender_production_readiness": "not verified",
+            "note": "Silhouette overlap does not validate internal features, unseen surfaces, dimensions or topology."}
+
+
 def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay"):
     """Validation (with interference), STEP export + fresh-process round trip, GLB, three-view reprojection, S8
     advisory check, report. Returns the report dict (also written to out_dir/report.json)."""
     rep = {"title": doc.data["title"], "maturity": doc.data["maturity"]}
-    if doc.data["status"].get("state") != "ok":
+    if doc.data["status"].get("state") != "ok" or doc.stale:
         rep["recompute_failed"] = doc.data["status"]
         rep["exports"] = {"blocked": "the document did not recompute: nothing is exported"}
         with open(f"{out_dir}/report.json", "w") as f:
@@ -370,24 +386,49 @@ def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay"):
     val = assembly_validation(doc, interference=True)
     rep["validation"] = val
     log(f"[{time.time() - t:7.2f} s] assembly validation: all_valid={val['all_valid']}")
+    if not val["all_valid"]:
+        rep["exports"] = {"blocked": "the assembly is invalid or an interference check failed"}
+        rep["step_roundtrip"] = {"skipped": "STEP export is blocked: assembly validation failed"}
+        with open(f"{out_dir}/report.json", "w") as f:
+            json.dump(rep, f, indent=1, default=str)
+        return rep
     comps = components_for_export(doc)
     solids = [c for c in comps if not c.get("group")]
     from . import export as EX
     rep["exports"] = {}
-    if val["all_valid"]:
-        t = time.time()
-        os.makedirs(f"{out_dir}/brep", exist_ok=True)
-        rt = EX.roundtrip(solids, f"{out_dir}/model.step", f"{out_dir}/brep")
+    import shutil
+    import tempfile
+    t = time.time()
+    with tempfile.TemporaryDirectory(prefix=".cad-roundtrip-", dir=out_dir) as staging:
+        staging_brep = os.path.join(staging, "brep")
+        os.makedirs(staging_brep)
+        staged_step = os.path.join(staging, "model.step")
+        rt = EX.roundtrip(solids, staged_step, staging_brep)
         rep["step_roundtrip"] = rt
-        rep["exports"]["step"] = "model.step"
         log(f"[{time.time() - t:7.2f} s] STEP export + round trip: all_pass={rt['all_pass']}")
-    else:
-        rep["step_roundtrip"] = {"skipped": "STEP export is blocked: the model is not valid"}
+        if not rt.get("all_pass"):
+            rep["exports"] = {"blocked": "STEP round-trip failed; no new export was published"}
+            with open(f"{out_dir}/report.json", "w") as f:
+                json.dump(rep, f, indent=1, default=str)
+            return rep
+        os.makedirs(f"{out_dir}/brep", exist_ok=True)
+        for name in os.listdir(staging_brep):
+            shutil.copy2(os.path.join(staging_brep, name), os.path.join(out_dir, "brep", name))
+        os.replace(staged_step, f"{out_dir}/model.step")
+    rep["exports"]["step"] = "model.step"
+    doc.data["maturity"] = "geometrically_valid"
     t = time.time()
     extras = {"authoritative": "model.aethercad (feature history) + model.step (B-rep)", "maturity": doc.data["maturity"],
               "units_source": "mm (GLB stores metres, Y up)"}
-    with open(f"{out_dir}/model.glb", "wb") as f:
-        f.write(EX.glb(comps, extras))
+    data = EX.glb(comps, extras)
+    fd, temp = tempfile.mkstemp(prefix=".cad-glb-", dir=out_dir)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(temp, f"{out_dir}/model.glb")
+    finally:
+        if os.path.exists(temp):
+            os.remove(temp)
     rep["exports"]["glb"] = "model.glb"
     log(f"[{time.time() - t:7.2f} s] GLB (tessellated from the B-rep)")
     t = time.time()
@@ -419,13 +460,13 @@ def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay"):
     rep["features_not_built"] = [{"id": f["id"], "label": f.get("label"), "why": f.get("error")}
                                  for f in doc.data["features"] if f.get("status") == "failed_optional"]
     rep["assumptions"] = doc.data["assumptions"]
-    rep["maturity_reached"] = ("drawing_consistent" if val["all_valid"] and rep.get("step_roundtrip", {}).get("all_pass")
-                               and all(v["iou"] >= 0.9 for v in rp.values()) else
-                               "geometrically_valid" if val["all_valid"] else "draft_inference")
+    rep["quality_assessment"] = quality_assessment(rp)
+    rep["maturity_reached"] = "geometrically_valid"
     doc.data["maturity"] = rep["maturity_reached"]
     doc.data["validation"] = {"summary": {"all_valid": val["all_valid"],
                                           "step_roundtrip_pass": rep.get("step_roundtrip", {}).get("all_pass"),
-                                          "reprojection_iou": {k: v["iou"] for k, v in rp.items()}},
+                                          "reprojection_iou": {k: v["iou"] for k, v in rp.items()},
+                                          "quality_assessment": rep["quality_assessment"]},
                               "interference": val["interference"]}
     with open(f"{out_dir}/report.json", "w") as f:
         json.dump(rep, f, indent=1, default=str)

@@ -114,3 +114,41 @@ def stop():
         _proc.stdin.close()
         _proc.wait(timeout=10)
     _proc = None
+
+
+class Transaction:
+    """Checkpoint a worker mutation until the corresponding scene is ready."""
+    def __init__(self, out_dir):
+        self.out_dir = str(out_dir)
+        self.accepted = False
+        self.worker = None
+        self.recovery_path = None
+
+    def __enter__(self):
+        checkpoint = call("checkpoint", out_dir=self.out_dir)
+        self.worker = _proc
+        self.recovery_path = checkpoint["recovery_path"]
+        return self
+
+    def accept(self):
+        self.accepted = True
+
+    def __exit__(self, typ, value, tb):
+        try:
+            if self.worker.poll() is not None:
+                raise RuntimeError("CAD worker stopped during transaction")
+            if typ is None and self.accepted:
+                call("checkpoint_commit")
+            else:
+                call("checkpoint_rollback")
+        except Exception as original:
+            if self.worker.poll() is not None:
+                try:
+                    call("recover_checkpoint", recovery_path=self.recovery_path)
+                except Exception as recovery_error:
+                    raise RuntimeError(f"CAD worker stopped and checkpoint recovery failed: {recovery_error}") from original
+                if typ is None and self.accepted:
+                    raise RuntimeError("CAD worker stopped; previous document recovered instead of committing") from original
+            else:
+                raise
+        return False

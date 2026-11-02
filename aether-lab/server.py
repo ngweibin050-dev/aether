@@ -65,7 +65,7 @@ DEMOS_NOTE = "Demos are unavailable: the machine-drawing demos were mesh reconst
 GONE = {"/api/demo/recorded": "Recorded demo runs are removed: they restored whole mesh scenes.",
         "/api/export.glb": "Scene GLB export is removed (it exported mesh parts). Use /api/cad/export.glb (from the B-rep).",
         "/api/export.stl": "Scene STL export is removed (a triangle mesh is not CAD). Use /api/cad/export.step."}
-LOCK = threading.Lock()
+LOCK = threading.RLock()
 
 
 def on_step(e):
@@ -108,7 +108,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/progress":            # live steps of the running chat turn (read without the lock)
             return self._send(200, {**PROGRESS, "now": time.time()})     # server clock, for the live step timers
         if path == "/api/state":
-            return self._send(200, {"state": lean(STATE), "compute": compute.where(), "gpu": compute.status})
+            with LOCK:
+                return self._send(200, {"state": lean(STATE), "compute": compute.where(), "gpu": compute.status})
         if path == "/api/demos":
             return self._send(200, {"demos": [], "note": DEMOS_NOTE})
         if path in GONE:
@@ -120,29 +121,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, body, "text/html; charset=utf-8")
         if path == "/api/cad/document":
             import cad_client
-            try:
-                return self._send(200, cad_client.call("document"))
-            except Exception as e:
-                return self._send(409, {"error": str(e)})
-        if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.aethercad", "/api/cad/report.json"):
+            with LOCK:
+                try:
+                    return self._send(200, cad_client.call("document"))
+                except Exception as e:
+                    return self._send(409, {"error": str(e)})
+        if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.blender.glb", "/api/cad/export.aethercad", "/api/cad/report.json"):
             import cad_client
-            kind = path.rsplit(".", 1)[-1]
+            kind = "blender_glb" if path.endswith("export.blender.glb") else path.rsplit(".", 1)[-1]
             kind = {"json": "report"}.get(kind, kind)
-            try:
-                f = cad_client.call("export", kind=kind)["path"]
-            except Exception as e:
-                return self._send(409, {"error": str(e)})
-            ctype = {"step": "model/step", "glb": "model/gltf-binary", "aethercad": "application/json", "report": "application/json"}[kind]
-            return self._send(200, Path(f).read_bytes(), ctype)
+            with LOCK:
+                try:
+                    f = cad_client.call("export", kind=kind)["path"]
+                except Exception as e:
+                    return self._send(409, {"error": str(e)})
+                ctype = {"step": "model/step", "glb": "model/gltf-binary", "blender_glb": "model/gltf-binary", "aethercad": "application/json", "report": "application/json"}[kind]
+                return self._send(200, Path(f).read_bytes(), ctype)
         if path.startswith("/api/cad/image/"):
-            name = Path(path).name
-            f = OUT / "cad" / "current" / name
-            if f.suffix == ".png" and f.is_file():
-                return self._send(200, f.read_bytes(), "image/png")
-            return self._send(404, {"error": "not found"})
+            with LOCK:
+                name = Path(path).name
+                f = OUT / "cad" / "current" / name
+                if f.suffix == ".png" and f.is_file():
+                    return self._send(200, f.read_bytes(), "image/png")
+                return self._send(404, {"error": "not found"})
         if path == "/api/meshes":
-            return self._send(200, {"version": STATE["version"], "meshes": lab.meshes(STATE),
-                                    "offsets": lab.explode_offsets(STATE)})
+            with LOCK:
+                return self._send(200, {"version": STATE["version"], "meshes": lab.meshes(STATE),
+                                        "offsets": lab.explode_offsets(STATE)})
         if path.startswith("/output/"):
             f = OUT / Path(path).name
         else:
@@ -185,13 +190,25 @@ class Handler(BaseHTTPRequestHandler):
                 traceback.print_exc()
                 return self._send(500, {"error": f"{type(e).__name__}: {e}"})
         if self.path in ("/api/cad/from_sheet", "/api/cad/param", "/api/cad/open", "/api/cad/import_step"):
-            try:
-                body = json.loads(raw or b"{}")
-                res = cad_route(self.path, body)
-                return self._send(409 if res.get("error") else 200, res)
-            except Exception as e:
-                traceback.print_exc()
-                return self._send(500, {"error": f"{type(e).__name__}: {e}"})
+            import cad_client
+            with LOCK:
+                before = copy.deepcopy(STATE)
+                try:
+                    body = json.loads(raw or b"{}")
+                    if not cad_client.available():
+                        res = _cad_failed("CAD environment", "CAD worker unavailable; nothing was built")
+                    else:
+                        with cad_client.Transaction(OUT / "cad" / "current") as tx:
+                            res = cad_route(self.path, body)
+                            if not res.get("error"):
+                                tx.accept()
+                        if res.get("error"):
+                            STATE.clear(); STATE.update(before)
+                    return self._send(409 if res.get("error") else 200, res)
+                except Exception as e:
+                    STATE.clear(); STATE.update(before)
+                    traceback.print_exc()
+                    return self._send(500, {"error": f"{type(e).__name__}: {e}"})
         try:
             body = json.loads(raw or b"{}")
             with LOCK:
@@ -270,7 +287,7 @@ def cad_import_current(name, status_extra=None):
 
 
 def _cad_failed(stage, err, extra=None):
-    """Report an error before scene import. Post-worker scene failures have a known transaction gap; see Phase 0/A report."""
+    """Report an error without changing the scene; worker transaction limitations are in the Phase 0/A report."""
     return {"error": f"{stage}: {err}", "scene_unchanged": True, "state": lean(STATE), **(extra or {})}
 
 
@@ -285,7 +302,7 @@ def cad_route(path, body):
     /api/cad/open {path}: open a saved .aethercad (recompute with replayed model answers).
     /api/cad/import_step {file (data URL or base64), name?}: an external STEP file -> validated B-rep components
     (external provenance, no AETHER feature history).
-    Worker-side invalid builds preserve the last document. Post-worker scene failures are not yet atomic; see Phase 0/A report."""
+    Server-coordinated checkpoints roll back ordinary scene-import exceptions. Crash and disk recovery remain unverified."""
     import cad_client
     if not cad_client.available():
         return _cad_failed("CAD environment", "not installed (aether-lab/cad-worker/setup.ps1 or setup.sh); nothing was built")

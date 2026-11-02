@@ -27,3 +27,15 @@
 ## Environment and reproducibility
 
 Local Linux, Python 3.13 isolated lab and CAD environments; CAD pins are intended for Python 3.12, which was not tested here. The live Meta/SAM attempt failed as described above; no successful live model integration, deployed Modal, successful reconstruction browser test, or exact-original benchmark verification is claimed. Temporary environments, credentials, generated output and benchmark inputs are not committed. Synthetic STEP tests use an OpenCascade 10 × 20 × 30 mm box generated within the test; it is not the user image or benchmark.
+
+## Local continuation — still in progress
+
+The historical transaction defect and xfail above describe an earlier checkpoint, not the current local code. Subsequent local changes checkpoint worker state and disk outputs around CAD mutations; the ordinary downstream scene-import failure test now passes. One injected worker-process crash during a synthetic STEP import also recovered the prior scene, document and saved file. This is a narrow test, not proof of recovery from every crash, a server crash, power loss, or disk failure. The worker client's timeout is still not enforced.
+
+A Blender-oriented GLB export now excludes viewport edge overlays and contains CAD-derived meshes. In Blender 5.1.2, a synthetic 10×20×30 mm STEP box was imported as one mesh (24 vertices, 12 polygons); a vertex edit survived saving and reopening a .blend file. This does not establish car or aircraft quality, general blueprint coverage, CAD feature editability inside Blender, or synchronization from Blender back to CAD.
+
+The NASA X-3 and X-36 inputs are in `tests/inputs/`, but the current observation parser requires four views. They have not been successfully reconstructed. The car remains incomplete: detailed independently editable lights, bonnet, plate and interior are not verified. Hidden or unspecified interior arrangements must be explicitly marked inferred and remain adjustable, never represented as measured. Universal accurate reconstruction from arbitrary images is not established.
+
+No deployment, push, or live service verification was performed for this continuation. Phase A and the broader requested work remain incomplete. Skips are not passes.
+
+Latest local offline checks (Python 3.13): CAD suite **43 passed, 26 skipped**, 12.97 s; skipped cases require the canonical local car sheet. Safety and physics suite **45 passed, 11 skipped**, 33.12 s; skips cover removed legacy mesh functionality with CAD replacements pending. UI production build completed successfully. None of these numbers is a live deployment or a comprehensive accuracy assessment.

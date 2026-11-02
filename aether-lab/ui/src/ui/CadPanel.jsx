@@ -84,10 +84,12 @@ export default function CadPanel() {
               {Object.entries(counts).map(([k, n]) => <span key={k} title={PROV[k]?.[2]} className={PROV[k]?.[1]}>{PROV[k]?.[0] || k} {n}</span>)}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {[["STEP", "/api/cad/export.step", "model.step"], ["GLB", "/api/cad/export.glb", "model.glb"],
+              {[["STEP", "/api/cad/export.step", "model.step"], ["Viewport GLB", "/api/cad/export.glb", "model.glb"],
+                ["Blender GLB", "/api/cad/export.blender.glb", "model-blender.glb"],
                 [".aethercad", "/api/cad/export.aethercad", "model.aethercad"], ["Report", "/api/cad/report.json", "report.json"]].map(([t, u, f]) =>
                 <a key={t} className="btn !py-0.5 text-[11px]" href={u} download={f} title={`Download ${f} (from the validated B-rep)`}>{t}</a>)}
             </div>
+            <div className="mt-1 text-[10px] text-amber-300">Preview: silhouette overlap and valid solids do not establish drawing detail or dimensional accuracy. Blender GLB is a derived triangulated mesh; edits do not update the CAD master.</div>
           </div>
           <div className="mt-2 flex gap-1">
             {[["params", "Parameters"], ["features", "Feature tree"], ["assumptions", "Assumptions"], ["checks", "Checks"]].map(([k, t]) =>

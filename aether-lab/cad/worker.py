@@ -19,11 +19,13 @@ Commands
 
 Failure integrity: build and import_step work in a staging folder; the open document (and out_dir) are replaced only
 when the new document recomputed and validated. Worker-side failures preserve the last document. A subsequent server-side
-scene-import failure can still leave document and scene out of sync; see the Phase 0/A report.
+scene-import exceptions trigger a server-coordinated rollback. Worker crashes and disk failures are not yet proven recoverable; see the Phase 0/A report.
 """
 from __future__ import annotations
 
+import copy
 import json
+import tempfile
 import os
 import shutil
 import sys
@@ -78,6 +80,135 @@ def _staging(out):
     return st
 
 
+# A checkpoint covers worker state *and* the on-disk output until the server has
+# successfully prepared the corresponding scene. The server serializes these
+# operations with its scene lock. Backups stay outside the output folder.
+CHECKPOINT = None
+
+
+def cmd_checkpoint(a):
+    global CHECKPOINT
+    if CHECKPOINT is not None:
+        raise RuntimeError("a CAD transaction is already active")
+    doc = STATE.get("doc")
+    doc_snapshot = None
+    if doc is not None:
+        doc_snapshot = {"data": copy.deepcopy(doc.data), "shapes": dict(doc.shapes), "info": dict(doc.info),
+                        "cache": dict(doc._cache), "stale": doc.stale, "had_base_dir": hasattr(doc, "base_dir"),
+                        "base_dir": getattr(doc, "base_dir", None)}
+    dirs = {os.path.abspath(p) for p in (STATE.get("out_dir"), a.get("out_dir")) if p}
+    backups = []
+    try:
+        for path in dirs:
+            parent = os.path.dirname(path)
+            os.makedirs(parent, exist_ok=True)
+            holder = tempfile.mkdtemp(prefix=".aether-checkpoint-", dir=parent)
+            existed = os.path.isdir(path)
+            backups.append((path, holder, existed))
+            if existed:
+                shutil.copytree(path, os.path.join(holder, "saved"))
+        if not backups:
+            raise RuntimeError("a checkpoint requires an output directory")
+        recovery = {
+            "backups": backups, "out_dir": STATE.get("out_dir"),
+            "sheet": STATE.get("sheet"), "had_res": STATE.get("res") is not None,
+            "doc": None if doc_snapshot is None else {
+                "data": doc_snapshot["data"], "stale": doc_snapshot["stale"],
+                "had_base_dir": doc_snapshot["had_base_dir"], "base_dir": doc_snapshot["base_dir"],
+            },
+        }
+        recovery_path = os.path.join(backups[0][1], "recovery.json")
+        with open(recovery_path, "w", encoding="utf-8") as f:
+            json.dump(recovery, f, allow_nan=False)
+    except Exception:
+        for _, holder, _ in backups:
+            shutil.rmtree(holder, ignore_errors=True)
+        raise
+    CHECKPOINT = {"state": dict(STATE), "doc_snapshot": doc_snapshot, "backups": backups}
+    return {"checkpoint": True, "recovery_path": recovery_path}
+
+
+def cmd_checkpoint_commit(a):
+    global CHECKPOINT
+    if CHECKPOINT is None:
+        raise RuntimeError("no CAD transaction is active")
+    old = CHECKPOINT
+    CHECKPOINT = None
+    for _, holder, _ in old["backups"]:
+        shutil.rmtree(holder, ignore_errors=True)
+    return {"committed": True}
+
+
+def cmd_checkpoint_rollback(a):
+    global CHECKPOINT
+    if CHECKPOINT is None:
+        raise RuntimeError("no CAD transaction is active")
+    cp = CHECKPOINT
+    # Keep the checkpoint if restoration raises so recovery can be attempted.
+    for path, holder, existed in cp["backups"]:
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        elif os.path.exists(path):
+            os.remove(path)
+        if existed:
+            shutil.copytree(os.path.join(holder, "saved"), path)
+    old = cp["state"]
+    doc, snap = old.get("doc"), cp["doc_snapshot"]
+    if doc is not None and snap is not None:
+        doc.data = snap["data"]
+        doc.shapes, doc.info, doc._cache = snap["shapes"], snap["info"], snap["cache"]
+        doc.stale = snap["stale"]
+        if snap["had_base_dir"]:
+            doc.base_dir = snap["base_dir"]
+        elif hasattr(doc, "base_dir"):
+            del doc.base_dir
+    STATE.clear(); STATE.update(old)
+    CHECKPOINT = None
+    for _, holder, _ in cp["backups"]:
+        shutil.rmtree(holder, ignore_errors=True)
+    return {"rolled_back": True}
+
+
+def cmd_recover_checkpoint(a):
+    """Recover a checkpoint after worker-process loss; not server or disk failure."""
+    from cad.document import Document
+    from cad.ops import OPS
+    path = os.path.abspath(a["recovery_path"])
+    if os.path.basename(path) != "recovery.json" or not os.path.basename(os.path.dirname(path)).startswith(".aether-checkpoint-"):
+        raise RuntimeError("invalid checkpoint recovery path")
+    with open(path, encoding="utf-8") as f:
+        cp = json.load(f)
+    for target, holder, existed in cp["backups"]:
+        if os.path.isdir(target):
+            shutil.rmtree(target)
+        elif os.path.exists(target):
+            os.remove(target)
+        if existed:
+            shutil.copytree(os.path.join(holder, "saved"), target)
+    snap = cp.get("doc")
+    doc = res = None
+    if snap is not None:
+        saved_data = copy.deepcopy(snap["data"])
+        doc = Document(copy.deepcopy(saved_data), OPS)
+        if snap["had_base_dir"]:
+            doc.base_dir = snap["base_dir"]
+        status = doc.recompute(validate=_fast_validate)
+        if status.get("state") != "ok":
+            raise RuntimeError(f"checkpoint document could not be recomputed: {status}")
+        doc.data = saved_data
+        doc.stale = snap["stale"]
+        if cp["had_res"]:
+            from cad import observations as O
+            from cad import vehicle as Vh
+            obs, aux = O.observe(cp["sheet"])
+            res = {"obs": obs, "aux": aux, "F": Vh.frames(obs, doc.data["decisions"])}
+    STATE.clear()
+    STATE.update(doc=doc, res=res, out_dir=cp["out_dir"], sheet=cp["sheet"])
+    for _, holder, _ in cp["backups"]:
+        shutil.rmtree(holder, ignore_errors=True)
+    return {"recovered": True}
+
+
 def _unresolved_view_status(doc):
     front = doc.data.get("decisions", {}).get("front_view", {})
     if isinstance(front, dict) and front.get("provenance") == "unresolved":
@@ -87,6 +218,8 @@ def _unresolved_view_status(doc):
 
 def cmd_build(a):
     from cad import pipeline as P
+    if a.get("finalize") is False:
+        raise RuntimeError("CAD validation and STEP round-trip cannot be disabled")
     stored = None
     if a.get("stored_from"):
         with open(a["stored_from"], encoding="utf-8") as f:
@@ -104,7 +237,7 @@ def cmd_build(a):
     # the pipeline's placeholder front/rear choice as a successful reconstruction.
     if status := _unresolved_view_status(doc):
         return {"status": status, "maturity": doc.data["maturity"], "kept_previous_document": True, "seconds": res["seconds"]}
-    rep = P.finalize(doc, res, st, log=_log, ai_mode=a.get("ai_mode", "live")) if a.get("finalize", True) else None
+    rep = P.finalize(doc, res, st, log=_log, ai_mode=a.get("ai_mode", "live"))
     if rep and (not rep.get("validation", {}).get("all_valid") or not rep.get("step_roundtrip", {}).get("all_pass")):
         return {"status": {"state": "invalid", "error": "Full validation or STEP round-trip failed"},
                 "maturity": doc.data["maturity"], "kept_previous_document": True,
@@ -170,7 +303,7 @@ def cmd_import_step(a):
                                    "output": fid, "colour": "#b9c2cc", "provenance": "external_reference"})
     doc = Document(data, OPS)
     doc.base_dir = st
-    stt = doc.recompute(validate=_fast_validate)
+    stt = doc.recompute(validate=_full_validate)
     if stt["state"] != "ok":
         raise RuntimeError(f"STEP import failed: {stt.get('error') or stt}")
     doc.data["validation"] = {"import": checks}
@@ -195,7 +328,7 @@ def cmd_open(a):
     doc.base_dir = os.path.dirname(os.path.abspath(a["path"]))
     if status := _unresolved_view_status(doc):
         return {"status": status, "kept_previous_document": True}
-    st = doc.recompute(validate=_fast_validate)
+    st = doc.recompute(validate=_full_validate)
     if st["state"] != "ok":                                # keep the last valid document open
         return {"status": st, "kept_previous_document": True}
     res = None
@@ -210,6 +343,11 @@ def cmd_open(a):
 def _fast_validate(doc):
     from cad import pipeline as P
     return P.assembly_validation(doc, interference=False)
+
+
+def _full_validate(doc):
+    from cad import pipeline as P
+    return P.assembly_validation(doc, interference=True)
 
 
 def _need():
@@ -252,7 +390,7 @@ def _refs(v):
 def cmd_set_param(a):
     doc = _need()
     t = time.time()
-    st = doc.set_param(a["id"], a.get("value"), clear_override=a.get("clear_override", False), validate=_fast_validate,
+    st = doc.set_param(a["id"], a.get("value"), clear_override=a.get("clear_override", False), validate=_full_validate,
                        note=a.get("note"))
     if st["state"] == "ok":
         _save(doc, STATE["out_dir"])
@@ -262,6 +400,8 @@ def cmd_set_param(a):
 def cmd_meshes(a):
     from cad import tessellate as T
     doc = _need()
+    if doc.stale or doc.data["status"].get("state") != "ok":
+        raise RuntimeError("viewport blocked: stale or invalid CAD document")
     out = {}
     for c in doc.data["components"]:
         if c.get("group") or c["output"] not in doc.shapes:
@@ -288,18 +428,29 @@ def cmd_export(a):
         return {"path": f"{out}/model.aethercad"}
     if doc.data["status"].get("state") != "ok" or doc.stale:
         raise RuntimeError("export blocked: the document is not in a valid, recomputed state")
-    comps = P.components_for_export(doc)
-    if kind == "glb":
-        with open(f"{out}/model.glb", "wb") as f:
-            f.write(EX.glb(comps, {"maturity": doc.data["maturity"]}))
-        return {"path": f"{out}/model.glb"}
-    if kind == "step":
+    if kind in ("glb", "blender_glb", "step"):
         val = P.assembly_validation(doc, interference=True)
         if not val["all_valid"]:
-            raise RuntimeError("STEP export blocked: " + json.dumps([k for k, v in val["components"].items() if not v.get("valid")]
-                                                                      + [i for i in val["interference"] if i.get("status") == "INTERFERENCE"])[:400])
-        EX.write_step([c for c in comps if not c.get("group")], f"{out}/model.step")
-        return {"path": f"{out}/model.step"}
+            raise RuntimeError("export blocked: assembly validation failed")
+        comps = P.components_for_export(doc)
+        name = {"step":"model.step", "glb":"model.glb", "blender_glb":"model-blender.glb"}[kind]
+        path = os.path.join(out, name)
+        fd, temp = tempfile.mkstemp(prefix=".export-", dir=out)
+        try:
+            if kind == "step":
+                os.close(fd)
+                EX.write_step([c for c in comps if not c.get("group")], temp)
+            else:
+                metadata = {"maturity": doc.data["maturity"], "document_id": doc.data["document_id"],
+                            "representation": "CAD-derived editable mesh",
+                            "accuracy": "not established by CAD validity"}
+                with os.fdopen(fd, "wb") as f:
+                    f.write(EX.glb(comps, metadata, include_edges=kind != "blender_glb"))
+            os.replace(temp, path)
+        finally:
+            if os.path.exists(temp):
+                os.remove(temp)
+        return {"path": path}
     if kind == "report":
         return {"path": f"{out}/report.json"}
     raise RuntimeError(f"unknown export kind {kind!r}")
@@ -325,7 +476,9 @@ def _brief(rep):
             "recompute_failed": rep.get("recompute_failed")}
 
 
-CMDS = {"ping": cmd_ping, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
+CMDS = {"checkpoint": cmd_checkpoint, "checkpoint_commit": cmd_checkpoint_commit, "checkpoint_rollback": cmd_checkpoint_rollback,
+        "recover_checkpoint": cmd_recover_checkpoint,
+        "ping": cmd_ping, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
         "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "import_step": cmd_import_step}
 
 

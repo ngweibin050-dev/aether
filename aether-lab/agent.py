@@ -317,8 +317,8 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
     Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
     STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics, and
-    ONLY after worker validation. Worker build failures retain the prior document and scene. A later scene-import
-    failure is not yet atomic with the worker document; see the Phase 0/A report."""
+    ONLY after worker validation. A checkpoint rolls back ordinary scene-import exceptions; worker-crash and disk-failure
+    recovery remain unverified. See the Phase 0/A report."""
     import base64
     import io
     from pathlib import Path
@@ -331,27 +331,29 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
     step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
     try:
-        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out))
+        with cad_client.Transaction(out) as tx:
+            r = cad_client.call("build", sheet=str(sheet), out_dir=str(out))
+            if r["status"].get("state") != "ok":
+                err = r["status"].get("error") or r["status"].get("state")
+                step({"stage": "done", "tool": "cad_pipeline", "error": str(err)[:300]})
+                return (f"The CAD reconstruction failed ({err}). The last valid CAD document is kept and the scene is unchanged.",
+                        [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(err), "build": r, "scene_unchanged": True}}],
+                        {}, history)
+            m = cad_client.call("meshes")
+            doc = cad_client.call("document")
+            import copy
+            staged = copy.deepcopy(state)
+            imp = lab.import_cad(staged, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
+                                 provenance={"maturity": doc["maturity"], "route": doc.get("route")})
+            imp["display_fit"] = _fit_to_desk(staged, imp["id"])
+            tx.accept()
     except Exception as e:
         step({"stage": "done", "tool": "cad_pipeline", "error": str(e)[:300]})
-        return (f"The CAD reconstruction failed: {e}. Nothing was built and the scene is unchanged.",
+        return (f"The CAD reconstruction failed: {e}. The scene was not replaced; check the worker transaction status.",
                 [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e), "scene_unchanged": True}}], {}, history)
-    if r["status"].get("state") != "ok":
-        err = r["status"].get("error") or r["status"].get("state")
-        step({"stage": "done", "tool": "cad_pipeline", "error": str(err)[:300]})
-        return (f"The CAD reconstruction failed ({err}). The last valid CAD document is kept and the scene is unchanged.",
-                [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(err), "build": r, "scene_unchanged": True}}],
-                {}, history)
-    step({"stage": "done", "tool": "cad_pipeline", "error": None})
-    m = cad_client.call("meshes")
-    doc = cad_client.call("document")
-    import copy
-    staged = copy.deepcopy(state)
-    imp = lab.import_cad(staged, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
-                         provenance={"maturity": doc["maturity"], "route": doc.get("route")})
-    imp["display_fit"] = _fit_to_desk(staged, imp["id"])     # display scale only; the CAD document stays in real mm
     state.clear()
     state.update(staged)
+    step({"stage": "done", "tool": "cad_pipeline", "error": None})
     rep = r.get("report") or {}
     LAST_REPORT.clear()
     LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,
