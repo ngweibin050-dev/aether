@@ -71,7 +71,7 @@ def _long_rows(ink, frac):
 # ----------------------------------------------------------------------------------------------- views
 def find_views(g, ink):
     """Separate drawings on the sheet. Ground lines (long straight rows) are removed first so two views standing on
-    one line stay apart; paper noise at the sheet border (blobs touching the edge) is dropped. Returns a list of
+    one line stay apart; edge-dominated paper strips are dropped, not drawings that merely touch an edge. Returns a list of
     {box: [x0, y0, x1, y1], ground_v: row or None} ordered top-to-bottom, left-to-right."""
     H, W = ink.shape
     grounds = _long_rows(ink, 0.35)
@@ -84,13 +84,16 @@ def find_views(g, ink):
     out = []
     areas = ndi.sum(m, lab, range(1, n + 1))
     for k in range(1, n + 1):
-        ys, xs = np.nonzero(lab == k)
-        if ys.min() == 0 or xs.min() == 0 or ys.max() == H - 1 or xs.max() == W - 1:
-            continue                                           # border noise
         if areas[k - 1] < 0.08 * areas.max():
             continue
         sub = m & (lab == k)
         yy, xx = np.nonzero(sub)
+        # A legitimate drawing can touch or be cropped at a paper edge. Dilation
+        # reaching the edge is not evidence of noise. Discard edge-dominated
+        # strips instead, but retain large drawings which merely touch the border.
+        border = (yy < 5) | (xx < 5) | (yy >= H - 5) | (xx >= W - 5)
+        if border.mean() > 0.6:
+            continue
         box = [int(xx.min()), int(yy.min()), int(xx.max()), int(yy.max())]
         gv = None                                              # the ground line just under this view, if any
         for y, a, b in grounds:
@@ -173,7 +176,8 @@ def classify_views(views, sils):
             if best is None or e < best[0]:
                 best = (e, s, t, rest)
     if best is None:
-        raise ValueError(f"need 4 views (side, plan, two end views); found {n}")
+        raise ValueError(f"Current vehicle CAD builder needs 4 views (side, plan, two end views); found {n}. "
+                         "Aircraft and general three-view CAD reconstruction are not implemented.")
     e, s, t, rest = best
     roles = {s: "side", t: "top", rest[0]: "end_a", rest[1]: "end_b"}
     ev = {"length_side_vs_top_px": [dims[s][0], dims[t][0]], "score": round(e, 4),

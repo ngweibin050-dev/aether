@@ -276,7 +276,7 @@ UNAVAILABLE = {
 }
 
 
-def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".", on_step=None, mode="interpret",
+def photo_to_design(state, history, data_url, prompt, size_mm=None, out_dir=".", on_step=None, mode="interpret",
                     kind="auto"):
     """An upload -> genuine CAD, routed by what it IS (vision.upload_kind measures it, or the UI says it):
     - "three_view": a sheet with side / plan / end views of one object -> parametric CAD (cad/ package, OpenCascade
@@ -300,6 +300,12 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     if kind in UNAVAILABLE:
         route["result"].update(error=UNAVAILABLE[kind], scene_unchanged=True, builder="unavailable")
         return UNAVAILABLE[kind], [route], {}, history
+    from cad.scale import length_decision
+    try:
+        scale = length_decision(size_mm)
+    except ValueError as e:
+        route["result"].update(error=str(e), scene_unchanged=True)
+        return str(e), [route], {}, history
     hints = [p.strip() for p in (prompt or "").split(",") if p.strip() and p.strip().lower() not in ("object", "drawing")]
     import cad_client
     if not cad_client.available():
@@ -309,11 +315,11 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
                 f"(once: aether-lab/cad-worker/setup.ps1 on Windows, setup.sh on Linux/macOS; {why}). Nothing was built and "
                 "the scene is unchanged.", [route], {}, history)
     compute.prewarm()
-    reply, trace, images, hist = _sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step)
+    reply, trace, images, hist = _sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step, scale)
     return reply, [route] + trace, images, hist
 
 
-def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
+def _sheet_to_cad(state, history, data_url, prompt, out_dir, step, scale=None):
     """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
     Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
     STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics, and
@@ -332,7 +338,8 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
     try:
         with cad_client.Transaction(out) as tx:
-            r = cad_client.call("build", sheet=str(sheet), out_dir=str(out))
+            r = cad_client.call("build", timeout=1200, sheet=str(sheet), out_dir=str(out),
+                                decisions={"overall_length_mm": scale} if scale else None)
             if r["status"].get("state") != "ok":
                 err = r["status"].get("error") or r["status"].get("state")
                 step({"stage": "done", "tool": "cad_pipeline", "error": str(err)[:300]})
@@ -356,16 +363,21 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     step({"stage": "done", "tool": "cad_pipeline", "error": None})
     rep = r.get("report") or {}
     LAST_REPORT.clear()
-    LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,
-                        "scale_source": "assumed: overall length 4500 mm (no dimension on the sheet)",
+    from cad.scale import length_decision
+    scale = scale or length_decision(None)
+    is_user_scale = scale["provenance"] == "user_confirmed"
+    scale_text = (f"User-supplied reference overall length {scale['value']:g} mm; the final dimensions are not independently verified."
+                  if is_user_scale else f"Reference overall length {scale['value']:g} mm is assumed; drawing dimensions are not automatically read.")
+    LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": is_user_scale,
+                        "scale_source": scale_text,
                         "view_match_iou_pct": {k: round(100 * v, 1) for k, v in (rep.get("reprojection_iou") or {}).items()}})
     feats = [f for f in doc["features"]]
     text = (f"Built a parametric CAD model ({len(feats)} features, {len([c for c in doc['components'] if not c.get('group')])} "
             f"solid components) from the sheet. Maturity: {doc['maturity'].replace('_', ' ')}. All solids valid: "
             f"{rep.get('all_valid')}. STEP round trip: {'passed' if rep.get('step_all_pass') else 'not passed'}. "
             "Reprojection IoU per view: " + ", ".join(f"{k} {v:.3f}" for k, v in (rep.get("reprojection_iou") or {}).items())
-            + ". Real size is assumed (4.5 m overall length) until you enter a real dimension; the cross-sections between "
-              "the end views and every recess depth are inferred or assumed and labelled so in the CAD panel.")
+            + ". " + scale_text + " The cross-sections between the end views and every recess depth are inferred or "
+              "assumed and labelled so in the CAD panel.")
     trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
                                                             "document": {k: doc.get(k) for k in ("title", "route", "maturity", "status")}}}]
     return text, trace, {}, history

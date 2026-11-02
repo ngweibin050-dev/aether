@@ -10,7 +10,9 @@ Environment variable AETHER_CAD_PYTHON overrides the interpreter path.
 from __future__ import annotations
 
 import json
+import math
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -46,23 +48,51 @@ def _start():
 
 
 def call(cmd, timeout=None, **args):
-    """One request to the worker. Raises RuntimeError with the worker's error text."""
-    global _n
+    """One request to the worker. A timeout terminates the unresponsive worker."""
+    global _n, _proc
+    if timeout is not None and (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+                                or not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError("timeout must be a positive number")
     with _lock:
         p = _start()
         _n += 1
-        p.stdin.write(json.dumps({"id": _n, "cmd": cmd, "args": args}) + "\n")
+        request_id = _n
+        p.stdin.write(json.dumps({"id": request_id, "cmd": cmd, "args": args}) + "\n")
         p.stdin.flush()
-        while True:
-            line = p.stdout.readline()
-            if not line:
-                raise RuntimeError("the CAD worker stopped (see output/cad_worker.log)")
+        def read_response():
+            while True:
+                line = p.stdout.readline()
+                if not line:
+                    raise RuntimeError("the CAD worker stopped (see output/cad_worker.log)")
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(msg, dict) and msg.get("id") == request_id:
+                    return msg
+        if timeout is None:
+            msg = read_response()
+        else:
+            result = queue.Queue(maxsize=1)
+            def read_in_thread():
+                try:
+                    result.put((True, read_response()))
+                except Exception as e:
+                    result.put((False, e))
+            threading.Thread(target=read_in_thread, daemon=True).start()
             try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
-                continue                         # not a protocol line
-            if isinstance(msg, dict) and msg.get("id") == _n:
-                break
+                success, msg = result.get(timeout=timeout)
+            except queue.Empty:
+                try:
+                    p.kill()
+                except ProcessLookupError:
+                    pass
+                p.wait(timeout=5)
+                if _proc is p:
+                    _proc = None
+                raise RuntimeError(f"CAD worker timed out after {timeout:g} seconds and was stopped") from None
+            if not success:
+                raise msg
     if not msg.get("ok"):
         raise RuntimeError(msg.get("error") or "CAD worker error")
     return msg["result"]
@@ -87,7 +117,7 @@ def available():
     if LAST_CHECK.get("ok") and _proc is not None and _proc.poll() is None:
         return True
     try:
-        info = call("ping")
+        info = call("ping", timeout=10)
     except Exception as e:                      # interpreter does not start, or has no OCP / CadQuery
         stop_quietly()
         LAST_CHECK.clear()

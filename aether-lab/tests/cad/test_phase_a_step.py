@@ -307,3 +307,28 @@ def test_worker_crash_during_scene_transfer_preserves_previous_document(tmp_path
         assert cad_client.call('document')['document_id'] == old_doc
     finally:
         srv.shutdown(); srv.server_close(); thread.join(); cad_client.stop_quietly()
+
+
+def test_timed_out_worker_recovers_previous_step_document(tmp_path, monkeypatch):
+    import os, signal, sys
+    import cad_client
+    if not hasattr(signal, 'SIGSTOP'):
+        pytest.skip('SIGSTOP needed to simulate an unresponsive worker')
+    cad_client.stop_quietly(); monkeypatch.setenv('AETHER_CAD_PYTHON', sys.executable)
+    paths = [tmp_path/'before.step', tmp_path/'after.step']
+    for f, side in zip(paths, (10, 20)):
+        w = STEPControl_Writer(); w.Transfer(BRepPrimAPI_MakeBox(side, side, side).Shape(), STEPControl_AsIs); w.Write(str(f))
+    out = tmp_path/'current'
+    try:
+        cad_client.call('import_step', path=str(paths[0]), out_dir=str(out))
+        before = cad_client.call('document')['document_id']
+        saved = (out/'model.aethercad').read_bytes()
+        with pytest.raises(RuntimeError, match='timed out'):
+            with cad_client.Transaction(out):
+                cad_client.call('import_step', path=str(paths[1]), out_dir=str(out))
+                os.kill(cad_client._proc.pid, signal.SIGSTOP)
+                cad_client.call('ping', timeout=0.3)
+        assert cad_client.call('document')['document_id'] == before
+        assert (out/'model.aethercad').read_bytes() == saved
+    finally:
+        cad_client.stop_quietly()

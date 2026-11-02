@@ -106,10 +106,10 @@ function PhotoForm({ image, onCancel }) {
   const askPhoto = useStore((s) => s.askPhoto);
   const [kind, setKind] = useState("auto");
   const [prompt, setPrompt] = useState("");
-  const [size, setSize] = useState(240);
-  const pick = (k) => { setKind(k); setSize(KINDS.find((x) => x[0] === k)[3]); };
+  const [size, setSize] = useState("");
+  const pick = (k) => setKind(k);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onCancel(); askPhoto(image, prompt.trim(), Number(size) || 240, "cad", kind); }}
+    <form onSubmit={(e) => { e.preventDefault(); onCancel(); askPhoto(image, prompt.trim(), size === "" ? null : Number(size), "cad", kind); }}
       className="space-y-2 overflow-hidden rounded-xl border border-slate-400/[0.16] bg-gradient-to-br from-sky-400/[0.06] to-violet-500/[0.07] p-2">
       <div className="flex min-w-0 flex-wrap gap-1" role="radiogroup" aria-label="What is this image?">
         {KINDS.map(([k, label, tip]) => (
@@ -123,9 +123,9 @@ function PhotoForm({ image, onCancel }) {
             title="Optional hint for Muse Spark (what the object is). It does not choose the path; the buttons above do."
             className="field w-full !py-1 text-[11.5px]" />
           <label className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-slate-400">
-            <input type="number" value={size} onChange={(e) => setSize(e.target.value)} className="field w-16 !py-1 text-[11px]"
-              title={kind === "part" ? "ASSUMED longest side of the part (a photo has no scale)" : "ASSUMED real size of the drawing's longest side - used only if no dimension can be read on the drawing"} />
-            <span className="truncate">mm (not yet used by CAD)</span></label>
+            <input type="number" min="500" max="20000" step="any" value={size} onChange={(e) => setSize(e.target.value)} className="field w-20 !py-1 text-[11px]"
+              placeholder="optional" title="User-supplied overall vehicle length in millimetres; not automatically measured from the drawing." />
+            <span className="truncate">reference length in mm (optional)</span></label>
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap gap-1.5">

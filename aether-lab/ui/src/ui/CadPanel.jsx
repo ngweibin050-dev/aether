@@ -112,6 +112,11 @@ export default function CadPanel() {
             </div>
           </>}
           {tab === "features" && <div className="mt-2 space-y-0.5">
+            {doc.region_coverage && <div className="mb-2 rounded border border-amber-300/20 px-2 py-1.5 text-[10.5px] text-amber-200">
+              Drawing regions selected: {doc.region_coverage.selected?.length || 0} · built: {doc.region_coverage.built?.length || 0} ·
+              partial: {doc.region_coverage.partial?.length || 0} · not built: {doc.region_coverage.not_built?.length || 0}.
+              These are body-surface features, not necessarily separately editable parts.
+            </div>}
             {doc.features.map((f) => (
               <div key={f.id} className="border-b border-white/[0.05] py-1" title={`${f.op}\ninputs: ${f.inputs.join(", ") || "-"}\nparameters: ${f.params.join(", ")}`}>
                 <div className="flex items-center gap-2"><span className={`font-mono text-[10px] ${ST[f.status] || "text-slate-400"}`}>●</span>

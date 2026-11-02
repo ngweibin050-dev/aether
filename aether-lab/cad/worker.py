@@ -360,6 +360,12 @@ def cmd_document(a):
     doc = _need()
     d = doc.data
     PV = doc.param_values()
+    region_report = d.get("pipeline_report", {}).get("regions")
+    if region_report and "selected" in region_report:
+        from cad.pipeline import region_execution_outcomes
+        region_report = region_execution_outcomes(doc, region_report["selected"], region_report.get("skipped", []))
+    else:
+        region_report = None  # Older documents recorded planned regions as built.
     params = []
     for pid, p in d["parameters"].items():
         params.append({"id": pid, "value": PV[pid], "unit": p.get("unit"), "provenance": p["provenance"],
@@ -372,7 +378,7 @@ def cmd_document(a):
             "source": d.get("source"), "maturity": d["maturity"], "status": d["status"],
             "stale": doc.stale, "components": d["components"], "joints": d["joints"], "features": feats,
             "parameters": params, "assumptions": d["assumptions"], "decisions": d["decisions"],
-            "history": d["history"][-30:], "validation": d.get("validation")}
+            "history": d["history"][-30:], "validation": d.get("validation"), "region_coverage": region_report}
 
 
 def _refs(v):
@@ -393,6 +399,29 @@ def cmd_set_param(a):
     st = doc.set_param(a["id"], a.get("value"), clear_override=a.get("clear_override", False), validate=_full_validate,
                        note=a.get("note"))
     if st["state"] == "ok":
+        if doc.data.get("route") == "three_view":
+            from cad import vehicle as Vh
+            length = doc.data["parameters"]["overall_length"]
+            doc.data["decisions"]["overall_length_mm"] = {
+                "value": doc.param_values()["overall_length"], "provenance": length["provenance"],
+                "note": "Current CAD parameter; user edits have not been independently verified.",
+            }
+            for assumption in doc.data["assumptions"]:
+                if assumption.get("id") == "A-01":
+                    assumption.update(text="Current overall length is a CAD parameter; verify it against a reliable dimension.",
+                                      **{"class": length["provenance"]})
+            if STATE["res"] is not None:
+                STATE["res"] = {**STATE["res"], "F": Vh.frames(STATE["res"]["obs"], doc.data["decisions"])}
+        # Any change makes old round-trip, view comparisons and optional AI
+        # checks stale. Do not serve them as evidence for the edited geometry.
+        doc.data["validation"] = {"summary": {"all_valid": True, "step_roundtrip_pass": None,
+                                                "reprojection_iou": {}, "note": "Not rerun after parameter edit."}}
+        doc.data["maturity"] = "geometrically_valid"
+        for name in ("report.json", "reproject_side.png", "reproject_top.png",
+                     "reproject_front.png", "reproject_rear.png"):
+            path = os.path.join(STATE["out_dir"], name)
+            if os.path.isfile(path):
+                os.remove(path)
         _save(doc, STATE["out_dir"])
     return {"status": st, "seconds": round(time.time() - t, 2), "document_status": doc.data["status"]}
 
@@ -452,7 +481,10 @@ def cmd_export(a):
                 os.remove(temp)
         return {"path": path}
     if kind == "report":
-        return {"path": f"{out}/report.json"}
+        path = f"{out}/report.json"
+        if not os.path.isfile(path):
+            raise RuntimeError("report unavailable: validation has not been rerun for the current document")
+        return {"path": path}
     raise RuntimeError(f"unknown export kind {kind!r}")
 
 

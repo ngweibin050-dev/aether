@@ -315,7 +315,7 @@ export const useStore = create((set, get) => ({
       three_view: "three-view sheet → 3D model from named parts", part: "part photo (unavailable)" }[kind];
     set({ recorded: null });
     return get().turn("/api/photo", { image, prompt, size_mm, mode, kind, ...(demo_id ? { demo_id } : {}) }, { role: "user", img: image,
-      text: `${prompt ? prompt + ": " : ""}${what} (${size_mm} mm, assumed unless a dimension is read)` });
+      text: `${prompt ? prompt + ": " : ""}${what} (${size_mm == null ? "length not supplied" : `${size_mm} mm, user-supplied`})` });
   },
   // Demo menu: the three public-domain inputs, run LIVE (a machine is then explained); the last successful live run of
   // each is kept by the server and can be shown only as a RECORDED run (banner + chat label), never as live

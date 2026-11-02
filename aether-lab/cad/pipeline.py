@@ -95,6 +95,34 @@ def _validate_fast(doc):
     return assembly_validation(doc, interference=False)
 
 
+def region_execution_outcomes(doc, selected, skipped):
+    """Report planned regions separately from what the kernel actually constructed."""
+    features = {f["id"]: f for f in doc.data["features"]}
+    out = {"selected": [], "built": [], "partial": [], "not_built": [], "skipped": list(skipped)}
+    for r in selected:
+        item = {k: r[k] for k in ("region_id", "kind", "op", "view")}
+        out["selected"].append(item)
+        fid = f"body.{r['op']}_{r['kind']}_{r['view']}"
+        feat = features.get(fid)
+        if not feat or feat.get("status") != "ok":
+            out["not_built"].append({**item, "feature_id": fid,
+                                      "why": (feat or {}).get("error") or (feat or {}).get("status") or "feature not planned"})
+            continue
+        omitted = (doc.info.get(fid, {}).get("tolerance_budget") or {}).get("edges_left_out", 0)
+        if omitted:
+            out["partial"].append({**item, "feature_id": fid, "edges_left_out": omitted})
+        else:
+            out["built"].append({**item, "feature_id": fid})
+    return out
+
+
+def reference_frame(obs, decisions):
+    """Frame for planner observations, independent of the user-supplied model length."""
+    from .scale import REFERENCE_LENGTH_MM
+    ref = {**decisions, "overall_length_mm": {"value": REFERENCE_LENGTH_MM}}
+    return Vh.frames(obs, ref)
+
+
 # ------------------------------------------------------------------------------------------------ S5 scoring
 def _score_shape(C, G, shape, obs, aux, F):
     """Build the body only for one shape hypothesis and score its front/rear reprojection (body rows only: above the
@@ -135,6 +163,20 @@ def _score_shape(C, G, shape, obs, aux, F):
 def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print, run_s5=True):
     """sheet: path of the drawing. decisions: user decisions (overall_length_mm, end_view_scale). stored: a list of
     stored AI records (hypotheses) to replay. Returns (Document, report dict)."""
+    from .scale import length_decision
+    decisions = dict(decisions or {})
+    supplied = decisions.get("overall_length_mm")
+    if supplied is None:
+        decisions["overall_length_mm"] = length_decision(None)
+    else:
+        if not isinstance(supplied, dict) or supplied.get("provenance") not in ("assumed", "user_confirmed"):
+            raise ValueError("overall length must be marked assumed or user_confirmed")
+        checked = length_decision(supplied.get("value"))
+        if supplied.get("value") is None:
+            raise ValueError("overall length requires a value")
+        if supplied["provenance"] == "assumed":
+            checked["note"] = "Assumed overall length; not independently verified."
+        decisions["overall_length_mm"] = {**checked, **supplied, "value": checked["value"]}
     t0 = time.time()
     os.makedirs(out_dir, exist_ok=True)
     timings = {}
@@ -152,9 +194,6 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     store = list(stored or [])
     ai = AI.AI(store, ai_mode, log=lambda e: log(f"    {e.get('who', '')} {e['stage']} {e['key']} {e['state']}"
                                                 + (f" {e.get('s')} s" if e.get('s') else "") + (f" ({e.get('error')})" if e.get("error") else "")))
-    decisions = dict(decisions or {})
-    decisions.setdefault("overall_length_mm", {"value": 4500.0, "provenance": "assumed",
-                                               "note": "placeholder: the sheet states no dimension (user default)"})
     decisions.setdefault("end_view_scale", {"value": "per_view", "provenance": "assumed",
                                             "note": "automatic per-view fitting; differing scales not independently confirmed"})
 
@@ -170,7 +209,9 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
         decisions.setdefault("nose_left", {"value": O.nose_left_cv(obs), "provenance": "inferred", "by": "CV only"})
     stage("S1 view roles (Muse Spark x2 + CV gate)", t)
     rep["S1"] = {"decision": s1, "evidence": s1_ev}
-    F = Vh.frames(obs, decisions)
+    # Observations and planner relations are stored at REF_L. Using the actual
+    # length here would cause every "scaled" parameter to scale a second time.
+    F = reference_frame(obs, decisions)
     crops["end_front"], crops["end_rear"] = crops[F["front"]["key"]], crops[F["rear"]["key"]]
     offsets["end_front"], offsets["end_rear"] = offsets[F["front"]["key"]], offsets[F["rear"]["key"]]
 
@@ -226,8 +267,8 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
             region_feats.append({"kind": kind, "op": op, "view": view, "value": val, "region_id": rg["id"],
                                  "label": lab["status"], "poly_model": Vh.region_to_model(F, view, poly).round(3).tolist()})
     stage("vehicle interpretation (curves, greenhouse, tips, lugs, region features)", t)
-    rep["regions"] = {"built": [{k: r[k] for k in ("region_id", "kind", "op", "view")} for r in region_feats],
-                      "skipped": region_skipped}
+    rep["regions"] = {"selected": [{k: r[k] for k in ("region_id", "kind", "op", "view")} for r in region_feats],
+                      "built": [], "partial": [], "not_built": [], "skipped": region_skipped}
 
     # S5 section hypotheses: >= 2 Muse Wonder samples + the default, each built and scored by reprojection
     t = time.time()
@@ -275,9 +316,12 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     stage("plan (typed document)", t)
     t = time.time()
     st = doc.recompute(validate=_validate_fast)
+    rep["regions"].clear()
+    rep["regions"].update(region_execution_outcomes(doc, region_feats, region_skipped))
     stage(f"recompute ({len(doc.data['features'])} features) -> {st['state']}", t)
     rep["recompute"] = st
-    return doc, {"report": rep, "timings": timings, "obs": obs, "aux": aux, "F": F, "C": C, "G": G,
+    actual_frame = Vh.frames(obs, decisions)
+    return doc, {"report": rep, "timings": timings, "obs": obs, "aux": aux, "F": actual_frame, "C": C, "G": G,
                  "seconds": round(time.time() - t0, 1)}
 
 

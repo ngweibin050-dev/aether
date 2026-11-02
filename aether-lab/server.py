@@ -229,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
                         elif self.path == "/api/photo":        # phone photo -> SAM 3.1 -> Muse Spark -> physics
                             reply, trace, images, HISTORY = agent.photo_to_design(
                                 STATE, HISTORY, body["image"], body.get("prompt") or "object",
-                                float(body.get("size_mm") or 80), str(OUT), on_step,
+                                body.get("size_mm"), str(OUT), on_step,
                                 body.get("mode") or "interpret", body.get("kind") or "auto")
                         else:                                  # closed design loop on the current scene
                             res = agent.optimize(STATE, float(body.get("target_pct", 80)), int(body.get("max_rounds", 3)), on_step)
@@ -317,7 +317,7 @@ def cad_route(path, body):
         PROGRESS.update(running=True, steps=[{"label": "cad_pipeline", "state": "run", "t0": time.time(), "who": "AETHER CAD"}])
         ok = False
         try:
-            r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), decisions=body.get("decisions"),
+            r = cad_client.call("build", timeout=1200, sheet=str(sheet), out_dir=str(out), decisions=body.get("decisions"),
                                 ai_mode=body.get("ai_mode", "live"), stored_from=body.get("stored_from"))
             ok = r["status"].get("state") == "ok"
         except Exception as e:

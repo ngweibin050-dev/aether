@@ -14,8 +14,9 @@ import numpy as np
 
 from . import vehicle as Vh
 from .document import Document
+from .scale import REFERENCE_LENGTH_MM
 
-REF_L = 4500.0
+REF_L = REFERENCE_LENGTH_MM
 
 
 def _P(doc, pid, value=None, rel=None, prov="derived", unit="mm", note=None, evidence=None, rng=None):
@@ -65,10 +66,13 @@ def plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=None, s6
     _P(doc, "end_view_scale_ratio", value=float(F["front"]["s"] / F["side"]["s"]), prov="derived", unit="1",
        note=f"end views drawn at a {'separate (fitted)' if F['scale_mode'] == 'per_view' else 'common'} scale",
        evidence=[f"height side {obs['fit']['height_side_px']} px vs end views {obs['fit']['height_end_px']} px"])
-    assume("A-01", "Real size: the sheet has no dimension; overall length is a placeholder until confirmed.",
+    scale_note = ("Overall length is a user-supplied dimension; it has not been independently verified."
+                  if decisions["overall_length_mm"]["provenance"] == "user_confirmed"
+                  else "Overall length is a placeholder; drawing dimensions are not automatically read.")
+    assume("A-01", scale_note,
            decisions["overall_length_mm"]["provenance"], ["every mm value"], ["overall_length"])
     assume("A-02", f"End views are drawn at {F['front']['s'] / F['side']['s']:.4f} x the side view's scale (fitted from the "
-                   "heights; confirmed by the plan vs end-view widths agreeing within 0.5 %).", "derived",
+                   "heights; not independently confirmed).", "inferred",
            ["front/rear envelopes", "track", "tyre widths", "exhaust and mirror heights"], ["decision end_view_scale"])
 
     # ---------------------------------------------------------------- wheels / datums

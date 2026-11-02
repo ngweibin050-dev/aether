@@ -164,3 +164,24 @@ def test_modal_result_cannot_replace_local_geometry(monkeypatch):
     monkeypatch.setattr(compute, '_remote_run', lambda *args: ({'_backend': 'mock'}, remote, None))
     r = compute.run(st, 'desk_score', {})
     assert r['_ran_on'] == 'modal' and st['parts'] == old and st['selected'] == p['id']
+
+
+@pytest.mark.parametrize('supplied, expected_value, provenance', [(None,4500,'assumed'), (6200,6200,'user_confirmed')])
+def test_photo_forwards_only_explicit_length(http, monkeypatch, supplied, expected_value, provenance):
+    monkeypatch.setattr(cad_client, 'available', lambda: True)
+    monkeypatch.setattr(compute, 'prewarm', lambda: None)
+    got = []
+    def build(state, history, image, prompt, out_dir, step, decision):
+        got.append(decision)
+        return 'test', [], {}, history
+    monkeypatch.setattr(agent, '_sheet_to_cad', build)
+    status, _ = http('/api/photo', {'image':'unused', 'kind':'three_view', 'size_mm':supplied})
+    assert status == 200 and got[0]['value'] == expected_value and got[0]['provenance'] == provenance
+
+
+@pytest.mark.parametrize('bad', [0, -1, 499, 20001, 'not-a-number'])
+def test_photo_rejects_invalid_length_without_scene_change(http, monkeypatch, bad):
+    monkeypatch.setattr(agent, '_sheet_to_cad', lambda *a, **k: pytest.fail('builder invoked'))
+    old = copy.deepcopy(server.STATE)
+    status, result = http('/api/photo', {'image':'unused', 'kind':'three_view', 'size_mm':bad})
+    assert status == 200 and result['trace'][0]['result']['error'] and server.STATE == old
