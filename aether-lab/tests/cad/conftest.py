@@ -3,8 +3,10 @@
 Run in the CAD environment:
     cad-worker/.venv/bin/python -m pytest tests/cad -q              # all, including the slow STEP / assembly checks
     cad-worker/.venv/bin/python -m pytest tests/cad -q -m "not slow"
-The car sheet is a third-party image kept out of the repository (tests/inputs_local/car_three_view.webp); tests that
-need it are skipped when it is absent. Model answers are replayed from fixtures/car_hypotheses.json (no API key)."""
+The original car benchmark is kept out of Git (tests/inputs_local/car_three_view.webp). Set
+AETHER_CAD_TEST_IMAGE to explicitly test another local image. This does not make that image the original benchmark:
+record its hash, dimensions and any preprocessing; replayed model answers are matched to the original prompt hash.
+Without the chosen file the image-dependent tests are skipped. No API key is needed for replay."""
 import json
 import os
 import sys
@@ -14,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-SHEET = ROOT / "tests" / "inputs_local" / "car_three_view.webp"
+SHEET = Path(os.environ.get("AETHER_CAD_TEST_IMAGE", str(ROOT / "tests" / "inputs_local" / "car_three_view.webp"))).resolve()
 FIX = Path(__file__).parent / "fixtures" / "car_hypotheses.json"
 
 
@@ -22,7 +24,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: STEP round trip / full assembly checks (minutes)")
 
 
-need_sheet = pytest.mark.skipif(not SHEET.exists(), reason="car sheet not in this copy (tests/inputs_local/, gitignored)")
+need_sheet = pytest.mark.skipif(not SHEET.exists(), reason="CAD test sheet not found (set AETHER_CAD_TEST_IMAGE or provide the gitignored canonical sheet)")
 
 
 @pytest.fixture(scope="session")
