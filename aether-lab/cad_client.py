@@ -68,12 +68,44 @@ def call(cmd, timeout=None, **args):
     return msg["result"]
 
 
+LAST_CHECK = {}
+
+
 def available():
+    """True only when the CAD worker actually answers: the interpreter exists AND it imports OpenCascade / CadQuery
+    (a ping). A path that merely exists is not enough (a wrong AETHER_CAD_PYTHON used to report True)."""
     try:
-        python_path()
-        return True
-    except RuntimeError:
+        exe = python_path()
+    except RuntimeError as e:
+        LAST_CHECK.clear()
+        LAST_CHECK.update(ok=False, why=str(e))
         return False
+    if not Path(exe).exists():
+        LAST_CHECK.clear()
+        LAST_CHECK.update(ok=False, why=f"CAD interpreter {exe} does not exist")
+        return False
+    if LAST_CHECK.get("ok") and _proc is not None and _proc.poll() is None:
+        return True
+    try:
+        info = call("ping")
+    except Exception as e:                      # interpreter does not start, or has no OCP / CadQuery
+        stop_quietly()
+        LAST_CHECK.clear()
+        LAST_CHECK.update(ok=False, why=f"CAD worker did not answer: {type(e).__name__}: {str(e)[:200]}")
+        return False
+    LAST_CHECK.clear()
+    LAST_CHECK.update(ok=True, **info)
+    return True
+
+
+def stop_quietly():
+    global _proc
+    try:
+        if _proc is not None and _proc.poll() is None:
+            _proc.kill()
+    except Exception:
+        pass
+    _proc = None
 
 
 def stop():

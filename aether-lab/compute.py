@@ -131,6 +131,8 @@ def _remote_run(state, name, args):
 
 
 def run(state, name, args):
+    if name in lab.DISABLED:                          # geometry-creating tools: unavailable locally AND on Modal
+        return {"error": lab.DISABLED[name], "error_kind": "unavailable"}
     if where() != "modal" or name not in HEAVY:
         return _local(state, name, args)
     bad = lab.check_args(name, args)                 # a bad argument is the caller's error, never a reason to redeploy
@@ -155,8 +157,10 @@ def run(state, name, args):
         if fail:                                     # the tool ran on the current engine and reported a real error
             status["error"] = None
             return {**res, "_ran_on": "modal"}
-    state.clear()
+    parts, selected = state["parts"], state.get("selected")    # the scene geometry is never taken back from Modal:
+    state.clear()                                                # Modal only computes on the B-rep-derived triangles
     state.update(new_state)
+    state["parts"], state["selected"] = parts, selected
     res["_ran_on"] = "modal"
     status["backend"], status["error"] = res.get("_backend"), None
     return res

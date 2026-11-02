@@ -26,12 +26,5 @@ wav = b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt " + struct.pack("<I
 t = time.time()
 print(f"Voice ({time.time() - t:.1f} s): {agent.transcribe(wav)!r}")
 
-# 3. Muse Spark closed loop on a design that is too tall for the desk
-st = lab.default_state()
-lab.build_assembly(st, "Tall motor", [
-    {"name": "Housing", "type": "tube", "params": {"outer": 40, "inner": 36, "height": 90}},
-    {"name": "Shaft", "type": "cylinder", "params": {"radius": 4, "height": 150}}], position=[0, 0, 110])
-t = time.time()
-r = agent.optimize(st, 80, 3)
-r.pop("_images", None)
-print(f"Design loop ({time.time() - t:.1f} s):", json.dumps({k: r[k] for k in ("pass", "before", "after", "rounds")}))
+# The former mesh-built design-loop smoke test is unavailable until a CAD-backed fixture replaces it.
+print("SKIPPED: CAD-backed design-loop smoke fixture not implemented")

@@ -2,7 +2,7 @@
 import numpy as np
 from PIL import Image, ImageDraw
 
-from engine import geometry as g
+from engine import gearmath as g
 
 def drawing():
     W, H = 900, 600

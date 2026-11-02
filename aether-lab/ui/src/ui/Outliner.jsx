@@ -47,7 +47,7 @@ function Row({ p, depth, kids }) {
     <>
       <div draggable onDragStart={(e) => e.dataTransfer.setData("text/aether", p.id)}
         onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/aether"); if (id && id !== p.id) st.parentTo([id], p.id); }}
+
         onClick={(e) => st.select(p.id, { extend: e.shiftKey || e.ctrlKey })}
         onDoubleClick={() => setName(p.name)}
         className={`group flex h-7 cursor-pointer items-center gap-1.5 rounded-md pr-1.5 text-[12px] transition ${active ? "bg-cyan-glow/[0.16] text-white" : sel ? "bg-cyan-glow/[0.08] text-white" : "text-white/75 hover:bg-white/[0.05]"}`}
@@ -89,20 +89,8 @@ function ItemTab() {
         <div className="label">Transform · mm / °</div>
         <Vec label="Location" value={p.position} onCommit={(v) => up({ position: v })} step={1} />
         <Vec label="Rotation" value={p.rotation} onCommit={(v) => up({ rotation: v })} step={1} />
-        <Vec label="Scale" value={p.scale} onCommit={(v) => up({ scale: v })} step={0.02} />
+        <div className="text-[11px] text-silver">Uniform scale <Num value={p.scale[0]} step={0.02} onCommit={(v) => up({ scale: [v, v, v] })} /></div>
       </div>
-      {p.type !== "group" && p.type !== "mesh" && (
-        <div className="space-y-1.5">
-          <div className="label">Parameters</div>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
-            {Object.entries(p.params).filter(([, v]) => typeof v === "number").map(([k, v]) => (
-              <label key={k} className="grid grid-cols-[1fr_64px] items-center gap-1.5"><span className="truncate font-mono text-[10px] text-silver">{k}</span>
-                <Num value={v} step={0.5} onCommit={(x) => st.tool("update_part", { id: p.id, params: { [k]: x } })} /></label>
-            ))}
-          </div>
-        </div>
-      )}
-      {p.type === "gear" && <GearTurn p={p} />}
       {p.eng?.dims && Object.keys(p.eng.dims).length > 0 && (
         <div className="space-y-1">
           <div className="label">Engineering · {p.eng.kind}</div>
@@ -122,103 +110,11 @@ function ItemTab() {
   );
 }
 
-// Turn a gear: meshing gears follow by the tooth ratio (engine turn_gear). "Run" keeps turning it.
-function GearTurn({ p }) {
-  const st = useStore.getState();
-  const [run, setRun] = useState(false);
-  useEffect(() => {
-    if (!run) return;
-    let alive = true;
-    (async () => { while (alive) { await st.tool("turn_gear", { id: p.id, degrees: 6 }, { record: false, quiet: true }).catch(() => (alive = false)); await new Promise((r) => setTimeout(r, 60)); } })();
-    return () => { alive = false; };
-  }, [run, p.id]);
-  return (
-    <div className="space-y-1">
-      <div className="label">Motion · {p.params.teeth} teeth{p.params.module ? ` · m ${p.params.module}` : ""}</div>
-      <div className="grid grid-cols-3 gap-1.5">
-        <button className="btn !py-1 text-[11px]" onClick={() => st.tool("turn_gear", { id: p.id, degrees: -15 })}>↺ 15°</button>
-        <button className={`btn !py-1 text-[11px] ${run ? "!border-cyan-glow/50 text-cyan-glow" : ""}`} onClick={() => setRun(!run)}>{run ? "Stop" : "Run"}</button>
-        <button className="btn !py-1 text-[11px]" onClick={() => st.tool("turn_gear", { id: p.id, degrees: 15 })}>↻ 15°</button>
-      </div>
-    </div>
-  );
-}
-
-// STL / OBJ (mm, z up as most CAD exports) -> import_mesh at real size
-function importCAD(file) {
-  const { tool, notify } = useStore.getState();
-  const ext = file.name.split(".").pop().toLowerCase();
-  const loader = ext === "stl" ? import("three/examples/jsm/loaders/STLLoader.js").then((m) => new m.STLLoader())
-    : import("three/examples/jsm/loaders/OBJLoader.js").then((m) => new m.OBJLoader());
-  return loader.then(async (L) => {
-    const V = [], F = [];
-    if (ext === "stl") {
-      const g = L.parse(await file.arrayBuffer());
-      const pos = g.attributes.position;
-      for (let i = 0; i < pos.count; i++) { V.push(pos.getX(i), pos.getY(i), pos.getZ(i)); F.push(i); }
-    } else {
-      const obj = L.parse(await file.text());
-      obj.updateMatrixWorld(true);
-      obj.traverse((o) => {
-        if (!o.isMesh) return;
-        const pos = o.geometry.attributes.position, base = V.length / 3, e = o.matrixWorld.elements;
-        for (let i = 0; i < pos.count; i++) {
-          const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-          V.push(e[0] * x + e[4] * y + e[8] * z + e[12], e[1] * x + e[5] * y + e[9] * z + e[13], e[2] * x + e[6] * y + e[10] * z + e[14]);
-        }
-        const idx = o.geometry.index ? o.geometry.index.array : [...Array(pos.count).keys()];
-        for (let i = 0; i < idx.length; i++) F.push(idx[i] + base);
-      });
-    }
-    if (!F.length) throw new Error("no triangles in file");
-    notify(`Importing ${file.name}: ${F.length / 3} triangles at real size (mm) → decimating…`);
-    return tool("import_mesh", { name: file.name.replace(/\.(stl|obj)$/i, ""), vertices: V, faces: F, target_faces: 6000,
-      position: useStore.getState().cursor3d, size_mm: 0 });
-  });
-}
-
-// Three orthographic views (front, top, right side) -> visual-hull solid at real size
-async function importThreeView(files) {
-  const { tool, notify } = useStore.getState();
-  if (files.length !== 3) throw new Error("pick exactly 3 images: front, top, right side");
-  const order = ["front", "top", "side"].map((k) => files.find((f) => f.name.toLowerCase().includes(k)));
-  const picked = order.every(Boolean) && new Set(order).size === 3 ? order : files;
-  const url = (f) => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(f); });
-  const [front, top, side] = await Promise.all(picked.map(url));
-  const w = parseFloat(window.prompt(`Front view width in mm (${picked.map((f) => f.name).join(" / ")})`, "80"));
-  if (!(w > 0)) return;
-  notify("Carving the three views into a solid…");
-  return tool("import_three_view", { front, top, side, width_mm: w, name: picked[0].name.replace(/\.[^.]+$/, "") });
-}
-
-function importGLB(file) {
-  const { tool, notify } = useStore.getState();
-  return import("three/examples/jsm/loaders/GLTFLoader.js").then(async ({ GLTFLoader }) => {
-    const gltf = await new GLTFLoader().parseAsync(await file.arrayBuffer(), "");
-    const V = [], F = [];
-    gltf.scene.updateMatrixWorld(true);
-    gltf.scene.traverse((o) => {
-      if (!o.isMesh) return;
-      const g = o.geometry, pos = g.attributes.position, base = V.length / 3, e = o.matrixWorld.elements;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-        V.push(e[0] * x + e[4] * y + e[8] * z + e[12], e[1] * x + e[5] * y + e[9] * z + e[13], e[2] * x + e[6] * y + e[10] * z + e[14]);
-      }
-      const idx = g.index ? g.index.array : [...Array(pos.count).keys()];
-      for (let i = 0; i < idx.length; i++) F.push(idx[i] + base);
-    });
-    if (!F.length) throw new Error("no meshes in file");
-    for (let i = 0; i < V.length; i += 3) { const y = V[i + 1]; V[i + 1] = -V[i + 2]; V[i + 2] = y; }   // glTF y-up -> desk z-up
-    notify(`Importing ${file.name}: ${F.length / 3} triangles → decimating…`);
-    return tool("import_mesh", { name: file.name.replace(/\.(glb|gltf)$/i, ""), vertices: V, faces: F, target_faces: 4000, position: useStore.getState().cursor3d });
-  });
-}
-
 export default function Outliner() {
   const parts = useStore((s) => s.state?.parts || []);
   const open = useStore((s) => s.panels.outliner);
   const tab = useStore((s) => s.outlinerTab);
-  const file = useRef(), views = useRef();
+  const file = useRef();
   const tree = useMemo(() => {
     const kids = {}, ids = new Set(parts.map((p) => p.id));
     for (const p of parts) (kids[p.parent && ids.has(p.parent) ? p.parent : "root"] ||= []).push(p);
@@ -231,20 +127,15 @@ export default function Outliner() {
     <FloatPanel id="outliner" title="Scene" icon="layers" open={open} onClose={() => st.setPanel("outliner", false)}
       style={{ left: L.gap, top: L.top, bottom: L.bottom, width: L.left }}
       right={<>
-        <button className="grid h-6 w-6 place-items-center rounded-md text-silver hover:bg-white/10 hover:text-white" title="Add (Shift+A)"
-          onClick={(e) => st.setMenu({ kind: "add", x: e.clientX, y: e.clientY })}><Icon name="plus" className="h-3.5 w-3.5" /></button>
-        <button className="grid h-6 w-6 place-items-center rounded-md text-silver hover:bg-white/10 hover:text-white" title="Import CAD mesh: STL, OBJ, GLB (STEP: export STL from your CAD first)"
+        <button className="grid h-6 w-6 place-items-center rounded-md text-silver hover:bg-white/10 hover:text-white" title="Import STEP B-rep"
           onClick={() => file.current.click()}><Icon name="upload" className="h-3.5 w-3.5" /></button>
-        <input id="glb-input" ref={file} type="file" accept=".glb,.gltf,.stl,.obj" hidden onChange={(e) => {
-          const f = e.target.files[0]; e.target.value = "";
-          if (f) (/\.(stl|obj)$/i.test(f.name) ? importCAD(f) : importGLB(f)).catch((err) => st.notify(err.message, "error"));
-        }} />
-        <button className="grid h-6 w-6 place-items-center rounded-md font-mono text-[9px] text-silver hover:bg-white/10 hover:text-white"
-          title="Three-view drawing → 3D: pick 3 images (front, top, right side; names containing front/top/side set the order)"
-          onClick={() => views.current.click()}>3V</button>
-        <input ref={views} type="file" accept="image/*" multiple hidden onChange={(e) => {
-          const fs = [...e.target.files]; e.target.value = "";
-          if (fs.length) importThreeView(fs).catch((err) => st.notify(err.message, "error"));
+        <input id="step-input" ref={file} type="file" accept=".step,.stp" hidden onChange={async (e) => {
+          const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+          try {
+            const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f); });
+            const j = await (await import("../api")).api("/api/cad/import_step", { file: data, name: f.name });
+            st.applyState(j.state); st.setPanel("cad", true); st.notify("STEP imported as external B-rep; feature history is not available.");
+          } catch (err) { st.notify(err.message, "error"); }
         }} />
       </>}>
       <div className="mx-3.5 mb-2 flex gap-1 rounded-lg bg-black/25 p-0.5">

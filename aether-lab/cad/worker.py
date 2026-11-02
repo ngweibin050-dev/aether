@@ -15,11 +15,16 @@ Commands
   meshes {}                                  -> per component: vertices, faces, normals (from the B-rep), edges
   export {kind: step|glb|aethercad|report}   -> writes the file in out_dir and returns its path (STEP only if valid)
   finalize {}                                -> validation with interference, STEP round trip, GLB, reprojection
+  import_step {path, out_dir, name?}         -> external STEP -> validated B-rep solids as a "step_import" document
+
+Failure integrity: build and import_step work in a staging folder; the open document (and out_dir) are replaced only
+when the new document recomputed and validated. A failure returns an error and leaves the last valid document open.
 """
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
 import traceback
@@ -50,19 +55,119 @@ def _save(doc, out_dir):
             BRepTools.Write_s(doc.shapes[c["output"]], f"{out_dir}/brep/{c['id']}.brep")
 
 
+def _swap_in(staging, out):
+    """Make the staging folder the document folder (only after a valid build)."""
+    old = out + ".previous"
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.exists(out):
+        os.replace(out, old)
+    try:
+        os.replace(staging, out)
+    except Exception:
+        if os.path.exists(old) and not os.path.exists(out):
+            os.replace(old, out)
+        raise
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def _staging(out):
+    st = out + ".staging"
+    shutil.rmtree(st, ignore_errors=True)
+    os.makedirs(st)
+    return st
+
+
 def cmd_build(a):
     from cad import pipeline as P
     stored = None
     if a.get("stored_from"):
         with open(a["stored_from"], encoding="utf-8") as f:
             stored = json.load(f).get("hypotheses")
-    out = a["out_dir"]
-    doc, res = P.build(a["sheet"], out, decisions=a.get("decisions"), ai_mode=a.get("ai_mode", "live"), stored=stored, log=_log)
-    STATE.update(doc=doc, res=res, out_dir=out, sheet=a["sheet"])
-    rep = P.finalize(doc, res, out, log=_log, ai_mode=a.get("ai_mode", "live")) if a.get("finalize", True) else None
-    _save(doc, out)
+    out = os.path.abspath(a["out_dir"])
+    st = _staging(out)
+    sheet = os.path.join(st, "sheet" + os.path.splitext(a["sheet"])[1])
+    shutil.copyfile(a["sheet"], sheet)
+    doc, res = P.build(sheet, st, decisions=a.get("decisions"), ai_mode=a.get("ai_mode", "live"), stored=stored, log=_log)
+    if doc.data["status"].get("state") != "ok":            # the last valid document stays open, nothing is swapped in
+        doc.save(f"{st}/failed.aethercad")
+        return {"status": doc.data["status"], "maturity": doc.data["maturity"], "kept_previous_document": True,
+                "failed_document": f"{st}/failed.aethercad", "seconds": res["seconds"]}
+    rep = P.finalize(doc, res, st, log=_log, ai_mode=a.get("ai_mode", "live")) if a.get("finalize", True) else None
+    if rep and (not rep.get("validation", {}).get("all_valid") or not rep.get("step_roundtrip", {}).get("all_pass")):
+        return {"status": {"state": "invalid", "error": "Full validation or STEP round-trip failed"},
+                "maturity": doc.data["maturity"], "kept_previous_document": True,
+                "report": _brief(rep), "seconds": res["seconds"]}
+    _save(doc, st)
+    _swap_in(st, out)
+    STATE.update(doc=doc, res=res, out_dir=out, sheet=os.path.join(out, os.path.basename(sheet)))
     return {"status": doc.data["status"], "maturity": doc.data["maturity"], "out_dir": out,
             "report": _brief(rep) if rep else None, "seconds": res["seconds"]}
+
+
+def cmd_import_step(a):
+    """An external STEP file -> a "step_import" document: one external_brep feature + component per solid. Every solid
+    must pass cad/validate.check_solid; otherwise nothing is opened. No feature history is invented."""
+    import hashlib
+    from OCP.BRepTools import BRepTools
+    from OCP.STEPControl import STEPControl_Reader
+    from OCP.IFSelect import IFSelect_RetDone
+    from OCP.TopAbs import TopAbs_SOLID
+    from OCP.TopExp import TopExp_Explorer
+    from cad import validate as Vd
+    from cad.document import Document
+    from cad.ops import OPS
+    src = a["path"]
+    with open(src, "rb") as f:
+        src_hash = hashlib.sha256(f.read()).hexdigest()
+    r = STEPControl_Reader()
+    if r.ReadFile(str(src)) != IFSelect_RetDone:
+        raise RuntimeError("STEP import failed: the file could not be read as STEP")
+    r.TransferRoots()
+    shape = r.OneShape()
+    solids = []
+    ex = TopExp_Explorer(shape, TopAbs_SOLID)
+    while ex.More():
+        solids.append(ex.Current())
+        ex.Next()
+    if not solids:
+        raise RuntimeError("STEP import failed: the file contains no solid (surfaces / meshes are not accepted)")
+    checks = [Vd.check_solid(s_, f"solid_{i + 1}", argument_analysis=False) for i, s_ in enumerate(solids)]
+    bad = [c["name"] for c in checks if not c["valid"]]
+    if bad:
+        raise RuntimeError(f"STEP import failed: invalid B-rep solid(s) {bad}; nothing was imported")
+    out = os.path.abspath(a["out_dir"])
+    st = _staging(out)
+    os.makedirs(f"{st}/external", exist_ok=True)
+    shutil.copyfile(src, f"{st}/source.step")
+    name = (a.get("name") or "Imported STEP")[:80]
+    data = Document.new({"file": os.path.basename(src), "sha256": src_hash, "format": "STEP"}, name, route="step_import")
+    data["maturity"] = "geometrically_valid"
+    data["assumptions"].append({"id": "external_geometry", "provenance": "external_reference",
+                                "text": "Geometry imported from an external STEP file: genuine B-rep, but no AETHER feature "
+                                        "history, parameters or design intent are known for it."})
+    for i, s_ in enumerate(solids):
+        fn = f"external/solid_{i + 1}.brep"
+        BRepTools.Write_s(s_, f"{st}/{fn}")
+        with open(f"{st}/{fn}", "rb") as f:
+            h = hashlib.sha256(f.read()).hexdigest()
+        fid = f"ext_{i + 1}"
+        data["features"].append({"id": fid, "op": "external_brep", "label": f"External B-rep solid {i + 1} (imported STEP)",
+                                 "params": {"brep_file": fn, "sha256": h}, "inputs": [], "component": f"solid_{i + 1}",
+                                 "provenance": "external_reference"})
+        data["components"].append({"id": f"solid_{i + 1}", "name": f"{name} solid {i + 1}", "kind": "external_brep",
+                                   "output": fid, "colour": "#b9c2cc", "provenance": "external_reference"})
+    doc = Document(data, OPS)
+    doc.base_dir = st
+    stt = doc.recompute(validate=_fast_validate)
+    if stt["state"] != "ok":
+        raise RuntimeError(f"STEP import failed: {stt.get('error') or stt}")
+    doc.data["validation"] = {"import": checks}
+    doc.save(f"{st}/model.aethercad")
+    _swap_in(st, out)
+    doc.base_dir = out
+    STATE.update(doc=doc, res=None, out_dir=out, sheet=None)
+    return {"status": doc.data["status"], "solids": len(solids), "source_sha256": src_hash, "route": "step_import",
+            "checks": [{k: c.get(k) for k in ("name", "valid", "volume_mm3", "bbox_mm", "faces")} for c in checks]}
 
 
 def cmd_open(a):
@@ -75,7 +180,10 @@ def cmd_open(a):
     with open(a["path"], encoding="utf-8") as f:
         data = json.load(f)
     doc = Document(data, OPS)
+    doc.base_dir = os.path.dirname(os.path.abspath(a["path"]))
     st = doc.recompute(validate=_fast_validate)
+    if st["state"] != "ok":                                # keep the last valid document open
+        return {"status": st, "kept_previous_document": True}
     res = None
     if a.get("sheet"):
         obs, aux = O.observe(a["sheet"])
@@ -108,7 +216,8 @@ def cmd_document(a):
     feats = [{"id": f["id"], "op": f["op"], "label": f.get("label"), "status": f.get("status"), "error": f.get("error"),
               "inputs": f.get("inputs", []), "component": f.get("component"),
               "params": sorted({v["$p"] for v in _refs(f.get("params", {}))})} for f in d["features"]]
-    return {"title": d["title"], "document_id": d["document_id"], "maturity": d["maturity"], "status": d["status"],
+    return {"title": d["title"], "document_id": d["document_id"], "route": d.get("route", "three_view"),
+            "source": d.get("source"), "maturity": d["maturity"], "status": d["status"],
             "stale": doc.stale, "components": d["components"], "joints": d["joints"], "features": feats,
             "parameters": params, "assumptions": d["assumptions"], "decisions": d["decisions"],
             "history": d["history"][-30:], "validation": d.get("validation")}
@@ -203,7 +312,7 @@ def _brief(rep):
 
 
 CMDS = {"ping": cmd_ping, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
-        "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize}
+        "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "import_step": cmd_import_step}
 
 
 def main():

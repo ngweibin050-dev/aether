@@ -15,6 +15,7 @@ import copy
 import hashlib
 import io
 import json
+import math
 import uuid
 
 import numpy as np
@@ -37,9 +38,9 @@ def _part(type_, params=None, name=None, position=(0, 0, 60), rotation=(0, 0, 0)
 
 
 def default_state():
-    g = _part("gear", {"teeth": 16, "radius": 30, "thickness": 8}, "Drive gear", (0, 0, 60), (25, 30, 0))
+    """An EMPTY scene: geometry only enters through the CAD worker (three-view reconstruction or STEP import)."""
     return {
-        "parts": [g], "selected": g["id"], "version": 1,
+        "parts": [], "selected": None, "version": 1,
         "display": copy.deepcopy(DISPLAYS["lab_slm"]), "desk": copy.deepcopy(DISPLAYS["aether_desk"]),
         "eye": [0.0, -450.0, 540.0], "hands": [], "points": 3000, "method": "layers",      # seated, 70 cm from the panel centre, looking down 50 deg
         "view": copy.deepcopy(cutaway.DEFAULT_VIEW),
@@ -164,51 +165,29 @@ def _clean(v):
 # ---------------- scene tools ----------------
 
 
-def add_part(state, type, params=None, name=None, position=(0, 0, 60), rotation=(0, 0, 0),
-             scale=(1, 1, 1), parent=None, brightness=1.0, color=None):
-    if type not in geometry.BUILDERS and type not in ("group", "mesh", "cad"):
-        raise ValueError(f"unknown part type {type}; use one of {sorted(geometry.BUILDERS)}")
-    if parent:
-        parent = _find(state, parent)["id"]
-    p = _part(type, params, name, _clean(position), _clean(rotation), _clean(scale), parent, brightness)
-    if color:
-        p["color"] = retina.hex_color(color)
-    geometry.local_mesh(p)          # validate parameters now
-    state["parts"].append(p)
-    state["selected"] = p["id"]
-    _bump(state)
-    return {"id": p["id"], "name": p["name"], "parts": len(state["parts"])}
-
-
-def update_part(state, id, position=None, rotation=None, scale=None, params=None, name=None,
-                visible=None, brightness=None, parent="__keep__", color=None):
+def update_part(state, id, position=None, rotation=None, scale=None, name=None, visible=None, brightness=None,
+                color=None):
+    """Display / placement edits of an existing part: position, rotation, UNIFORM display scale, name, visibility,
+    brightness and display colour. The geometry (B-rep tessellation) can not be changed here: CAD parameters are
+    edited through the CAD document (/api/cad/param) and recomputed by OpenCascade."""
     p = _find(state, id)
-    if position is not None:
-        p["position"] = _clean(position)
-    if rotation is not None:
-        p["rotation"] = _clean(rotation)
-    if scale is not None:
-        p["scale"] = _clean(scale)
-    if params:
-        new = {**p["params"], **params}
-        geometry.local_mesh({**p, "params": new})
-        p["params"] = new
-    if name:
-        p["name"] = name
-    if visible is not None:
-        p["visible"] = bool(visible)
-    if brightness is not None:
-        p["brightness"] = float(brightness)
-    if color:
-        p["color"] = retina.hex_color(color)
-    if parent != "__keep__":
-        p["parent"] = _find(state, parent)["id"] if parent else None
-    _bump(state)
+    changes = {"id": p["id"]}
+    for k, v in (("position", position), ("rotation", rotation), ("scale", scale), ("name", name),
+                 ("visible", visible), ("brightness", brightness), ("color", color)):
+        if v is not None:
+            changes[k] = [v] * 3 if k == "scale" and isinstance(v, (int, float)) else v
+    if color is not None:
+        changes["color"] = retina.hex_color(color)
+    apply_scene_update(state, [changes], state.get("selected"))
     return {"id": p["id"], "name": p["name"], "position": p["position"], "rotation": p["rotation"]}
 
 
 def delete_part(state, id):
+    """Remove a whole model (a root group, i.e. one CAD document's components) from the scene. A component inside a
+    CAD assembly is not deleted on its own (the scene would no longer match the document): hide it instead."""
     p = _find(state, id)
+    if p.get("parent"):
+        raise ValueError(f"{p['name']!r} is a component of a CAD assembly; hide it (visible=false) or delete the whole model")
     drop = {p["id"]}
     changed = True
     while changed:
@@ -253,134 +232,32 @@ def place_on_base(state, id=None, base_mm=0.0):
     return {"id": g["id"], "moved_z_mm": round(dz, 2), "bottom_z_mm": float(base_mm), "height_mm": round(float(hi[2] - lo[2]), 1)}
 
 
-def build_assembly(state, name, parts, position=(0, 0, 0), replace=True, rotation=(0, 0, 0), scale=1.0):
-    """Text-to-CAD: the agent designs an assembly as a list of parametric parts (local to the group). position: x, y
-    of the group and z of the model's LOWEST point (0 = standing on the display surface)."""
-    if replace:
-        state["parts"] = []
-    s_ = float(scale)
-    group = _part("group", {}, name, _clean(position), _clean(rotation), [s_, s_, s_])
-    state["parts"].append(group)
-    made = []
-    ids = {}
-    for spec in parts:
-        parent = ids.get(spec.get("parent"), group["id"])
-        p = _part(spec["type"], spec.get("params", {}), spec.get("name"), _clean(spec.get("position", [0, 0, 0])),
-                  _clean(spec.get("rotation", [0, 0, 0])), _clean(spec.get("scale", [1, 1, 1])), parent,
-                  spec.get("brightness", 1.0))
-        if spec.get("color"):
-            p["color"] = retina.hex_color(spec["color"])
-        if spec.get("eng"):
-            p["eng"] = spec["eng"]
-        if spec.get("visible") is False:
-            p["visible"] = False
-        try:
-            geometry.local_mesh(p)
-        except Exception as e:
-            made.append({"name": p["name"], "error": str(e)})
-            continue
-        state["parts"].append(p)
-        ids[p["name"]] = p["id"]
-        made.append({"name": p["name"], "type": p["type"]})
-    state["selected"] = group["id"]
-    _bump(state)
-    lo, hi = geometry.bounds(subtree(state, group["id"]))
-    if hi[2] > lo[2]:
-        place_on_base(state, group["id"], float((position or (0, 0, 0))[2]))
-    return {"assembly": name, "parts": made, "size_mm": _clean(np.round(hi - lo, 1)),
-            "note": "Rebuilt from one drawing view: positions and sizes from the drawing, depth rebuilt from what each part is "
-                    "(see each part's eng.dims for what was read and what was assumed)."
-            if any(sp.get("eng") for sp in parts) else
-            "Parametric approximation built from primitives, not manufacturer CAD data."}
-
-
-def turn_gear(state, id, degrees=15.0):
-    """Turn one gear (or the shaft it sits on) and let the whole train follow: meshing gears turn by
-    -degrees * z1 / z2 (opposite direction), coaxial parts (gears on the same pin) turn by the same angle.
-    Joints come from the drawing rebuild (eng.joints) or from gears whose pitch circles touch."""
-    start = _find(state, id)
-    by_name = {p["name"]: p for p in state["parts"]}
-    gears = [p for p in state["parts"] if p["type"] == "gear"]
-
-    def links(p):
-        out = []
-        for j in (p.get("eng") or {}).get("joints", []):
-            q = by_name.get(j["with"])
-            if q is not None:
-                out.append((j["type"], q))
-        for q in state["parts"]:                       # joints declared on the other side
-            for j in (q.get("eng") or {}).get("joints", []):
-                if j["with"] == p["name"]:
-                    out.append((j["type"], q))
-        if p["type"] == "gear" and not out:             # hand-built gears: mesh if pitch circles touch
-            for q in gears:
-                if q is p or q.get("parent") != p.get("parent"):
-                    continue
-                m1 = p["params"].get("module") or 2 * p["params"].get("radius", 15) / (p["params"]["teeth"] + 2)
-                m2 = q["params"].get("module") or 2 * q["params"].get("radius", 15) / (q["params"]["teeth"] + 2)
-                a = (m1 * p["params"]["teeth"] + m2 * q["params"]["teeth"]) / 2
-                dist = float(np.linalg.norm(np.subtract(p["position"], q["position"])))
-                if abs(dist - a) < 0.1 * a and abs(m1 - m2) < 0.05 * m1:
-                    out.append(("gear_mesh", q))
-        return out
-
-    turned = {start["id"]: float(degrees)}
-    queue = [start]
-    while queue:
-        p = queue.pop(0)
-        for kind, q in links(p):
-            if q["id"] in turned:
-                continue
-            if kind == "gear_mesh" and p["type"] == "gear" and q["type"] == "gear":
-                turned[q["id"]] = -turned[p["id"]] * p["params"]["teeth"] / q["params"]["teeth"]
-            elif kind == "coaxial":
-                turned[q["id"]] = turned[p["id"]]
-            else:
-                continue
-            queue.append(q)
-    out = []
-    for pid, deg in turned.items():
-        q = next(x for x in state["parts"] if x["id"] == pid)
-        if q["type"] == "gear":
-            q["params"]["phase"] = round((q["params"].get("phase", 0.0) + deg) % 360, 4)
-        out.append({"part": q["name"], "turned_deg": round(deg, 2)})
-    _bump(state)
-    return {"turned": out, "note": "meshing gears: angle x (-z1/z2); same pin: same angle"}
-
-
 def list_parts(state):
-    return {"parts": [{"id": p["id"], "name": p["name"], "type": p["type"], "params": p["params"]
-                       if p["type"] not in ("mesh", "cad") else {"faces": len(p["params"]["faces"]) // 3},
+    return {"parts": [{"id": p["id"], "name": p["name"], "type": p["type"],
+                       **({"faces": len(p["params"]["faces"]) // 3} if p["type"] == "cad" else {}),
+                       "cad_document": (p.get("eng") or {}).get("cad_document"),
                        "position": p["position"], "rotation": p["rotation"], "parent": p.get("parent")}
                       for p in state["parts"]]}
 
 
-def import_mesh(state, name, vertices, faces, target_faces=4000, position=(0, 0, 0), size_mm=80):
-    """Inject an external mesh (GLB, STL/OBJ from CAD, or a 3D-generation API): decimate + centre.
-    size_mm > 0 rescales the longest side to that size; size_mm = 0 keeps real CAD units (mm)."""
-    V = np.asarray(vertices, float).reshape(-1, 3)
-    F = np.asarray(faces, int).reshape(-1, 3)
-    before = len(F)
-    V, F = geometry.decimate(V, F, int(target_faces))
-    V = V - (V.min(0) + V.max(0)) / 2
-    if size_mm and float(size_mm) > 0:
-        V *= float(size_mm) / max(float(np.ptp(V, axis=0).max()), 1e-9)
-    p = _part("mesh", {"vertices": np.round(V, 4).ravel().tolist(), "faces": F.ravel().tolist()},
-              name, _clean(position))
-    state["parts"].append(p)
-    state["selected"] = p["id"]
-    place_on_base(state, p["id"], float(position[2]))           # position z = height of its lowest point
-    return {"id": p["id"], "faces_before": before, "faces_after": int(len(F))}
-
-
 def import_cad(state, meshes, groups, name, document_id, replace=True, provenance=None):
+    """Stage scene updates and publish only after display geometry is processed successfully."""
+    staged = copy.deepcopy(state)
+    result = _import_cad_staged(staged, meshes, groups, name, document_id, replace, provenance)
+    state.clear()
+    state.update(staged)
+    return result
+
+
+def _import_cad_staged(state, meshes, groups, name, document_id, replace=True, provenance=None):
     """A CAD model (cad/ worker) into the scene: one group, one part per component (type "cad": the tessellation of
     that component's validated B-rep, with the B-rep's own surface normals and edge lines), wheel assemblies as
     sub-groups. Units: mm; the CAD model frame (X along the object, Y lateral, Z up) becomes the scene frame; the group
     stands on the display surface. The parts are display/physics geometry only: the CAD document is authoritative and
-    edits go through /api/cad/param, never through the mesh."""
-    if replace:
-        state["parts"] = [p for p in state["parts"] if not (p.get("eng") or {}).get("cad_document")]
+    edits go through /api/cad/param, never through the mesh. Server-internal: not a chat / /api/tool tool (it would let a
+    caller inject arbitrary triangles)."""
+    if replace:                                  # the new model REPLACES the scene (no stale model, mesh or result left)
+        state["parts"] = []
     g = _part("group", {}, name, (0, 0, 0))
     g["eng"] = {"kind": "cad assembly", "cad_document": document_id, "dims": {}, "joints": [], **(provenance or {})}
     state["parts"].append(g)
@@ -918,12 +795,27 @@ def meshes(state):
     return out
 
 
-TOOLS = {f.__name__: f for f in (add_part, update_part, delete_part, clear_scene, build_assembly, place_on_base, turn_gear, list_parts,
-                                  import_mesh, import_cad, set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
+TOOLS = {f.__name__: f for f in (update_part, delete_part, clear_scene, place_on_base, list_parts,
+                                  set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
                                   focus_sweep, eye_view, lab_focus_sweep, lab_eye_view, window_check, hand_check, desk_check,
                                   search_column_width, desk_score, speckle_compare, export_film)}
 HEAVY = {"make_hologram", "propagate", "desk_wave_view", "focus_sweep", "eye_view", "lab_focus_sweep", "lab_eye_view", "desk_check", "search_column_width",
          "speckle_compare", "desk_score"}
+
+# Geometry-creating tools removed in Phase A (mesh reconstruction). Calling one returns this explicit error and
+# leaves the scene unchanged; none of them falls back to another builder.
+_NO_MESH = "AETHER Lab builds geometry only as OpenCascade B-rep CAD (three-view upload or Import STEP)."
+DISABLED = {
+    "add_part": "add_part is unavailable: parametric primitives were triangle meshes. " + _NO_MESH,
+    "build_assembly": "build_assembly (text-to-CAD) is unavailable until a B-rep text-to-CAD builder exists (deferred). " + _NO_MESH,
+    "import_mesh": "Mesh import (GLB / STL / OBJ) is removed: a triangle mesh is not CAD. Use Import STEP.",
+    "import_cad": "import_cad is server-internal (the CAD worker's own tessellation); it is not callable as a tool.",
+    "import_three_view": "The Scene panel's 3V visual-hull import is removed. Upload the drawing sheet to the assistant "
+                         "(three-view CAD route).",
+    "import_sheet": "The visual-hull sheet import is removed. Upload the drawing sheet to the assistant (three-view CAD route).",
+    "turn_gear": "turn_gear is unavailable: it rebuilt mesh gears. It returns when CAD gear joints exist (machine-drawing "
+                 "CAD, Phase C).",
+}
 
 
 _UNITS = ("_mm", "_um", "_nm", "_cm", "_m", "_pct", "_deg")      # an argument named with a unit is a number
@@ -934,6 +826,8 @@ def check_args(name, args):
     (unknown or missing argument names, a number that is not a number). Checked before anything runs, locally or on
     Modal, so a bad argument is never mistaken for an old engine."""
     import inspect
+    if name in DISABLED:
+        return DISABLED[name]
     if name not in TOOLS:
         return f"unknown tool '{name}'; tools: {', '.join(sorted(TOOLS))}"
     if not isinstance(args or {}, dict):
@@ -961,6 +855,8 @@ def check_args(name, args):
 
 
 def run(state, name, args):
+    if name in DISABLED:
+        return {"error": DISABLED[name], "error_kind": "unavailable"}
     bad = check_args(name, args)
     if bad:
         return {"error": bad, "error_kind": "bad_args"}
@@ -968,6 +864,83 @@ def run(state, name, args):
         return TOOLS[name](state, **(args or {}))
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+GEOMETRY_KEYS = ("vertices", "faces", "lines", "normals")
+SCENE_EDITABLE = ("position", "rotation", "scale", "visible", "name", "brightness", "color")
+
+
+def apply_scene_update(state, parts, selected=None, view=None):
+    """/api/scene (undo / redo / bulk edits from the UI): ONLY display and placement of parts that already exist.
+    Each entry {id, position?, rotation?, scale? (uniform), visible?, name?, brightness?, color?}. The geometry stays the
+    server's own (the CAD worker's tessellation); a new id, a different type / parent, or any geometry payload (params,
+    vertices, faces) is rejected and nothing is changed. Parts missing from the list are left as they are (undo can not
+    resurrect or delete geometry)."""
+    by_id = {p["id"]: p for p in state["parts"]}
+    if not isinstance(parts, list):
+        raise ValueError("parts must be a list")
+    plan = []
+    for q in parts:
+        if not isinstance(q, dict) or q.get("id") not in by_id:
+            raise ValueError("scene update rejected: unknown or invalid part; geometry cannot be added")
+        p = by_id[q["id"]]
+        for k in ("type", "parent"):
+            if k in q and q[k] != p.get(k):
+                raise ValueError(f"scene update rejected: {q['id']}.{k} cannot change")
+        if "params" in q:
+            sent = q["params"] if isinstance(q["params"], dict) else {"?": q["params"]}
+            own = {k: v for k, v in (p.get("params") or {}).items() if k not in GEOMETRY_KEYS}
+            if set(sent) & set(GEOMETRY_KEYS) or {k: v for k, v in sent.items() if k != "_geometry"} != own:
+                raise ValueError("scene update rejected: geometry or parameters cannot be changed")
+        extra = set(q) - set(SCENE_EDITABLE) - {"id", "type", "parent", "params", "eng"}
+        if extra:
+            raise ValueError(f"scene update rejected: fields {sorted(extra)} are not editable")
+        ch = {k: q[k] for k in SCENE_EDITABLE if k in q}
+        for k in ("position", "rotation", "scale"):
+            if k in ch:
+                try:
+                    v = _clean(ch[k])
+                    if len(v) != 3 or not all(math.isfinite(x) for x in v): raise ValueError()
+                except (TypeError, ValueError):
+                    raise ValueError(f"scene update rejected: {k} must contain three finite numbers")
+                ch[k] = v
+        if "scale" in ch:
+            sc = ch["scale"]
+            if max(sc) - min(sc) > 1e-9 * max(1.0, abs(max(sc))) or min(sc) <= 0:
+                raise ValueError("scene update rejected: scale must be uniform and positive")
+        if "visible" in ch and not isinstance(ch["visible"], bool):
+            raise ValueError("scene update rejected: visible must be boolean")
+        if "brightness" in ch:
+            try:
+                ch["brightness"] = float(ch["brightness"])
+                if not math.isfinite(ch["brightness"]) or not 0 <= ch["brightness"] <= 1: raise ValueError()
+            except (TypeError, ValueError):
+                raise ValueError("scene update rejected: brightness must be between 0 and 1")
+        if "name" in ch and not isinstance(ch["name"], str):
+            raise ValueError("scene update rejected: name must be text")
+        if "color" in ch and not isinstance(ch["color"], str):
+            raise ValueError("scene update rejected: color must be text")
+        plan.append((p, ch))
+    if view is not None:
+        if not isinstance(view, dict) or set(view) - set(cutaway.DEFAULT_VIEW):
+            raise ValueError("scene update rejected: invalid view fields")
+        if view.get("section") not in (None, "x", "y", "z"):
+            raise ValueError("scene update rejected: invalid section")
+        for k in ("xray", "section_flip"):
+            if k in view and not isinstance(view[k], bool):
+                raise ValueError(f"scene update rejected: {k} must be boolean")
+        for k in ("explode", "section_mm"):
+            if k in view and (not isinstance(view[k], (int, float)) or not math.isfinite(view[k])):
+                raise ValueError(f"scene update rejected: {k} must be finite")
+        if "isolate" in view and (not isinstance(view["isolate"], list) or any(x not in by_id for x in view["isolate"])):
+            raise ValueError("scene update rejected: invalid isolate selection")
+    for p, ch in plan:
+        p.update(ch)
+    state["selected"] = selected if selected in by_id else None
+    if view is not None:
+        state["view"] = view
+    _bump(state)
+    return {"updated": len(plan)}
 
 
 def for_agent(result):

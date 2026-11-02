@@ -1,9 +1,10 @@
-"""Photo of a real part -> SAM 3.1 cut-out -> silhouette measurements for Muse Spark.
+"""SAM 3.1 segmentation and 2D image evidence (no geometry is built here).
 
 SAM 3.1 runs on the Meta Model API (POST /v1/responses, model "sam-3.1", streamed). It returns, per object,
 a box and a mask over that box; the mask is decoded with Meta's meta-sam-parser package.
-The measurements (size, roundness, centre hole, number of lobes such as gear teeth or fan blades) are what
-Muse Spark uses, together with the cut-out image, to rebuild the part from the parametric library.
+The measurements (size, roundness, centre hole, number of lobes such as gear teeth or fan blades) are 2D evidence
+only. The former mask -> profile / outline extrusion paths (blueprint_parts, mask_profile) were removed in Phase A;
+the part-photo and machine-drawing CAD builders (Phase C / D) will turn this evidence into typed CAD sketches.
 """
 import base64
 import io
@@ -262,45 +263,6 @@ def _iou(a, b):
     return inter / max(1, np.logical_or(a, b).sum())
 
 
-def _shape(mask, mm, centre):
-    """Where a part sits in the drawing and its shape: centre (mm, y up), long axis length/width/angle (PCA),
-    and for round parts the radius, teeth (lobes) and centre hole."""
-    ys, xs = np.nonzero(mask)
-    cx, cy = xs.mean(), ys.mean()
-    X = np.c_[xs - cx, cy - ys] * mm
-    w, v = np.linalg.eigh(np.cov(X.T) + 1e-9 * np.eye(2))
-    ax = v[:, 1]
-    proj, perp = X @ ax, X @ v[:, 0]
-    length, width = float(np.ptp(proj)), float(np.ptp(perp))
-    angle = float(np.degrees(np.arctan2(ax[1], ax[0]))) % 180
-    out = {"centre_mm": [round((cx - centre[0]) * mm, 1), round((centre[1] - cy) * mm, 1)],
-           "length_mm": round(length, 1), "width_mm": round(width, 1), "angle_deg": round(angle),
-           "elongation": round(length / max(width, 1e-6), 2)}
-    if out["elongation"] < 1.4:                    # roundish: measure it like a gear or wheel
-        m = measure(mask, max(np.ptp(xs), np.ptp(ys)) * mm)
-        out.update({"radius_mm": m["outer_radius_mm"], "lobes": m["lobes_around_centre"],
-                    "centre_hole_radius_mm": m["centre_hole_radius_mm"] if m["centre_hole"] else 0})
-    return out
-
-
-def mask_profile(mask, mm, centre, max_cells=96):
-    """The mask as a cut-out for geometry.profile: filled cells (row runs) on a grid of at most max_cells per side,
-    plus where its box centre sits in the drawing (mm, y up)."""
-    ys, xs = np.nonzero(mask)
-    x1, x2, y1, y2 = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
-    step = max(1.0, max(x2 - x1, y2 - y1) / max_cells)
-    cols, rows = max(1, round((x2 - x1) / step)), max(1, round((y2 - y1) / step))
-    g = np.asarray(Image.fromarray((mask[y1:y2, x1:x2] * 255).astype(np.uint8)).resize((cols, rows), Image.BOX)) > 110
-    runs = []
-    for r in range(rows):
-        row = np.r_[0, g[r].astype(np.int8), 0]
-        d = np.diff(row)
-        runs += [[r, int(a), int(b)] for a, b in zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0])]
-    cell = (x2 - x1) * mm / cols
-    return {"runs": runs, "rows": rows, "cols": cols, "cell": round(cell, 3),
-            "at_mm": [round(((x1 + x2) / 2 - centre[0]) * mm, 1), round((centre[1] - (y1 + y2) / 2) * mm, 1)]}
-
-
 def segment_boxes(im, items):
     """SAM 3.1 with box prompts: one exact mask per box (16 objects per request). items: [{box: [x1,y1,x2,y2] px, ...}]."""
     from concurrent.futures import ThreadPoolExecutor
@@ -354,69 +316,3 @@ def clean_masks(objs):
                 a["mask"] = a["mask"] & ~b["mask"]
                 a.setdefault("cut_out", []).append(b.get("label", "part"))
     return objs
-
-
-def blueprint_parts(data_url, prompts, size_mm=200.0, max_parts=24, boxes=None, mm_per_px=None, scale_source=None, objs=None):
-    """A drawing of a whole machine. With boxes (parts Muse Spark listed after reading the drawing) SAM 3.1 traces
-    each box; without, SAM 3.1 searches once per part type (one concept per request, in parallel). Overlapping masks
-    are merged, line art is filled, frames lose the parts drawn inside them, and every part gets its position, shape
-    and clean outline polygons in mm. Scale: mm_per_px when a dimension was read from the drawing, otherwise the
-    longest side of the drawing = size_mm (an assumption, reported as such)."""
-    from concurrent.futures import ThreadPoolExecutor
-    from engine import outline
-    im = data_url if isinstance(data_url, Image.Image) else load_image(data_url, 1024)
-    if objs is not None:                              # already segmented (tests, or a cached SAM result)
-        pass
-    elif boxes:
-        objs = segment_boxes(im, boxes)
-    else:
-        with ThreadPoolExecutor(len(prompts)) as ex:
-            found = list(ex.map(lambda p: (p, segment(im, p)), prompts))
-        objs = [{**o, "label": p} for p, os_ in found for o in os_]
-    objs.sort(key=lambda o: -((o.get("confidence") or 0.5) * o["mask"].sum() ** 0.5))
-    keep = []
-    for o in objs:
-        if all(_iou(o["mask"], k["mask"]) < 0.6 for k in keep):
-            keep.append(o)
-        if len(keep) >= max_parts:
-            break
-    if not keep:
-        return {"error": f"SAM 3.1 found none of {prompts} in the drawing."}, {}
-    keep = [o for o in clean_masks(keep) if o["mask"].sum() >= 20]
-    if mm_per_px:
-        mm = float(mm_per_px)
-        source = scale_source or "read from a dimension on the drawing"
-    else:
-        mm = float(size_mm) / max(im.size)
-        source = scale_source or f"assumed: longest side of the drawing = {size_mm} mm"
-    centre = (im.width / 2, im.height / 2)
-    parts = []
-    for i, o in enumerate(keep, 1):
-        sp = o.get("spark") or {}
-        sh = _shape(o["mask"], mm, centre)
-        ys, xs = np.nonzero(o["mask"])
-        c_px = (xs.mean(), ys.mean())
-        rr = radial(o["mask"]) if sh.get("elongation", 9) < 1.4 else None
-        parts.append({"n": i, "label": o["label"], "confidence": None if o.get("confidence") is None else round(o["confidence"], 2),
-                      **sh, **({"kind": sp["type"]} if sp.get("type") else {}), **({"teeth_seen": sp["teeth"]} if sp.get("teeth") else {}),
-                      **({"teeth_fft": rr["teeth"], "teeth_fft_strength_pct": round(100 * rr["strength"], 2),
-                          "tip_radius_mm": round(rr["tip_px"] * mm, 2), "root_radius_mm": round(rr["root_px"] * mm, 2)} if rr else {}),
-                      **({"cut_out": o["cut_out"]} if o.get("cut_out") else {}),
-                      **({"filled_from_line_art": True} if o.get("filled_from_line_art") else {}),
-                      "_poly": outline.mask_polygons(o["mask"], mm, c_px, eps_px=0.8)})
-    a = np.asarray(im).astype(np.float32)
-    labels = sorted({o["label"] for o in keep})
-    for o in keep:
-        col = np.array(COLORS[labels.index(o["label"]) % len(COLORS)], np.float32)
-        a[o["mask"]] = 0.45 * a[o["mask"]] + 0.55 * col
-    out = Image.fromarray(a.clip(0, 255).astype(np.uint8))
-    d = ImageDraw.Draw(out)
-    for o, p in zip(keep, parts):
-        x1, y1, x2, y2 = o["box"]
-        d.rectangle([x1, y1, x2, y2], outline=COLORS[labels.index(o["label"]) % len(COLORS)], width=2)
-        d.text((x1 + 3, y1 + 2), str(p["n"]), fill=(0, 0, 0))
-    counts = {l: sum(1 for p in parts if p["label"] == l) for l in labels}
-    info = {"mode": "blueprint", "read_by": "Muse Spark + SAM 3.1 boxes" if boxes else "SAM 3.1 concepts", "prompts": prompts,
-            "found": counts, "parts": parts, "drawing_mm": [round(im.width * mm, 1), round(im.height * mm, 1)],
-            "mm_per_px": round(mm, 4), "scale_source": source, "photo_px": [im.width, im.height]}
-    return info, {"sam_overlay": _data_url(out, "JPEG"), "sam_cutout": None}

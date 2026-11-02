@@ -20,7 +20,7 @@ aether-lab\cad-worker\setup.ps1           # Windows (PowerShell)
 ```
 
 `server.py` finds `cad-worker/.venv` automatically. `AETHER_CAD_PYTHON` overrides the interpreter path. Without that
-environment, three-view uploads fall back to the legacy visual-hull preview, which is labelled "not CAD" everywhere.
+environment, three-view uploads fail explicitly; there is no mesh fallback.
 
 ## Use
 

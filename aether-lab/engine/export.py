@@ -1,16 +1,8 @@
-"""Export the scene as files a CAD tool, slicer or web viewer opens, plus a one-page build report.
-
-- STL (binary): every visible part's triangles in world millimetres, z up (what slicers and CAD expect).
-- GLB (glTF 2.0 binary): one node per part with its name and colour; glTF is metres and y up, so (x, y, z) mm ->
-  (x, z, -y) / 1000. Each node's `extras` carries the part's engineering record (kind, every size with its source:
-  measured on the drawing or guessed), so what was measured and what was assumed travels with the file.
-- report_html: one printable page (A4): the parts with measured / guessed sizes, gear pairs and where they came from,
-  the checks, and which Meta model did each step in how many seconds."""
-import base64
+"""The one-page build report (report_html). Scene STL / GLB export (mesh parts) was removed in Phase A: engineering
+export is STEP written by the CAD worker from validated B-rep, and its GLB is a tessellation of that B-rep
+(/api/cad/export.step, /api/cad/export.glb)."""
 import datetime
 import html
-import json
-import struct
 
 import numpy as np
 
@@ -19,77 +11,9 @@ from . import geometry
 GUESSED = ("assumed", "engineer", "added", "guess", "typical", "rule")
 
 
-def _meshes(state):
-    return [(p, np.asarray(V, float), np.asarray(F, np.int64)) for p, V, F in geometry.scene_meshes(state["parts"])
-            if p["type"] != "group" and len(F)]
-
-
-def stl(state):
-    """Binary STL bytes of the visible scene (mm, z up)."""
-    tris = [V[F] for _, V, F in _meshes(state)]
-    T = np.concatenate(tris).astype(np.float32) if tris else np.zeros((0, 3, 3), np.float32)
-    n = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
-    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-12)
-    rec = np.zeros(len(T), dtype=[("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")])
-    rec["n"], rec["v"] = n, T
-    head = b"AETHER Lab export, millimetres, z up".ljust(80, b" ")
-    return head + struct.pack("<I", len(T)) + rec.tobytes()
-
-
 def _rgb(c):
     c = str(c or "#9aa7b8").lstrip("#")
     return [int(c[i:i + 2], 16) / 255 for i in (0, 2, 4)] if len(c) == 6 else [0.6, 0.65, 0.72]
-
-
-def _vertex_normals(V, F):
-    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
-    vn = np.zeros_like(V)
-    for i in range(3):
-        np.add.at(vn, F[:, i], fn)
-    return vn / np.maximum(np.linalg.norm(vn, axis=1, keepdims=True), 1e-12)
-
-
-def glb(state):
-    """glTF 2.0 binary bytes: one node per visible part (name, colour, eng record in extras), metres, y up."""
-    buf = bytearray()
-    views, accs, meshes, nodes, mats = [], [], [], [], []
-
-    def add(arr, target, comp, typ, minmax=False):
-        a = np.ascontiguousarray(arr)
-        while len(buf) % 4:
-            buf.append(0)
-        views.append({"buffer": 0, "byteOffset": len(buf), "byteLength": a.nbytes, "target": target})
-        buf.extend(a.tobytes())
-        acc = {"bufferView": len(views) - 1, "componentType": comp, "count": int(len(a)), "type": typ}
-        if minmax:
-            acc["min"], acc["max"] = a.min(0).tolist(), a.max(0).tolist()
-        accs.append(acc)
-        return len(accs) - 1
-
-    for p, V, F in _meshes(state):
-        Vg = (np.c_[V[:, 0], V[:, 2], -V[:, 1]] / 1000.0).astype(np.float32)
-        Ng = _vertex_normals(V, F)
-        Ng = np.c_[Ng[:, 0], Ng[:, 2], -Ng[:, 1]].astype(np.float32)
-        pos = add(Vg, 34962, 5126, "VEC3", True)
-        nrm = add(Ng, 34962, 5126, "VEC3")
-        idx = add(F.astype(np.uint32).ravel(), 34963, 5125, "SCALAR")
-        mats.append({"name": p["name"], "pbrMetallicRoughness": {"baseColorFactor": _rgb(p.get("color")) + [1.0],
-                                                                  "metallicFactor": 0.3, "roughnessFactor": 0.5}})
-        meshes.append({"name": p["name"], "primitives": [{"attributes": {"POSITION": pos, "NORMAL": nrm}, "indices": idx,
-                                                          "material": len(mats) - 1}]})
-        e = p.get("eng") or {}
-        nodes.append({"name": p["name"], "mesh": len(meshes) - 1,
-                      "extras": {"kind": e.get("kind", p["type"]), "dims": e.get("dims", {}), "joints": e.get("joints", []),
-                                 **({"added_because": e["reason"]} if e.get("reason") else {})}})
-    doc = {"asset": {"version": "2.0", "generator": "AETHER Lab (simulation; sizes measured or guessed as tagged)"},
-           "scene": 0, "scenes": [{"nodes": list(range(len(nodes)))}], "nodes": nodes, "meshes": meshes,
-           "materials": mats, "accessors": accs, "bufferViews": views, "buffers": [{"byteLength": len(buf)}]}
-    js = json.dumps(doc, separators=(",", ":")).encode()
-    js += b" " * (-len(js) % 4)
-    while len(buf) % 4:
-        buf.append(0)
-    body = struct.pack("<I4s", len(js), b"JSON") + js + struct.pack("<I4s", len(buf), b"BIN\x00") + bytes(buf)
-    return struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body
 
 
 def _src(s):

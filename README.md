@@ -1,5 +1,7 @@
 # AETHER — Holographic Workbench
 
+> **Migration status (Phase A, in progress):** The hackathon capabilities and measurements below describe historical mesh-based workflows, not the current CAD migration. Machine-drawing, part-photo and text-to-CAD reconstruction, mesh imports and recorded demos are disabled. STEP import and the existing multi-view CAD route are under test; see [Phase 0/A report](aether-lab/docs/PHASE_0_A_REPORT.md).
+
 **Meta AI Builders Hackathon 2026 · Indie track · by Ng Wei Bin · Oct 26 – Nov 4**
 
 AETHER is two things:
@@ -78,15 +80,7 @@ The models are used as a **pipeline**, not as individual Q&A endpoints: Muse Spa
 ### 4. Demo (25 pts)
 > *A working demo that holds up, and a demo video worth watching*
 
-**Hosted replay (no key, no server):** Pre-computed results of all three demos — interactive 3D viewer in the browser, real GLB models, full explanation steps.
-→  https://aether-lab-delta.vercel.app/
-
-**Demo menu in the app:**
-- **D** — metal drawing press (US Patent 929,594)
-- **C** — speed-reduction gearbox (US Patent 1,770,035, held out — never used for tuning)
-- **G** — NASA X-3 three-view sheet → solid mesh
-
-Each demo has a live run (requires Meta API key) and a recorded fallback always labelled "RECORDED · not live".
+**Historical demos:** Mesh-based live and recorded demos have been disabled during the CAD migration.
 
 **Run locally:**
 ```bash
@@ -108,7 +102,7 @@ aether-lab/          ← hackathon product (built Oct 26 – Nov 4)
   server.py          ← local Python server (serves ui/dist, handles API calls)
   engine/            ← 3D physics engine (gears, hologram, eye model, export)
   ui/                ← React + Vite + Three.js front end
-  docs/              ← static replay site (GitHub Pages, no server needed)
+  docs/              ← historical project notes and migration report
   tests/             ← 36 physics tests; smoke tests for Meta API
   ARCHITECTURE.md    ← full system design
   BUILT_DURING_EVENT.md ← event timeline and what was built when
@@ -128,7 +122,7 @@ references/          ← patent survey, prior art, external references
 
 - No holographic display has been built. Every optical number (sharpness, speckle, sharp zone, phase-only encoding) is a simulation with a diffraction-limited eye model.
 - Patent drawings have no scale. All sizes are model scale; real sizes are unknown unless a dimension appears on the drawing.
-- Live AI results are never faked. The recorded demo fallback is always labelled.
+- Live AI results are never faked; recorded mesh demo restoration has been removed.
 - Inputs are public-domain patent drawings and NASA graphics ([docs/INPUTS.md](aether-lab/docs/INPUTS.md)). NASA does not endorse this project.
 
 MIT licence ([aether-lab/LICENSE](aether-lab/LICENSE)).

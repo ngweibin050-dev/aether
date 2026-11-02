@@ -39,11 +39,9 @@ function gestureOf(lm, wasPinch) {
 }
 
 const HAND_MENU = () => [
-  { id: "h.add", label: "Add part", icon: "plus", run: () => { const c = useStore.getState().handCursor; useStore.getState().setMenu({ kind: "add", x: c?.x, y: c?.y }); } },
   { ...cmd("in.explode"), icon: "explode" },
   { ...cmd("obj.delete"), icon: "trash" },
   { ...cmd("in.secx"), label: "Section cut", icon: "section" },
-  { ...cmd("obj.dup"), label: "Duplicate", icon: "layers", run: () => useStore.getState().duplicate() },
   { ...cmd("in.xray"), icon: "xray" },
   { ...cmd("edit.search"), label: "All actions…", icon: "search", run: () => useStore.getState().setMenu({ kind: "search" }) },
   { ...cmd("holo.calc"), label: "Hologram", icon: "holo" },

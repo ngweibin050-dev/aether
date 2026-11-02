@@ -23,9 +23,6 @@ export default function Toolbar() {
           className={`grid h-8 w-8 place-items-center rounded-lg transition active:scale-95 ${tool === k ? "bg-cyan-glow/20 text-cyan-glow shadow-inner" : "text-white/70 hover:bg-white/[0.08] hover:text-white"}`}>
           <Icon name={ic} /></button>
       ))}
-      <span className="mx-1.5 my-0.5 h-px bg-white/10" />
-      <button title="Add (Shift+A)" onClick={(e) => st.setMenu({ kind: "add", x: e.clientX + 30, y: e.clientY })}
-        className="grid h-8 w-8 place-items-center rounded-lg text-white/70 hover:bg-white/[0.08] hover:text-white"><Icon name="plus" /></button>
     </motion.nav>
   );
 }

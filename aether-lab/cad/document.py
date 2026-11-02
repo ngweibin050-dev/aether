@@ -32,6 +32,9 @@ PROVENANCE = ("measured", "derived", "inferred", "assumed", "unresolved", "user_
 MATURITY = ("draft_inference", "geometrically_valid", "drawing_consistent", "dimension_constrained",
             "assembly_checked", "engineer_reviewed")          # never set beyond drawing_consistent automatically
 REL_KINDS = ("linear", "scaled", "sample")
+# How a document was made. Every builder writes the same document structure with its route id. "step_import" is an
+# external B-rep (no AETHER feature history). machine_drawing / part_photo are reserved for the Phase C / D builders.
+ROUTES = ("three_view", "machine_drawing", "part_photo", "step_import")
 
 
 class DocumentError(ValueError):
@@ -58,6 +61,8 @@ def validate_schema(doc, ops):
         bad("schema", f"expected {SCHEMA}")
     if doc.get("units") != "mm":
         bad("units", "only mm is supported")
+    if doc.get("route", "three_view") not in ROUTES:
+        bad("route", f"must be one of {ROUTES}")
     P = doc.get("parameters")
     if not isinstance(P, dict):
         bad("parameters", "must be an object")
@@ -158,8 +163,10 @@ class Document:
 
     # ---- persistence
     @staticmethod
-    def new(source, title):
-        return {"schema": SCHEMA, "units": "mm", "document_id": uuid.uuid4().hex, "title": title,
+    def new(source, title, route="three_view"):
+        if route not in ROUTES:
+            raise DocumentError(f"route: must be one of {ROUTES}")
+        return {"schema": SCHEMA, "units": "mm", "document_id": uuid.uuid4().hex, "title": title, "route": route,
                 "created": time.strftime("%Y-%m-%d %H:%M:%S"), "source": source, "maturity": "draft_inference",
                 "decisions": {}, "parameters": {}, "observations": {}, "hypotheses": [], "datums": {}, "features": [],
                 "components": [], "joints": [], "assumptions": [], "validation": {}, "history": [],

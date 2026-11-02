@@ -402,3 +402,29 @@ def op_pocket_projection(p, inputs, doc):
 
 OPS["imprint_projection"] = op_imprint_projection
 OPS["pocket_projection"] = op_pocket_projection
+
+
+# ------------------------------------------------------------------------------------------------ external B-rep
+def op_external_brep(p, inputs, doc):
+    """An EXTERNAL B-rep solid (imported STEP): read from the document's stored .brep file, checked against its
+    SHA-256. It has no AETHER feature history and no parameters; it is genuine B-rep geometry with external provenance.
+    p: {"brep_file": path relative to the document folder or absolute, "sha256": hex}"""
+    import hashlib
+    import os
+    from OCP.BRep import BRep_Builder
+    from OCP.BRepTools import BRepTools
+    from OCP.TopoDS import TopoDS_Shape
+    path = p["brep_file"]
+    if not os.path.isabs(path) and getattr(doc, "base_dir", None):
+        path = os.path.join(doc.base_dir, path)
+    with open(path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest != p["sha256"]:
+        raise RuntimeError(f"external B-rep {p['brep_file']} changed on disk (sha256 mismatch)")
+    shp = TopoDS_Shape()
+    if not BRepTools.Read_s(shp, path, BRep_Builder()) or shp.IsNull():
+        raise RuntimeError(f"could not read external B-rep {p['brep_file']}")
+    return shp, {"valid": _valid(shp), "external": True}
+
+
+OPS["external_brep"] = op_external_brep

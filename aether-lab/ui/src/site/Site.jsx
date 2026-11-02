@@ -445,7 +445,7 @@ function CTA() {
           <div className="relative overflow-hidden rounded-[28px] border border-white/10 px-6 py-14 text-center sm:px-12 md:py-20"
             style={{ background: "radial-gradient(ellipse at 20% 0%, rgba(56,189,248,.25), transparent 55%), radial-gradient(ellipse at 90% 100%, rgba(168,85,247,.28), transparent 55%), #070b16" }}>
             <h2 className="s-h2 mx-auto max-w-[680px]">Ready to build your first machine in the air?</h2>
-            <p className="s-lead mx-auto mt-4 max-w-[560px]">Open the Lab, type “a two-stage gearbox” or drop in a blueprint, and watch the agent rebuild and grade it.</p>
+            <p className="s-lead mx-auto mt-4 max-w-[560px]">Open the Lab to import a STEP solid or try the supported multi-view CAD route. Machine and part-photo reconstruction are unavailable.</p>
             <div className="mt-9 flex flex-wrap justify-center gap-3">
               <a href="#/lab" className="grad-btn inline-flex h-12 items-center gap-2 rounded-xl px-7 text-[15px] font-semibold text-white transition hover:brightness-110">Open AETHER Lab <Icon n="arrow" className="h-4 w-4" /></a>
               <a href="#top" onClick={go("top")} className="inline-flex h-12 items-center rounded-xl border border-white/15 px-7 text-[15px] font-semibold text-slate-200 transition hover:bg-white/[0.06]">Back to top</a>

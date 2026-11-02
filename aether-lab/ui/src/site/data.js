@@ -9,30 +9,30 @@ export const STATS = [
   { v: "±0.25", u: "D", l: "eye focus tolerance used for “in focus”" },
   { v: "−108…+87", u: "mm", l: "sharp zone above the desk (≥80% of full 2D)" },
   { v: "2.2", u: "%", l: "phase-only error vs. complex modulation" },
-  { v: "19/19", u: "", l: "physics & geometry tests passing" },
+  { v: "CAD", u: "", l: "migration in progress" },
 ];
 
 export const TECH = ["Muse Spark", "SAM 3.1", "Modal GPU", "CuPy", "React Three Fiber", "MediaPipe Hands", "Wave optics",
-  "Gerchberg–Saxton", "Involute gears", "Visual hull", "Taubin smoothing", "Thibos chromatic eye"];
+  "Gerchberg–Saxton", "OpenCascade B-rep", "Thibos chromatic eye"];
 
 export const VISION = [
-  { k: "01", t: "Design in the air", d: "Speak, sketch or point. The model appears above the desk and you shape it with your hands, like a workshop with no screen in between." },
+  { k: "01", t: "Design in the air", d: "Import a STEP solid or try the existing multi-view CAD route; other reconstruction routes are not yet available." },
   { k: "02", t: "True depth, not a flat picture", d: "A hologram rebuilds the light wavefront, so your eye focuses on the part itself. No vergence–accommodation conflict, no headset." },
-  { k: "03", t: "AI that builds real parts", d: "Muse Spark reads drawings like an engineer: gears with real modules, links with bores, housings with walls, ready to turn and inspect." },
+  { k: "03", t: "AI that builds real parts", d: "Genuine B-rep CAD is the target; machine and part-photo reconstruction are disabled during the migration." },
 ];
 
 export const PIPELINE = [
-  { t: "Speak, sketch or upload", d: "A voice request, a hand-drawn sketch, a blueprint photo, a three-view drawing or an STL/OBJ file.", tag: "Input" },
-  { t: "Muse Spark reads it", d: "Tool-calling agent identifies parts, axis ends and tooth counts. SAM 3.1 traces outlines when you want the exact shape.", tag: "Meta AI" },
-  { t: "Engineering rebuild", d: "Standard involute gears that mesh, forged links, hubs, housing walls and real machine depth, each size labelled with its source.", tag: "Geometry" },
+  { t: "Speak, sketch or upload", d: "Import STEP or submit a supported multi-view drawing. Mesh imports and other reconstruction routes are disabled.", tag: "Input" },
+  { t: "Muse Spark reads it", d: "Muse Spark, Muse Wonder and SAM 3.1 are retained for structured drawing understanding.", tag: "Meta AI" },
+  { t: "Engineering rebuild", d: "OpenCascade produces the authoritative B-rep; viewport triangles are derived from it.", tag: "Geometry" },
   { t: "Wave-optics eye check", d: "Every design is scored by a simulated eye: 4 mm pupil, MTF at 15 cpd, phase-only pupil-GS encoding, speckle and colour.", tag: "Physics" },
   { t: "Shown on AETHER Desk", d: "The design floats above a horizontal-parallax holographic panel, sharp where the simulation says it can be.", tag: "Display" },
 ];
 
 export const FEATURES = [
-  { t: "Interpret or trace", d: "Read a drawing as clean standard parts, or trace its exact outline with SAM 3.1.", i: "scan" },
-  { t: "Three-view to solid", d: "Front, top and side views carve a watertight visual hull in seconds.", i: "cube" },
-  { t: "Gears that turn", d: "Meshing pairs rotate at −z₁/z₂; coaxial parts follow. Real modules and contact ratio.", i: "gear" },
+  { t: "Interpret or trace", d: "Machine interpretation and trace reconstruction are unavailable while CAD replacements are developed.", i: "scan" },
+  { t: "Three-view to solid", d: "The existing CAD route builds a B-rep from a supported multi-view sheet; unsupported inputs fail.", i: "cube" },
+  { t: "Gears that turn", d: "Gear motion is unavailable until genuine CAD joints are implemented.", i: "gear" },
   { t: "See inside", d: "Section plane, exploded view and x-ray, in the editor and in the hologram.", i: "layers" },
   { t: "Full hand mode", d: "Pinch, grab, rotate and scale with MediaPipe hand tracking. Blender-style keys too.", i: "hand" },
   { t: "Closed design loop", d: "The agent measures sharpness with focus_sweep and moves the design into the sharp zone.", i: "loop" },
@@ -49,11 +49,11 @@ export const PROVEN = [
   "Eye model validated by independent wave-optics simulation (≈1% agreement)",
   "Phase-only encoding without haze: pupil-GS, 2.2% image error",
   "Oblique-view sharp zone −108…+87 mm along each line of sight",
-  "Drawing → meshing 3D machine with real depth (depth/width ≈ 0.6)",
+  "Historical mesh machine results are not evidence of the current CAD route",
 ];
 export const NOT_YET = [
   "A physical AETHER Desk panel has not been built or measured",
   "kHz phase modulator needed for the 25 cm floating image (Desk 2)",
   "Card-sized version is a long-term goal, not a prototype",
-  "Muse Spark's part count can vary between runs of the same drawing",
+  "Machine and part-photo CAD reconstruction are not implemented",
 ];

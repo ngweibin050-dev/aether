@@ -5,8 +5,8 @@ import { COMMANDS, cmd, run } from "../commands";
 import { MenuList } from "./MenuBar";
 import Icon from "./Icon";
 
-const CONTEXT = ["obj.move", "obj.rotate", "obj.scale", "obj.dup", "obj.delete", "obj.hide", "obj.unhide", "in.isolate", "in.secx", "in.secy",
-  "in.explode", "in.xray", "obj.parent", "obj.unparent", "obj.snapcursor", "view.frame", "holo.calc"];
+const CONTEXT = ["obj.move", "obj.rotate", "obj.scale", "obj.delete", "obj.hide", "obj.unhide", "in.isolate", "in.secx", "in.secy",
+  "in.explode", "in.xray", "obj.snapcursor", "view.frame", "holo.calc"];
 const PIES = {
   "pie-view": ["view.left", "view.right", "view.bottom", "view.top", "view.front", "view.back", "view.eye", "view.frame"],
   "pie-shading": ["view.wire", "view.solid", "view.holo", "in.xray"],

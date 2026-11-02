@@ -87,7 +87,10 @@ export const useStore = create((set, get) => ({
 
   applyState(state) {
     const ids = new Set(state.parts.map((p) => p.id));
+    const prior = get().state?.parts || [];
+    const changed = prior.length !== state.parts.length || prior.some((p) => !ids.has(p.id));
     set((s) => ({
+      ...(changed ? { undo: [], redo: [], results: {}, explain: null, meshVersion: -1 } : {}),
       state,
       view: viewTimer ? s.view : { ...DEFAULT_VIEW, ...(state.view || {}) },
       selection: state.selected && !s.selection.includes(state.selected)
@@ -124,7 +127,7 @@ export const useStore = create((set, get) => ({
     if (!r) return;
     const im = r._images || {};
     const res = { ...get().results };
-    if ((name === "read_views" || name === "sam_3_1" || name === "build_assembly") && !r.error)
+    if ((name === "read_views" || name === "sam_3_1" || name === "cad_pipeline") && !r.error)
       for (const k of ["hologram", "recon", "sweep", "eye", "wave", "desk", "score", "window", "hand", "speckle"]) delete res[k];   // a new design: old measurements no longer apply
     if (im.hologram) res.hologram = { img: im.hologram, info: r };
     if (im.reconstruction) res.recon = { img: im.reconstruction, z: r.z_mm };
@@ -187,15 +190,16 @@ export const useStore = create((set, get) => ({
   invertSelection() { const sel = get().selection; get().selectMany(get().state.parts.filter((p) => !sel.includes(p.id)).map((p) => p.id)); },
 
   // ---- scene edits as one undo step ----
+  async resetScene() { const j = await api("/api/reset", {}); get().applyState(j.state); set({ undo: [], redo: [], results: {}, explain: null }); },
   async pushParts(parts, selected) {
-    const j = await api("/api/scene", { parts, selected });
+    const editable = parts.map(({ id, position, rotation, scale, visible, name, brightness, color }) => ({ id, position, rotation, scale, visible, name, brightness, color }));
+    const j = await api("/api/scene", { parts: editable, selected });
     get().applyState(j.state);
   },
   async commitParts(parts, selected = get().state.selected) {
     const before = clone(get().state.parts);
-    set((s) => ({ undo: [...s.undo.slice(-49), { parts: before, selected: s.state.selected }], redo: [],
-                  state: { ...s.state, parts, selected } }));      // optimistic: no jump back while the server answers
     await get().pushParts(parts, selected);
+    set((s) => ({ undo: [...s.undo.slice(-49), { parts: before, selected: s.state.selected }], redo: [] }));
   },
   async editSelected(fn) {
     const sel = new Set(get().selection);
@@ -206,41 +210,14 @@ export const useStore = create((set, get) => ({
     return get().tool("update_part", { id, ...t });
   },
   async deleteSelected() {
-    const sel = new Set(get().selection);
-    if (!sel.size) return;
-    const parts = get().state.parts;
-    const drop = new Set(sel);
-    let grew = true;
-    while (grew) { grew = false; for (const p of parts) if (drop.has(p.parent) && !drop.has(p.id)) { drop.add(p.id); grew = true; } }
-    set({ selection: [] });
-    await get().commitParts(parts.filter((p) => !drop.has(p.id)), null);
-  },
-  async duplicate() {
-    const s = get().state;
-    const sel = get().selection.map((id) => s.parts.find((p) => p.id === id)).filter(Boolean);
-    if (!sel.length) return [];
-    const parts = clone(s.parts), map = {};
-    const rid = () => Math.random().toString(16).slice(2, 10);
-    const copyTree = (p, parent) => {
-      const n = { ...clone(p), id: rid(), name: p.name + ".001", parent };
-      map[p.id] = n.id; parts.push(n);
-      for (const k of s.parts.filter((q) => q.parent === p.id)) copyTree(k, n.id);
-    };
-    for (const p of sel) if (!sel.some((q) => q.id === p.parent)) copyTree(p, p.parent);
-    const ids = sel.map((p) => map[p.id]).filter(Boolean);
-    await get().commitParts(parts, ids[ids.length - 1]);
-    get().selectMany(ids);
-    return ids;
+    const ids = [...get().selection];
+    for (const id of ids) await get().tool("delete_part", { id }, { record: false });
+    set({ selection: [], undo: [], redo: [] });
   },
   async setVisible(ids, visible) {
     const on = new Set(ids);
     await get().commitParts(get().state.parts.map((p) => (on.has(p.id) ? { ...p, visible } : p)));
   },
-  async parentTo(childIds, parentId) {
-    const kids = new Set(childIds);
-    await get().commitParts(get().state.parts.map((p) => (kids.has(p.id) && p.id !== parentId ? { ...p, parent: parentId } : p)));
-  },
-
   async undoOnce() {
     const { undo, state } = get();
     if (!undo.length) return;
@@ -286,7 +263,7 @@ export const useStore = create((set, get) => ({
       if (j.gpu) set({ modalStale: !!j.gpu.stale });
       if (j.trace.some((t) => t.tool === "optimize_for_desk" || t.tool === "sam_3_1" || t.tool === "read_views")) get().setPanel("physics", true);
       // a new model from a photo or drawing: bring all of it into view
-      if (j.trace.some((t) => t.tool === "read_views" || t.tool === "sam_3_1")) {
+      if (j.trace.some((t) => t.tool === "read_views" || t.tool === "sam_3_1" || t.tool === "cad_pipeline")) {
         // frame it once its geometry has arrived (a big model takes a moment), inside the area the panels leave free
         const t0 = Date.now();
         const go = () => (get().meshVersion === get().state?.version || Date.now() - t0 > 8000)
@@ -334,8 +311,8 @@ export const useStore = create((set, get) => ({
     get().select(null);
   },
   askPhoto(image, prompt, size_mm, mode = "interpret", kind = "auto", demo_id = null) {
-    const what = { auto: "image → 3D (AETHER decides what it is)", machine: `machine drawing → ${mode === "trace" ? "SAM 3.1 traces each part" : "read like an engineer"} → 3D assembly`,
-      three_view: "three-view sheet → 3D model from named parts", part: "photo of one part → SAM 3.1 → model" }[kind];
+    const what = { auto: "image → 3D (AETHER decides what it is)", machine: "machine drawing (unavailable)",
+      three_view: "three-view sheet → 3D model from named parts", part: "part photo (unavailable)" }[kind];
     set({ recorded: null });
     return get().turn("/api/photo", { image, prompt, size_mm, mode, kind, ...(demo_id ? { demo_id } : {}) }, { role: "user", img: image,
       text: `${prompt ? prompt + ": " : ""}${what} (${size_mm} mm, assumed unless a dimension is read)` });
@@ -367,19 +344,6 @@ export const useStore = create((set, get) => ({
       for (const k of KEYS[t.tool] || []) if (images?.[k]) im[k] = images[k];
       get().ingest(t.tool, { ...t.result, _images: im });
     }
-  },
-  async playRecorded(id) {
-    const r = await fetch(`/api/demo/recorded?id=${id}`);
-    const j = await r.json();
-    if (!r.ok) return get().notify(j.error || "no recorded run", "error");
-    const d = get().demos.find((x) => x.id === id) || { title: id };
-    set({ state: j.state, selection: [], recorded: { id, title: d.title, at: j.recorded_at }, explain: null,
-          chat: [...get().chat, { role: "ai", text: `RECORDED run of ${d.title} from ${j.recorded_at}: not live. ${j.reply || ""}`.trim() },
-                 ...(j.steps?.length ? [{ role: "timeline", steps: j.steps.filter((x) => x.s != null) }] : [])] });
-    await get().syncMeshes();
-    get().ingestTrace(j.trace, j.images);              // the panels show the recorded run's results, under the banner
-    if (j.explain) set({ explain: { ...j.explain, recorded_at: j.recorded_at }, explainStep: 0 });
-    import("./commands").then((m) => m.run("view.all"));
   },
   optimize(target_pct = 80) {
     return get().turn("/api/optimize", { target_pct, max_rounds: 3 }, { role: "user", text: `Make it sharp on the AETHER Desk (≥${target_pct}%)` });

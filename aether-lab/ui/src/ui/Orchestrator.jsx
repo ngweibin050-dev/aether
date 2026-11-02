@@ -98,9 +98,9 @@ async function toWav(blob, rate = 16000) {
 // What the upload is decides the path. Auto: the server measures the image (line drawing or photo, one view or three).
 const KINDS = [
   ["auto", "Auto", "The server measures the image: a line drawing with one view = machine, three matching views = three-view sheet, a photo = one part", 240],
-  ["machine", "Machine drawing", "One view of a machine: Muse Spark reads every part like an engineer and completes the unseen views → 3D assembly", 240],
+  ["machine", "Machine drawing", "Unavailable until the machine-drawing CAD builder is implemented", 240],
   ["three_view", "Three-view sheet", "Side, top and front views of one object (e.g. a car) → a solid built from named parts that matches every view", 180],
-  ["part", "Part photo", "A phone photo of one part: SAM 3.1 cuts it out, AETHER measures it, Muse Spark rebuilds it", 80],
+  ["part", "Part photo", "Unavailable until the part-photo CAD builder is implemented", 80],
 ];
 
 function PhotoForm({ image, onCancel }) {
@@ -108,16 +108,14 @@ function PhotoForm({ image, onCancel }) {
   const [kind, setKind] = useState("auto");
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState(240);
-  const [mode, setMode] = useState("interpret");
   const pick = (k) => { setKind(k); setSize(KINDS.find((x) => x[0] === k)[3]); };
-  const machine = kind === "machine" || kind === "auto";
   return (
-    <form onSubmit={(e) => { e.preventDefault(); onCancel(); askPhoto(image, prompt.trim(), Number(size) || 240, mode, kind); }}
+    <form onSubmit={(e) => { e.preventDefault(); onCancel(); askPhoto(image, prompt.trim(), Number(size) || 240, "cad", kind); }}
       className="space-y-2 overflow-hidden rounded-xl border border-slate-400/[0.16] bg-gradient-to-br from-sky-400/[0.06] to-violet-500/[0.07] p-2">
       <div className="flex min-w-0 flex-wrap gap-1" role="radiogroup" aria-label="What is this image?">
         {KINDS.map(([k, label, tip]) => (
-          <button key={k} type="button" role="radio" aria-checked={kind === k} onClick={() => pick(k)} title={tip}
-            className={`btn whitespace-nowrap !py-1 text-[11px] ${kind === k ? "!border-cyan-glow/50 text-cyan-glow" : ""}`}>{label}</button>))}
+          <button key={k} type="button" disabled={k === "machine" || k === "part"} role="radio" aria-checked={kind === k} onClick={() => pick(k)} title={tip}
+            className={`btn whitespace-nowrap !py-1 text-[11px] ${kind === k ? "!border-cyan-glow/50 text-cyan-glow" : ""}`}>{label}{(k === "machine" || k === "part") ? " (unavailable)" : ""}</button>))}
       </div>
       <div className="flex min-w-0 gap-2">
         <img src={image} className="h-[60px] w-[60px] shrink-0 rounded-lg border border-white/10 bg-white object-contain" />
@@ -128,13 +126,10 @@ function PhotoForm({ image, onCancel }) {
           <label className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-slate-400">
             <input type="number" value={size} onChange={(e) => setSize(e.target.value)} className="field w-16 !py-1 text-[11px]"
               title={kind === "part" ? "ASSUMED longest side of the part (a photo has no scale)" : "ASSUMED real size of the drawing's longest side - used only if no dimension can be read on the drawing"} />
-            <span className="truncate">mm (assumed)</span></label>
+            <span className="truncate">mm (not yet used by CAD)</span></label>
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap gap-1.5">
-          {machine && <button type="button" onClick={() => setMode(mode === "interpret" ? "trace" : "interpret")}
-            title={mode === "interpret" ? "Interpret: Muse Spark reads each part's type, size and axis and draws a clean standard part (best for dense or sketchy drawings)" : "Trace: SAM 3.1 traces each part's exact outline (best for clean drawings with real outlines)"}
-            className="btn whitespace-nowrap !py-1 text-[11px]">{mode === "interpret" ? "Interpret" : "Trace"}</button>}
           <button type="button" onClick={onCancel} className="btn ml-auto whitespace-nowrap !py-1 text-[11px]">Cancel</button>
       </div>
       <button className="btn-accent w-full whitespace-nowrap !py-1.5 text-[11.5px]" title={KINDS.find((x) => x[0] === kind)[2]}>

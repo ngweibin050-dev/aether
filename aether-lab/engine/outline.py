@@ -1,11 +1,12 @@
-"""Mask -> clean outline polygons -> closed solids (pure numpy, no CAD kernel needed).
+"""Two-dimensional mask outline tools (pure numpy, image space only; no 3D geometry is built here).
 
 1. trace(): marching squares on the mask gives closed sub-pixel loops (filled cells 4-connected).
 2. simplify(): Ramer-Douglas-Peucker removes the staircase (tolerance in pixels).
 3. nest(): even nesting depth = outer boundary, odd = hole; each hole goes to the smallest outer that contains it.
-4. triangulate(): ear clipping, holes joined to the outer ring by bridges (Eberly, "Triangulation by Ear Clipping").
-5. extrude(): top + bottom caps and side walls only on the real boundary, so the solid is closed (watertight), its
-   holes are real holes and it has no internal faces (the old row-of-boxes profile had hundreds).
+4. vectorize(): a traced loop -> straight lines and circular arcs with their deviation from the mask (sketch evidence).
+5. fill_holes(): line art -> solid regions.
+Used by the CAD observations (cad/observations.py) and SAM mask clean-up. The former triangulate / extrude /
+mask_polygons paths (mask -> extruded triangle mesh) were removed in Phase A: AETHER Lab builds no mesh solids.
 """
 import numpy as np
 
@@ -119,99 +120,6 @@ def nest(loops, min_area=4.0):
     return list(out.values())
 
 
-def _seg_cross(p, q, A, B):
-    """Does segment p-q properly cross any segment A[i]-B[i]?"""
-    d1 = (B[:, 0] - A[:, 0]) * (p[1] - A[:, 1]) - (B[:, 1] - A[:, 1]) * (p[0] - A[:, 0])
-    d2 = (B[:, 0] - A[:, 0]) * (q[1] - A[:, 1]) - (B[:, 1] - A[:, 1]) * (q[0] - A[:, 0])
-    d3 = (q[0] - p[0]) * (A[:, 1] - p[1]) - (q[1] - p[1]) * (A[:, 0] - p[0])
-    d4 = (q[0] - p[0]) * (B[:, 1] - p[1]) - (q[1] - p[1]) * (B[:, 0] - p[0])
-    return bool(np.any((d1 * d2 < -1e-12) & (d3 * d4 < -1e-12)))
-
-
-def _bridge(outer, holes):
-    """Join holes to the outer ring with zero-width bridges -> one simple ring."""
-    ring = [np.asarray(p, float) for p in outer]
-    for h in sorted(holes, key=lambda H: -np.max(H[:, 0])):
-        k = int(np.argmax(h[:, 0]))
-        M = h[k]
-        R = np.array(ring)
-        others = [H for H in holes if H is not h]
-        edges_a = [R, *others, h]
-        edges_b = [np.roll(R, -1, 0), *[np.roll(H, -1, 0) for H in others], np.roll(h, -1, 0)]
-        A, Bn = np.vstack(edges_a), np.vstack(edges_b)
-        best = None
-        for i in np.argsort(np.linalg.norm(R - M, axis=1)):
-            V = R[i]
-            ok = ~(np.all(np.isclose(A, V), 1) | np.all(np.isclose(Bn, V), 1) |
-                   np.all(np.isclose(A, M), 1) | np.all(np.isclose(Bn, M), 1))
-            if not _seg_cross(M, V, A[ok], Bn[ok]):
-                best = int(i)
-                break
-        if best is None:
-            best = int(np.argmin(np.linalg.norm(R - M, axis=1)))
-        hk = [h[(k + j) % len(h)] for j in range(len(h))] + [M]
-        ring = ring[:best + 1] + hk + ring[best:]
-    return np.array(ring)
-
-
-def triangulate(outer, holes=()):
-    """Ear clipping of a polygon with holes. Returns (points (N, 2), triangles (M, 3)) indexing points."""
-    P = _bridge(np.asarray(outer, float), [np.asarray(h, float) for h in holes]) if len(holes) else np.asarray(outer, float)
-    idx = list(range(len(P)))
-    tris = []
-
-    def convex(a, b, c):
-        return (P[b, 0] - P[a, 0]) * (P[c, 1] - P[a, 1]) - (P[b, 1] - P[a, 1]) * (P[c, 0] - P[a, 0]) > 1e-12
-
-    guard = 0
-    while len(idx) > 3 and guard < 4 * len(P) * len(P):
-        n = len(idx)
-        clipped = False
-        for t in range(n):
-            a, b, c = idx[t - 1], idx[t], idx[(t + 1) % n]
-            if not convex(a, b, c):
-                continue
-            rest = np.array([i for i in idx if i not in (a, b, c)])
-            if len(rest):
-                Q = P[rest]
-                Q = Q[~(np.all(np.isclose(Q, P[a]), 1) | np.all(np.isclose(Q, P[b]), 1) | np.all(np.isclose(Q, P[c]), 1))]
-                if len(Q):
-                    v0, v1, v2 = P[a], P[b], P[c]
-                    d1 = (Q[:, 0] - v1[0]) * (v0[1] - v1[1]) - (v0[0] - v1[0]) * (Q[:, 1] - v1[1])
-                    d2 = (Q[:, 0] - v2[0]) * (v1[1] - v2[1]) - (v1[0] - v2[0]) * (Q[:, 1] - v2[1])
-                    d3 = (Q[:, 0] - v0[0]) * (v2[1] - v0[1]) - (v2[0] - v0[0]) * (Q[:, 1] - v0[1])
-                    if np.any((d1 <= 0) & (d2 <= 0) & (d3 <= 0)) or np.any((d1 >= 0) & (d2 >= 0) & (d3 >= 0)):
-                        continue
-            tris.append((a, b, c))
-            idx.pop(t)
-            clipped = True
-            break
-        guard += 1
-        if not clipped:                     # degenerate leftovers (collinear bridge points): drop one vertex
-            idx.pop(0)
-    if len(idx) == 3 and convex(*idx):
-        tris.append(tuple(idx))
-    return P, np.array(tris, int).reshape(-1, 3)
-
-
-def extrude(outer, holes=(), thickness=5.0):
-    """Closed prism of a polygon with holes, centred on z = 0. Returns V (N, 3), F (M, 3), outward normals."""
-    P, T = triangulate(outer, holes)
-    h2 = thickness / 2
-    n = len(P)
-    V = [np.c_[P, np.full(n, -h2)], np.c_[P, np.full(n, h2)]]
-    F = [T[:, ::-1], T + n]                                   # bottom faces down, top faces up
-    off = 2 * n
-    for ring in [np.asarray(outer, float), *[np.asarray(h, float) for h in holes]]:
-        m = len(ring)
-        V += [np.c_[ring, np.full(m, -h2)], np.c_[ring, np.full(m, h2)]]
-        j = np.arange(m)
-        a, b = off + j, off + (j + 1) % m
-        F += [np.stack([a, b, b + m], 1), np.stack([a, b + m, a + m], 1)]
-        off += 2 * m
-    return np.vstack(V), np.vstack(F).astype(int)
-
-
 def _dist_to_polyline(P, L):
     """Distance of each point P (n, 2) to the closed polyline L (m, 2)."""
     A, B = L, np.roll(L, -1, 0)
@@ -320,36 +228,6 @@ def vectorize(L, eps_px=0.75, max_dev_px=1.5, axis_deg=4.0, collinear_deg=5.0):
         if _dist_to_polyline(S, src).max() <= max_dev_px:
             P = S
     return P, float(_dist_to_polyline(P, src).max())
-
-
-def mask_polygons(mask, mm_per_px, origin_px, eps_px=0.7, min_area_px=12, clean=True, stats=None):
-    """A mask -> outline polygons in mm (x right, y up) relative to origin_px, ready for geometry.outline. clean: every
-    traced outline is vectorised into lines, arcs and splines (vectorize; within 1.5 px of the trace), so no pixel
-    step reaches the solid; else Douglas-Peucker only. stats (dict): gets "max_dev_px", the largest distance of a
-    clean outline from its trace (mask pixels)."""
-    out = []
-    loops = []
-    for L in trace(mask):
-        if clean and len(L) >= 8:
-            P, dev = vectorize(L, max(0.75, eps_px))
-            loops.append(P)
-            if stats is not None:
-                stats["max_dev_px"] = max(stats.get("max_dev_px", 0.0), dev)
-        else:
-            loops.append(simplify(L, eps_px))
-    for o, hs in nest(loops, min_area_px):
-        def to_mm(L):
-            return [[round((x - origin_px[0]) * mm_per_px, 3), round((origin_px[1] - y) * mm_per_px, 3)] for x, y in L]
-        # y flips (image y down -> mm y up), which reverses orientation: re-orient after the flip
-        oo = np.array(to_mm(o))
-        if area(oo) < 0:
-            oo = oo[::-1]
-        hh = []
-        for h in hs:
-            a = np.array(to_mm(h))
-            hh.append((a if area(a) < 0 else a[::-1]).tolist())
-        out.append({"outer": oo.tolist(), "holes": hh})
-    return out
 
 
 def fill_holes(mask):

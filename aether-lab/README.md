@@ -1,5 +1,7 @@
 # AETHER Lab — one paper drawing in, a working 3D machine out
 
+> **Migration status (Phase A, in progress):** The hackathon measurements below are historical mesh results. Machine and part-photo reconstruction, text-to-CAD, mesh imports and recorded demos are disabled. The current CAD route and STEP import are being tested; see [Phase 0/A report](docs/PHASE_0_A_REPORT.md).
+
 Give AETHER Lab one page of a mechanical drawing — a 100-year-old patent figure with no scale and no second view —
 and Meta's models turn it into a working 3D assembly: **Muse Spark** reads every part on the sheet, **Muse Wonder**
 completes the views the drawing never shows (depths, hidden shafts and bearings, which gears mesh, each with its
@@ -10,8 +12,7 @@ part would look on the **AETHER Desk**, a holographic workbench we are designing
 
 Built during the Meta AI Builders Hackathon 2026 (Oct 26 – Nov 4) by Ng Wei Bin. See `BUILT_DURING_EVENT.md`.
 
-- Hosted replay (no key, no server: pre-computed results of the three demos): `https://<user>.github.io/<repo>/`
-  (GitHub Pages from this repository's `docs/` folder)
+- The hosted mesh replay (`docs/replay*`) was removed in the CAD migration (Phase A): it showed mesh reconstructions.
 - Long-term holography proposal: [`docs/HOLOGRAPHY_ROADMAP.md`](docs/HOLOGRAPHY_ROADMAP.md)
 - Every number below: [`docs/RESULTS.md`](docs/RESULTS.md) (live runs, real Meta API, Modal T4 GPU)
 
@@ -50,18 +51,12 @@ D 75.0 → 72.8, C 76.9 → 78.0), so Muse Spark reads and Muse Wonder completes
 Every step in the UI shows which model (or engine) did it and in how many seconds, e.g.
 "Muse Spark · read drawing · 30 s", "Muse Wonder · complete the unseen views · 38 s", "Modal T4 GPU · eye focus sweep".
 
-## What you can do with it
+## Current migration functionality
 
-- **Drawing → 3D assembly**, **three-view sheet → parametric CAD** (OpenCascade B-rep with a feature history, STEP;
-  [cad/README.md](cad/README.md)), **photo of a part → model**, or **text → parametric assembly** (Muse Spark designs
-  from primitives). The old three-view visual hull remains only as a labelled legacy preview.
-- **Explain this machine**: a step player (Back / Next / Play) highlights each step's parts, moves the camera,
-  explodes or cuts the model.
-- **Check it on the desk**: sharp zone (−108 … +87 mm around the surface for a seated viewer), Window Law, speckle;
-  an AI design loop moves the model until every part is ≥ 80 % as sharp as a full 2D hologram. **Simulation.**
-- **Export**: STEP + `.aethercad` (CAD models), GLB (metres, every part's sizes and their source inside), STL (mm),
-  one-page build report.
-- **Demo menu**: D, C and G live, each with a recorded fallback that is always labelled "RECORDED · not live".
+- Import external STEP solids as validated OpenCascade B-rep components. Their provenance is external; feature history is not invented.
+- Attempt the existing multi-view B-rep route with the separate CAD worker. An unavailable worker or failed build returns an error, without a mesh fallback.
+- Use derived B-rep tessellations for viewport and optics. Machine drawing, part-photo, text-to-CAD, 3V hull, mesh imports and recorded demos are unavailable.
+- Export STEP and GLB from the CAD document; the old scene mesh exports are removed.
 
 ## Run locally (Windows)
 
@@ -72,7 +67,7 @@ Every step in the UI shows which model (or engine) did it and in how many second
    by hand). `AETHER_COMPUTE=local` exists only for the offline tests.
 3. `python server.py`, then open http://localhost:8765 (the built UI is in `ui/dist`; Node is only needed to change
    it: `cd ui && npm install && npm run build`).
-4. Tests: `python tests/test_physics.py` (36 tests, no API key needed); `python tests/smoke_meta.py` (live Meta API).
+4. Tests: see [Phase 0/A report](docs/PHASE_0_A_REPORT.md) for current commands, failures and skips. The older mesh tests need migration.
 5. Three-view CAD: run `cad-worker\setup.ps1` once (an isolated Python 3.12 + CadQuery/OpenCascade environment; the
    lab's own Python is untouched). CAD tests: `cad-worker\.venv\Scripts\python.exe -m pytest tests\cad -q`.
 
@@ -82,7 +77,7 @@ Every step in the UI shows which model (or engine) did it and in how many second
   encoding) is a simulation with a diffraction-limited eye model; see the roadmap for what is assumed.
 - Sizes from patent drawings are model scale; depths, thicknesses and added parts come from the engineer's completion
   and are tagged "guessed" in every part, with the reason.
-- Live AI results are never faked; the recorded demo fallback is always labelled as recorded.
+- Live AI results are never faked; recorded mesh demos have been removed.
 - Inputs are public-domain patent drawings and NASA graphics (`docs/INPUTS.md`). NASA does not endorse this project.
 
 MIT licence (`LICENSE`).

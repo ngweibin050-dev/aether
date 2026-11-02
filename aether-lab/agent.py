@@ -50,12 +50,12 @@ You build and edit 3D scenes and run a wave-optics physics engine through tools.
   in front of it at z > 0. The seated eye looks down at the desk, so the sharp zone is about -100..+75 mm
   (desk_score and window_check report the exact sharp_zone_mm for the current eye). Keep designs inside it;
   if a design is too tall, scale it uniformly - never squash one axis.
-- Text-to-CAD: when asked to create an object or machine, call build_assembly with a list of
-  parametric parts (types: """ + ", ".join(f"{k}({v})" for k, v in geometry.PARAM_HELP.items()) + """).
-  Positions/rotations (deg, [x,y,z]) are relative to the assembly. Axis of round parts is local z.
-  Aim for 6-25 parts that capture the real structure. Say it is a simplified parametric model,
-  not manufacturer data.
-- After building or changing the scene, call focus_sweep (what the eye sees), then make_hologram if asked, so the
+- Geometry: you can NOT create or reshape geometry. Models enter the scene only as genuine OpenCascade B-rep CAD: a
+  three-view drawing uploaded to the assistant (parametric CAD reconstruction) or Import STEP. If asked to create an
+  object from text, say that text-to-CAD is not available yet; never imitate it with other tools. You may move,
+  rotate, uniformly scale (display scale only), hide, rename and recolour existing parts with update_part. CAD
+  parameters are edited in the CAD panel, not by you.
+- After changing the scene, call focus_sweep (what the eye sees), then make_hologram if asked, so the
   user sees the hologram. For "can the desk show it" use window_check and desk_check.
 - To show what is inside (cutaway like a holographic workshop): set_view with section ("x", "y" or
   "z" plus section_mm, a world coordinate), explode (0-1, pulls nested parts apart along the axis),
@@ -69,28 +69,13 @@ You build and edit 3D scenes and run a wave-optics physics engine through tools.
 _DISP = {"type": "string", "enum": ["desk1d", "full2d", "screen3d"], "description": "AETHER Desk 1D hologram, full 2D hologram, or ordinary 3D screen"}
 _P = {"type": "number"}
 _V3 = {"type": "array", "items": _P, "minItems": 3, "maxItems": 3}
-_PART = {"type": "object", "properties": {
-    "name": {"type": "string"}, "type": {"type": "string", "enum": sorted(geometry.BUILDERS)},
-    "params": {"type": "object"}, "position": _V3, "rotation": _V3, "scale": _V3,
-    "parent": {"type": "string", "description": "name of another part in this assembly"},
-    "color": {"type": "string", "description": "surface colour as hex, e.g. #b87333 copper, #c4cbd4 aluminium (used in the full-colour hologram)"}},
-    "required": ["name", "type", "params"]}
 SCHEMAS = [
-    ("build_assembly", "Create a new assembly from parametric parts (text-to-CAD). Replaces the scene by default. "
-                       "position [x, y, z]: z is the height of the model's LOWEST point above the display surface "
-                       "(0 = standing on it; 100 = floating 10 cm above it).",
-     {"name": {"type": "string"}, "parts": {"type": "array", "items": _PART}, "position": _V3,
-      "replace": {"type": "boolean"}}, ["name", "parts"]),
-    ("add_part", "Add one part.", {"type": {"type": "string", "enum": sorted(geometry.BUILDERS)},
-     "params": {"type": "object"}, "name": {"type": "string"}, "position": _V3, "rotation": _V3,
-     "scale": _V3, "parent": {"type": "string"}, "color": {"type": "string"}}, ["type"]),
-    ("update_part", "Move, rotate, scale, rename, hide or re-parameterise a part (id or name).",
-     {"id": {"type": "string"}, "position": _V3, "rotation": _V3, "scale": _V3, "params": {"type": "object"},
+    ("update_part", "Move, rotate, uniformly scale (display only), rename, hide or recolour a part (id or name). "
+     "Geometry can not be changed here.",
+     {"id": {"type": "string"}, "position": _V3, "rotation": _V3,
+      "scale": {**_V3, "description": "uniform: the same factor three times"},
       "name": {"type": "string"}, "visible": {"type": "boolean"}, "color": {"type": "string", "description": "hex colour"}}, ["id"]),
-    ("delete_part", "Delete a part and its children.", {"id": {"type": "string"}}, ["id"]),
-    ("turn_gear", "Turn a gear by some degrees; the gears it meshes with turn the other way by the tooth ratio and "
-     "gears on the same pin turn with it (shows how the mechanism moves).",
-     {"id": {"type": "string"}, "degrees": _P}, ["id"]),
+    ("delete_part", "Remove a whole model (root group) from the scene; hide components instead.", {"id": {"type": "string"}}, ["id"]),
     ("list_parts", "List all parts in the scene.", {}, []),
     ("set_display", "Change the lab hologram (pitch_um, wavelength_nm, samples, distance_mm, points, method) "
      "or AETHER Desk parameters (column_width_um, vertical_pitch_um, view_distance_mm).",
@@ -276,96 +261,97 @@ def _text_of(content):
     return content
 
 
-MACHINE_HINTS = ["gear", "wheel", "lever", "shaft", "pin", "frame"]
-READ_DEADLINE_S, READ_HARD_LIMIT_S = 60, 120     # reading stage: go on with what is back / wait no longer for a whole-sheet reading
 LAST_BUILD = {}
 LAST_REPORT = {}                                 # the last build's checks for the one-page report (engine/export.py)
 LAST_IMAGE = {}                                  # the drawing the current machine was built from (Explain shows it to Muse Spark)
 
 
+UNAVAILABLE = {
+    "machine": ("This looks like a machine drawing. Machine-drawing reconstruction is unavailable: it used to build a triangle "
+                "mesh, and its genuine B-rep CAD builder is not implemented yet (Phase C). Nothing was built and the scene "
+                "is unchanged."),
+    "part": ("This looks like a photo of one part. Part-photo reconstruction is unavailable: it used to build primitive "
+             "meshes, and its genuine B-rep CAD builder is not implemented yet (Phase D). Nothing was built and the scene "
+             "is unchanged."),
+}
+
+
 def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".", on_step=None, mode="interpret",
                     kind="auto"):
-    """An upload -> a 3D model, routed by what it IS:
-    - "machine": one view of a machine -> Muse Spark reads it like an engineer -> 3D mechanism (_blueprint_to_design);
-    - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/ package, OpenCascade B-rep);
-    - "part": a phone photo of one part -> SAM 3.1 cut-out + measurements -> Muse Spark rebuilds it.
-    kind "auto" measures the image (vision.upload_kind: edge density, views and their size agreement); the UI can
-    also say it ("Machine drawing"). prompt is an optional hint (what the object is), not a router.
+    """An upload -> genuine CAD, routed by what it IS (vision.upload_kind measures it, or the UI says it):
+    - "three_view": a sheet with side / plan / end views of one object -> parametric CAD (cad/ package, OpenCascade
+      B-rep, isolated worker). There is no mesh fallback: without the CAD environment it stops with an explicit error;
+    - "machine" / "part": their B-rep builders do not exist yet (Phase C / D): an explicit error, nothing is built.
+    The modes "trace" and "hull" (mask extrusion / visual hull) are removed. On every failure the scene is unchanged.
     Returns the same tuple as chat(), with the routing as the first step of the trace."""
     step = on_step or (lambda e: None)
-    compute.prewarm()                            # the GPU container starts while Muse Spark reads
+    route = {"tool": "classify_upload", "args": {"asked": kind, "mode": mode}, "result": {"kind": kind, "by": "the user's choice"}}
+    if mode not in (None, "", "interpret", "cad"):
+        msg = (f"Mode {mode!r} is removed: it built a triangle mesh (SAM mask extrusion or a visual hull), not CAD. "
+               "Nothing was built and the scene is unchanged.")
+        route["result"].update(error=msg, scene_unchanged=True)
+        return msg, [route], {}, history
     kind = kind if kind in vision.KINDS else "auto"
-    route = {"tool": "classify_upload", "args": {"asked": kind}, "result": {"kind": kind, "by": "the user's choice"}}
     if kind == "auto":
         step({"stage": "tool", "tool": "classify_upload"})
         kind, ev = vision.upload_kind(data_url)
         step({"stage": "done", "tool": "classify_upload"})
         route["result"] = {"kind": kind, "by": "measured on the image (no AI)", **ev}
+    if kind in UNAVAILABLE:
+        route["result"].update(error=UNAVAILABLE[kind], scene_unchanged=True, builder="unavailable")
+        return UNAVAILABLE[kind], [route], {}, history
     hints = [p.strip() for p in (prompt or "").split(",") if p.strip() and p.strip().lower() not in ("object", "drawing")]
-
-    def first(out):
-        reply, trace, images, hist = out
-        return reply, [route] + trace, images, hist
-    if kind == "three_view":
-        # a multi-view sheet is ALWAYS rebuilt as parametric CAD (cad/ package, OpenCascade B-rep). There is no mesh
-        # fallback: without the CAD environment the upload stops here and says how to install it.
-        import cad_client
-        if not cad_client.available():
-            route["result"]["cad"] = "CAD environment missing"
-            return first(("This is a multi-view sheet. It is rebuilt as parametric CAD, which needs the CAD environment "
-                          "(once: aether-lab/cad-worker/setup.ps1 on Windows, setup.sh on Linux/macOS). Nothing was built.",
-                          [], {}, history))
-        return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step))
-    if kind == "machine":
-        prompts = (hints + [h for h in MACHINE_HINTS if h not in hints])[:6]
-        return first(_blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, step, mode))
-    prompt = (hints or ["object"])[0]
-    step({"stage": "tool", "tool": "sam_3_1"})
-    try:
-        info, images, cut = vision.photo_part(data_url, prompt, size_mm)
-    except Exception as e:
-        step({"stage": "done", "tool": "sam_3_1", "error": True})
-        raise RuntimeError(f"SAM 3.1 failed: {type(e).__name__}: {e}")
-    step({"stage": "done", "tool": "sam_3_1", "error": info.get("error")})
-    sam = {"tool": "sam_3_1", "args": {"prompt": prompt, "size_mm": size_mm}, "result": info}
-    if info.get("error"):
-        return info["error"], [route, sam], images, history
-    text = (f"This is a real {prompt}, cut out of a phone photo by SAM 3.1. Its silhouette, measured from the SAM mask "
-            f"(longest side set to {size_mm} mm): {json.dumps(info)}. The photo shows one side only, so guess the depth "
-            "from what the object is. Rebuild it with build_assembly from the parametric parts (use the measured radius, "
-            "hole and lobe count, e.g. lobes = gear teeth or fan blades; colour it like the photo), then call focus_sweep, "
-            "then desk_score. Say which numbers came from the photo and which you assumed.")
-    content = [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": cut}}]
-    reply, trace, more, hist = chat(state, history, content, out_dir, on_step)
-    images.update(more)
-    return reply, [route, sam] + trace, images, hist
+    import cad_client
+    if not cad_client.available():
+        why = cad_client.LAST_CHECK.get("why", "CAD environment missing")
+        route["result"].update(cad="CAD environment not ready", why=why, error=why, scene_unchanged=True)
+        return ("This is a multi-view sheet. It is rebuilt as parametric CAD, which needs the CAD environment "
+                f"(once: aether-lab/cad-worker/setup.ps1 on Windows, setup.sh on Linux/macOS; {why}). Nothing was built and "
+                "the scene is unchanged.", [route], {}, history)
+    compute.prewarm()
+    reply, trace, images, hist = _sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step)
+    return reply, [route] + trace, images, hist
 
 
 def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
     Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
-    STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics."""
+    STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics, and
+    ONLY when the document is valid: on any failure the worker keeps its last valid document and the scene is
+    unchanged."""
     import base64
     import io
     from pathlib import Path
     import cad_client
     from PIL import Image
     out = Path(out_dir) / "cad" / "current"
-    out.mkdir(parents=True, exist_ok=True)
-    sheet = out / "sheet.png"
+    incoming = Path(out_dir) / "cad" / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    sheet = incoming / "sheet.png"
     Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
     step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
     try:
         r = cad_client.call("build", sheet=str(sheet), out_dir=str(out))
     except Exception as e:
         step({"stage": "done", "tool": "cad_pipeline", "error": str(e)[:300]})
-        return (f"The CAD reconstruction failed: {e}", [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e)}}], {}, history)
-    step({"stage": "done", "tool": "cad_pipeline", "error": None if r["status"].get("state") == "ok" else r["status"].get("error")})
+        return (f"The CAD reconstruction failed: {e}. Nothing was built and the scene is unchanged.",
+                [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e), "scene_unchanged": True}}], {}, history)
+    if r["status"].get("state") != "ok":
+        err = r["status"].get("error") or r["status"].get("state")
+        step({"stage": "done", "tool": "cad_pipeline", "error": str(err)[:300]})
+        return (f"The CAD reconstruction failed ({err}). The last valid CAD document is kept and the scene is unchanged.",
+                [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(err), "build": r, "scene_unchanged": True}}],
+                {}, history)
+    step({"stage": "done", "tool": "cad_pipeline", "error": None})
     m = cad_client.call("meshes")
     doc = cad_client.call("document")
-    imp = lab.import_cad(state, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
-                         provenance={"maturity": doc["maturity"]})
-    imp["display_fit"] = _fit_to_desk(state, imp["id"])     # display scale only; the CAD document stays in real mm
+    import copy
+    staged = copy.deepcopy(state)
+    imp = lab.import_cad(staged, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
+                         provenance={"maturity": doc["maturity"], "route": doc.get("route")})
+    imp["display_fit"] = _fit_to_desk(staged, imp["id"])     # display scale only; the CAD document stays in real mm
+    state.clear()
+    state.update(staged)
     rep = r.get("report") or {}
     LAST_REPORT.clear()
     LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,
@@ -379,10 +365,13 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
             + ". Real size is assumed (4.5 m overall length) until you enter a real dimension; the cross-sections between "
               "the end views and every recess depth are inferred or assumed and labelled so in the CAD panel.")
     trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
-                                                            "document": {k: doc[k] for k in ("title", "maturity", "status")}}}]
+                                                            "document": {k: doc.get(k) for k in ("title", "route", "maturity", "status")}}}]
     return text, trace, {}, history
 
 
+# ---- Machine-drawing understanding (Muse Spark reading, Muse Wonder completion), kept for the Phase C CAD builder.
+# These only call the models and return validated JSON; they build no geometry. In Phase A nothing calls them (the
+# mesh pipeline that consumed them, engine/interpret.py + engine/rebuild.py, was removed).
 READ_DRAWING = """You are a senior mechanical engineer reading a mechanical drawing ({w} x {h} px){where}. Read it the way
 you would before building the machine: EVERY separate component, not just the big ones. Answer with one JSON object:
 {{"view": "front" | "side" | "top" | "isometric" | "section" | "photo",
@@ -456,116 +445,6 @@ def _spark_read_drawing(im, hints, where="", max_n=40, seed=None):
     return {"parts": out, "view": obj.get("view"), "dimensions": dims} if out else None
 
 
-def _read_machine(data_url, hints, step):
-    """Read a whole machine drawing like an engineer with a magnifier: Muse Spark reads the whole sheet AND four
-    overlapping close-ups at twice the resolution, each TWICE (seeds 1 and 2, temperature 0, strict JSON), all ten
-    calls in parallel while every circle drawn on the sheet is measured (engine/circles.py). Per image, a part is kept
-    only when both readings agree on it (interpret.agree) or a measured circle confirms it; what was dropped is logged.
-    The agreed readings are merged without duplicates, round parts snap to their measured centre and radius, and
-    circles nobody listed are added as the pivots, bosses and discs they are.
-    Returns (im, read): the 1024 px image and the reading in its pixels (None if Spark cannot take images).
-    Raises SparkError when both whole-sheet readings fail (shown in the step list; nothing is made up)."""
-    from concurrent.futures import ThreadPoolExecutor
-    from engine import circles, interpret
-    im = vision.load_image(data_url, 1024)
-    hi = vision.load_image(data_url, 2048)
-    W, H = im.size
-    f = W / hi.width
-    Wh, Hh = hi.size
-    tw, th = int(Wh * 0.62), int(Hh * 0.62)               # 2 x 2 tiles, ~24 % overlap
-    tiles = [(x0, y0, x0 + tw, y0 + th) for y0 in (0, Hh - th) for x0 in (0, Wh - tw)]
-    names = ["top left", "top right", "bottom left", "bottom right"]
-    READ_USED.clear()
-    step({"stage": "tool", "tool": "read_drawing", "who": model_name(READ_MODEL)})
-
-    def whole(seed):
-        return _spark_read_drawing(im, hints, "", 40, seed=seed)
-
-    def tile(i, seed):
-        x0, y0, x1, y1 = tiles[i]
-        crop = hi.crop(tiles[i])
-        r = _spark_read_drawing(crop, hints, f" (a close-up of the {names[i]} part of a larger sheet; list every part "
-                                             "you see in it, a part cut by the edge too)", 40, seed=seed)
-        if not r:
-            return None
-        out = []
-        for it in r["parts"]:
-            b = it["box"]
-            m = 0.012 * max(tw, th)                       # cut by an inner edge of the close-up: another one has it whole
-            if (b[0] < m and x0 > 0) or (b[1] < m and y0 > 0) or (b[2] > tw - m and x1 < Wh) or (b[3] > th - m and y1 < Hh):
-                continue
-            q = {**it, "box": [(b[0] + x0) * f, (b[1] + y0) * f, (b[2] + x0) * f, (b[3] + y0) * f]}
-            if q.get("ends"):
-                q["ends"] = [[(e[0] + x0) * f, (e[1] + y0) * f] for e in q["ends"]]
-            out.append(q)
-        return out
-
-    def get(fu):
-        if not fu.done():
-            return None, f"Muse Spark was still reading after {READ_DEADLINE_S} s; not waited for"
-        try:
-            return fu.result(), None
-        except SparkError as e:
-            return None, str(e)
-
-    # a total deadline for the reading stage: on 2026-10-31 the API once answered all ten calls in 77-88 s instead of
-    # ~25 s. The upload goes on with what has come back; a straggler is logged, never waited on (the pool is not joined)
-    from concurrent.futures import FIRST_COMPLETED, wait
-    ex = ThreadPoolExecutor(11)
-    fc = ex.submit(circles.find, im)
-    fw = [ex.submit(whole, s) for s in (1, 2)]
-    ft = [[ex.submit(tile, i, s) for s in (1, 2)] for i in range(4)]
-    wait(fw + [x for pair in ft for x in pair], timeout=READ_DEADLINE_S)
-    if not any(f.done() for f in fw):                      # no whole-sheet reading yet: wait for the first one only
-        wait(fw, timeout=READ_HARD_LIMIT_S - READ_DEADLINE_S, return_when=FIRST_COMPLETED)
-    (wa, ea), (wb, eb) = get(fw[0]), get(fw[1])
-    tl = [[get(x) for x in pair] for pair in ft]
-    circ = fc.result()
-    ex.shutdown(wait=False)
-    ink = circles.ink_mask(im)[0]                       # boxes of every reading are in im pixels
-    failed = [e for e in (ea, eb) + tuple(e for pair in tl for _, e in pair) if e]
-    if wa is None and wb is None:
-        step({"stage": "done", "tool": "read_drawing", "error": failed[0] if failed else "no part read"})
-        if ea or eb:
-            raise SparkError(f"Muse Spark could not read the drawing: {ea or eb}")
-        return im, None                                   # the model takes no images (HTTP 400) or read nothing
-    read = dict(wa or wb)
-    log = {"whole_sheet_readings": [len((x or {}).get("parts") or []) for x in (wa, wb)]}
-    if wa and wb:
-        parts, drop = interpret.agree(wa["parts"], wb["parts"], circ, ink=ink)
-        read["dimensions"] = wa.get("dimensions") or wb.get("dimensions") or []
-    else:
-        parts, drop = read["parts"], []
-        log["unconfirmed"] = "one whole-sheet reading failed, the other is used without a second opinion: " + (ea or eb)
-    dropped = [{**d, "from": "whole sheet"} for d in drop]
-    close = []
-    for i, ((ra, _), (rb, _)) in enumerate(tl):
-        if ra is not None and rb is not None:
-            k, d = interpret.agree(ra, rb, circ, ink=ink)
-            dropped += [{**x, "from": f"close-up {names[i]}"} for x in d]
-        else:
-            k = ra or rb or []
-        close.append((k, f"close-up {names[i]}"))
-    step({"stage": "done", "tool": "read_drawing", "error": "; ".join(failed)[:300] if failed else None,
-          "who": who(READ_USED)})
-    n_whole = len(parts)
-    merged = interpret.merge_reads([(parts, "whole sheet")] + close, W, H)
-    step({"stage": "tool", "tool": "measure_circles"})
-    merged, snap = interpret.snap_circles(merged, circ, W, H)
-    step({"stage": "done", "tool": "measure_circles"})
-    read["parts"] = merged
-    # every single reading as it came back (im px), so other agreement rules can be compared offline
-    read["_raw"] = {"whole": [(x or {}).get("parts") for x in (wa, wb)], "tiles": [[x for x, _ in pair] for pair in tl],
-                    "circles": circ}
-    read["reading"] = {**log, "settings": "temperature 0, seeds 1 and 2, strict JSON schema; each image read twice",
-                       "whole_sheet_parts_agreed": n_whole, "close_up_parts_agreed": sum(len(c[0]) for c in close),
-                       "dropped_not_confirmed": len(dropped), "dropped": dropped,
-                       "failed_calls": failed, "after_merge": len(merged) - snap["added"], "circles_measured": len(circ),
-                       "round_parts_snapped_to_measured_circle": snap["snapped"],
-                       "parts_added_from_measured_circles": snap["added"], "total_parts": len(merged)}
-    return im, read
-
-
 def _scale_from_dims(dims):
     """mm per pixel from the dimensions Spark read: the median, if the readings agree within 15 %."""
     if not dims:
@@ -605,28 +484,6 @@ def _fit_to_desk(state, group_id, target_pct=80):
                        f"centred in the sharp zone: its lowest {-bottom:.0f} mm are behind the display surface, where a "
                        "hologram can also be shown sharply.")
     return out
-
-
-def _interpret_read(im, read, size_mm, mmpx, src):
-    """Engineer's interpretation (engine/interpret.py): clean standard parts from Muse Spark's reading of the sheet
-    (types, boxes, axis ends, teeth) instead of traced pixels. Returns (info, images) like vision.blueprint_parts."""
-    from PIL import ImageDraw
-    from engine import circles, interpret
-    W, H = im.size
-    if not mmpx:
-        mmpx, src = float(size_mm) / max(W, H), f"assumed: longest side of the drawing = {size_mm:g} mm"
-    parts = interpret.parts_from_read(read["parts"], W, H, mmpx, ink=circles.ink_mask(im)[0])
-    ov = im.convert("RGB").copy()
-    d = ImageDraw.Draw(ov)
-    for it in read["parts"]:
-        d.rectangle(it["box"], outline=(56, 217, 255), width=2)
-        if it.get("ends"):
-            d.line([tuple(it["ends"][0]), tuple(it["ends"][1])], fill=(255, 190, 90), width=3)
-    info = {"mode": "interpret", "read_by": "Muse Spark (engineer's interpretation: clean standard parts, no tracing)",
-            "found": {k: sum(1 for p in parts if p["label"] == k) for k in dict.fromkeys(p["label"] for p in parts)}, "drawing_mm": [round(W * mmpx, 1), round(H * mmpx, 1)],
-            "mm_per_px": round(mmpx, 4), "scale_source": src, "photo_px": [W, H], "view": read.get("view"),
-            "parts": parts}
-    return info, {"sam_overlay": vision._data_url(ov, "JPEG")}
 
 
 COMPLETE = """You are a senior mechanical design engineer (aerospace / SpaceX standard). The drawing shows ONE view of
@@ -688,122 +545,6 @@ def _spark_complete(im, parts):
                          and isinstance(g.get("b"), int)]
     out["_model"] = meta["model"]
     return out, None
-
-
-def _blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, step, mode="interpret"):
-    """A drawing of a whole machine -> a real 3D mechanism.
-    Muse Spark reads the drawing (view, parts with rough boxes, axis ends, dimensions). mode "interpret" (default):
-    each part is drawn as a clean standard part from that reading (engine/interpret.py). mode "trace": SAM 3.1
-    traces each box exactly and the traced outline is used.
-    engine.rebuild turns every traced part into the solid it is (involute gears that mesh, pins through the stack,
-    plates with their real holes, frame plates front and back) and stacks them in layers by constraints; the result
-    stands upright on the desk, fitted to the sharp zone with one uniform scale."""
-    from engine import rebuild
-    try:
-        if mode == "interpret":
-            im, read = _read_machine(data_url, prompts, step)
-        else:
-            im = vision.load_image(data_url, 1024)
-            step({"stage": "tool", "tool": "read_drawing"})
-            read = _spark_read_drawing(im, prompts, seed=1)
-            step({"stage": "done", "tool": "read_drawing", "error": None if read else "no part read"})
-    except SparkError as e:
-        step({"stage": "done", "tool": "read_drawing", "error": str(e)})
-        fail = {"tool": "read_drawing", "args": {"mode": mode}, "result": {"error": str(e)}}
-        return (f"{e}. Nothing was built from this drawing; try again, or check the connection to the Meta Model API.",
-                [fail], {}, history)
-    mmpx, src = _scale_from_dims((read or {}).get("dimensions"))
-    info = None
-    if mode == "interpret" and read and len(read.get("parts") or []) >= 2:
-        info, images = _interpret_read(im, read, size_mm, mmpx, src)
-    else:                                        # trace mode (or Spark could not read the sheet): SAM 3.1 outlines
-        step({"stage": "tool", "tool": "sam_3_1"})
-        try:
-            info, images = vision.blueprint_parts(im, prompts, size_mm, boxes=(read or {}).get("parts"), mm_per_px=mmpx, scale_source=src)
-        except Exception as e:
-            step({"stage": "done", "tool": "sam_3_1", "error": True})
-            raise RuntimeError(f"SAM 3.1 failed: {type(e).__name__}: {e}")
-        step({"stage": "done", "tool": "sam_3_1", "error": info.get("error")})
-    images = {k: v for k, v in images.items() if v}
-    if read:
-        info["view"] = read.get("view")
-        if read.get("reading"):
-            info["reading"] = read["reading"]
-    sam = {"tool": "sam_3_1", "args": {"prompt": ", ".join(prompts), "size_mm": size_mm},
-           "result": {**info, "parts": [{k: v for k, v in p.items() if k != "_poly"} for p in info.get("parts", [])]}}
-    if info.get("error"):
-        return info["error"], [sam], images, history
-    completion, c_err = None, None
-    if info.get("mode") == "interpret":          # one view: the expert completes the other two
-        step({"stage": "tool", "tool": "complete_views", "who": model_name(COMPLETE_MODEL)})
-        completion, c_err = _spark_complete(im, info["parts"])
-        step({"stage": "done", "tool": "complete_views", "error": c_err,
-              "who": who([(completion or {}).get("_model") or COMPLETE_MODEL])})
-    LAST_BUILD.clear()                           # what the rebuild got, so a run can be replayed offline (tests/run_reference)
-    LAST_IMAGE.clear()
-    LAST_IMAGE["data_url"] = data_url
-    LAST_BUILD.update({"raw_readings": (read or {}).get("_raw"), "read_parts_px": (read or {}).get("parts"), "image_px": list(im.size), "mm_per_px": info["mm_per_px"],
-                       "scale_source": info.get("scale_source"), "drawing_mm": info["drawing_mm"], "completion": completion,
-                       "mode": info.get("mode")})
-    step({"stage": "tool", "tool": "rebuild_3d"})
-    specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"], completion, frame_cell_mm=info["mm_per_px"])
-    if completion:
-        rep["engineer_completion"] = {"by": "Muse Spark", "reasoning": str(completion.get("reasoning", ""))[:300],
-                                      "parts_placed": len(completion.get("parts") or []),
-                                      "hidden_parts_added": rep.get("added_by_engineer", [])}
-    elif c_err:
-        rep["engineer_completion"] = {"by": None, "error": c_err,
-                                      "note": "Muse Spark's completion failed: depths, thicknesses and hidden parts follow the "
-                                              "rebuild's own rules and are all assumed"}
-    from engine import interpret
-    check, check_img = interpret.drawing_check(im, rep.pop("_silhouette"), info["mm_per_px"])
-    check["frame_part_overlap_mm2"] = rep["checks"]["frame_part_overlap_mm2"]
-    # edge quality of what is built: pixel staircase on every part's outline in the drawing's view, and how far the
-    # vectorised frame outlines are from their trace (engine/quality.py)
-    from engine import quality
-    flat = lab.default_state()
-    lab.build_assembly(flat, "edge check", specs, position=[0, 0, 0], rotation=[0, 0, 0])
-    st_len = st_steps = 0.0
-    for p_, V_, F_ in geometry.scene_meshes(flat["parts"]):
-        if p_["type"] != "group" and len(F_):
-            _, l_, s_ = quality.part_staircase(V_, F_, info["mm_per_px"])
-            st_len, st_steps = st_len + l_, st_steps + s_
-    check["staircase_pct"] = round(100 * st_steps / max(st_len, 1e-9), 2)
-    check["frame_outline_max_dev_px"] = round(rep["checks"].get("frame_outline_max_dev_mm", 0.0) / info["mm_per_px"], 2)
-    LAST_REPORT.clear()
-    LAST_REPORT.update({"kind": "machine drawing", "check": check, "gear_pairs": rep.get("gear_pairs"),
-                        "implausible": rep.get("implausible"), "image_data_url": data_url,
-                        # a patent drawing has no scale: sizes are model mm unless a dimension on it was read
-                        "scale_known": str(info.get("scale_source", "")).startswith("read from"),
-                        "scale_source": info.get("scale_source")})
-    sam["result"]["check"] = check
-    images["sam_check"] = vision._data_url(check_img, "JPEG")
-    built = compute.run(state, "build_assembly", {"name": "Machine from drawing", "parts": specs,
-                                                  "position": [0, 0, 0], "rotation": [90, 0, 0]})
-    fit = _fit_to_desk(state, state["selected"])
-    step({"stage": "done", "tool": "rebuild_3d"})
-    rep.update({"scale_on_desk": fit["scale"], "real_size": info["scale_source"], "view": info.get("view")})
-    trace = [sam, {"tool": "build_assembly", "args": {"parts": len(specs)}, "result": {**lab.for_agent(built), "rebuild": rep}}]
-    step({"stage": "tool", "tool": "desk_score"})
-    score = compute.run(state, "desk_score", {})
-    step({"stage": "done", "tool": "desk_score"})
-    trace.append({"tool": "desk_score", "args": {}, "result": lab.for_agent(score)})
-    text = (f"I rebuilt the drawing ({info.get('view') or 'view unknown'}) as a 3D mechanism: {json.dumps(rep)}. "
-            f"Scale: {info['scale_source']}; shown on the desk at {fit['scale']}x so it fits the sharp zone "
-            f"{fit['sharp_zone_mm']} mm. desk_score: pass={score.get('pass')}, worst {score.get('min_sharpness_pct')}%. "
-            "Do not rebuild it. Call focus_sweep once with steps=5 and color=false, then tell the user in 4-5 short "
-            "sentences: what was " + ("read from the drawing (part types, positions, sizes, axis ends, teeth) and drawn as "
-                                      "clean standard parts" if info.get("mode") == "interpret" else
-                                      "traced from the drawing (outlines, positions, teeth)") + ", what was rebuilt from engineering "
-            "rules or by your engineer's completion of the unseen views (depths, planes, added shafts and bearings), "
-            "which gears mesh, what is still assumed (real size if no dimension was read, thicknesses), and the "
-            f"front-view check: {check['drawing_lines_on_built_parts_pct']}% of the drawing's lines lie on a built part "
-            "(red lines in the check image were not built). Say plainly that this is an interpretation of one view, "
-            "not a measured model.")
-    keep = [d for d in TOOL_DEFS if d["function"]["name"] not in ("build_assembly", "add_part", "delete_part", "clear_scene")]
-    reply, more_trace, more, hist = chat(state, history, text, out_dir, step, tools=keep)
-    images.update(more)
-    return reply, trace + more_trace, images, hist
 
 
 OPT_SYSTEM = """You are the design half of a closed loop with a wave-optics simulator of the AETHER Desk

@@ -9,19 +9,6 @@ const S = () => useStore.getState();
 const hasSel = () => S().selection.length > 0;
 const one = () => S().state?.parts.find((p) => p.id === S().state.selected);
 
-export const PRIMS = [
-  ["gear", { teeth: 16, radius: 25, thickness: 8 }], ["cylinder", { radius: 12, height: 40 }],
-  ["tube", { outer: 20, inner: 15, height: 30 }], ["box", { w: 40, d: 30, h: 20 }],
-  ["cone", { r_bottom: 18, r_top: 4, height: 40 }], ["sphere", { radius: 18 }],
-  ["torus", { radius: 22, tube_radius: 5 }], ["nozzle", { throat: 8, exit: 24, length: 45, chamber: 14, chamber_length: 25 }],
-  ["coil", { radius: 16, wire: 1.5, turns: 6, pitch: 5 }], ["blade_ring", { count: 10, inner: 6, outer: 26, thickness: 1.5, height: 8, twist: 25 }],
-];
-
-export const addPrim = (type) => {
-  const params = Object.fromEntries(PRIMS)[type];
-  return S().tool("add_part", { type, params, name: type.replace("_", " "), position: S().cursor3d.map((v) => +v.toFixed(2)) });
-};
-
 const download = (url, name) => { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
 const frameSel = () => view.nav?.frame(sceneBox(S().selection.length ? S().selection : null));
 const eyeView = () => {
@@ -43,37 +30,15 @@ const isolate = () => {
 const hideSel = () => hasSel() && S().setVisible(S().selection, false);
 const unhideAll = () => S().setVisible(S().state.parts.filter((p) => p.visible === false).map((p) => p.id), true);
 const hideOthers = () => S().setVisible(S().state.parts.filter((p) => !S().selection.includes(p.id)).map((p) => p.id), false);
-const saveScene = () => {
-  const blob = new Blob([JSON.stringify({ aether: "2.1", parts: S().state.parts, view: S().view }, null, 1)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "aether_scene.json"; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-};
-const openScene = () => {
-  const inp = document.createElement("input");
-  inp.type = "file"; inp.accept = ".json";
-  inp.onchange = async () => {
-    try {
-      const j = JSON.parse(await inp.files[0].text());
-      await S().commitParts(j.parts, null);
-      if (j.view) S().setView(j.view, { now: true });
-    } catch (e) { S().notify("Open: " + e.message, "error"); }
-  };
-  inp.click();
-};
-export const importGLB = () => document.getElementById("glb-input")?.click();
+export const importSTEP = () => document.getElementById("step-input")?.click();
 
 export const COMMANDS = [
   // File
-  { id: "file.new", menu: "File", label: "New scene", run: () => S().commitParts([], null) },
-  { id: "file.open", menu: "File", label: "Open scene…", keys: "Ctrl O", run: openScene },
-  { id: "file.save", menu: "File", label: "Save scene", keys: "Ctrl S", run: saveScene },
-  { id: "file.import", menu: "File", label: "Import glTF / GLB…", run: importGLB },
-  { id: "file.glb", menu: "File", label: "Export GLB (metres, part records inside)", run: () => download("/api/export.glb", "aether-model.glb") },
+  { id: "file.new", menu: "File", label: "New scene", run: () => S().resetScene() },
+  { id: "file.import", menu: "File", label: "Import STEP…", run: importSTEP },
   { id: "file.step", menu: "File", label: "Export STEP (CAD B-rep, from the CAD document)", run: () => download("/api/cad/export.step", "aether-model.step") },
   { id: "file.aethercad", menu: "File", label: "Export .aethercad (editable CAD document)", run: () => download("/api/cad/export.aethercad", "aether-model.aethercad") },
   { id: "view.cad", menu: "View", label: "CAD document panel", run: () => S().setPanel("cad") },
-  { id: "file.stl", menu: "File", label: "Export STL (millimetres)", run: () => download("/api/export.stl", "aether-model.stl") },
   { id: "file.report", menu: "File", label: "Build report (one page)", run: () => window.open("/api/report.html", "_blank") },
   { id: "file.film", menu: "File", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
   // Edit
@@ -89,22 +54,16 @@ export const COMMANDS = [
   { id: "sel.parent", menu: "Select", label: "Parent assembly", keys: "Shift G", when: () => !!one()?.parent, run: () => S().select(one().parent) },
   { id: "sel.children", menu: "Select", label: "Children", keys: "Shift ]", when: hasSel, run: () => S().selectMany(S().state.parts.filter((p) => S().selection.includes(p.parent)).map((p) => p.id)) },
   // Add
-  ...PRIMS.map(([t]) => ({ id: "add." + t, menu: "Add", label: t.replace("_", " "), group: "Mesh", run: () => addPrim(t) })),
-  { id: "add.ai", menu: "Add", label: "Assembly from text (Muse Spark)…", group: "AI", run: () => document.getElementById("ai-input")?.focus() },
   { id: "add.photo", menu: "Add", label: "Model from a photo (SAM 3.1)…", group: "AI", run: () => document.getElementById("photo-input")?.click() },
   { id: "ai.fix", menu: "Add", label: "Fix design for the desk (AI loop)", group: "AI", run: () => S().optimize(80) },
-  { id: "add.glb", menu: "Add", label: "Import GLB model…", group: "AI", run: importGLB },
   // Object
   { id: "obj.move", menu: "Object", label: "Move", keys: "G", when: hasSel, run: () => startModal("G") },
   { id: "obj.rotate", menu: "Object", label: "Rotate", keys: "R", when: hasSel, run: () => startModal("R") },
   { id: "obj.scale", menu: "Object", label: "Scale", keys: "S", when: hasSel, run: () => startModal("S") },
-  { id: "obj.dup", menu: "Object", label: "Duplicate", keys: "⇧ D", when: hasSel, run: async () => { await S().duplicate(); startModal("G"); } },
   { id: "obj.delete", menu: "Object", label: "Delete", keys: "X / Del", when: hasSel, run: () => S().deleteSelected() },
   { id: "obj.clearloc", menu: "Object", label: "Clear location", keys: "Alt G", when: hasSel, run: () => S().editSelected((p) => ({ ...p, position: [0, 0, p.parent ? 0 : 60] })) },
   { id: "obj.clearrot", menu: "Object", label: "Clear rotation", keys: "Alt R", when: hasSel, run: () => S().editSelected((p) => ({ ...p, rotation: [0, 0, 0] })) },
   { id: "obj.clearscale", menu: "Object", label: "Clear scale", keys: "Alt S", when: hasSel, run: () => S().editSelected((p) => ({ ...p, scale: [1, 1, 1] })) },
-  { id: "obj.parent", menu: "Object", label: "Parent to active", keys: "Ctrl P", when: () => S().selection.length > 1, run: () => S().parentTo(S().selection, S().state.selected) },
-  { id: "obj.unparent", menu: "Object", label: "Clear parent", keys: "Alt P", when: hasSel, run: () => S().editSelected((p) => ({ ...p, parent: null })) },
   { id: "obj.hide", menu: "Object", label: "Hide selected", keys: "H", when: hasSel, run: hideSel },
   { id: "obj.unhide", menu: "Object", label: "Reveal hidden", keys: "Alt H", run: unhideAll },
   { id: "obj.hideothers", menu: "Object", label: "Hide unselected", keys: "⇧ H", when: hasSel, run: hideOthers },
@@ -143,12 +102,6 @@ export const COMMANDS = [
   { id: "in.explode", menu: "Inspect", label: "Explode / assemble", keys: "E", run: () => { S().setView({ explode: S().view.explode > 0.5 ? 0 : 1 }, { now: true }); setTimeout(() => view.nav?.frame(sceneBox()), 700); } },
   { id: "in.isolate", menu: "Inspect", label: "Isolate selected (local view)", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
   { id: "demo.warm", menu: "Demo", label: "Warm up the GPU (before a demo)", run: () => fetch("/api/warm", { method: "POST", body: "{}" }).then(() => S().notify("Modal GPU warming up (20-60 s)")) },
-  { id: "demo.D", menu: "Demo", group: "Live", label: "D · Metal drawing press (US 929,594) → 3D → Explain", run: () => S().runDemo("D") },
-  { id: "demo.C", menu: "Demo", group: "Live", label: "C · Speed-reduction gearbox (US 1,770,035) → 3D → Explain", run: () => S().runDemo("C") },
-  { id: "demo.G", menu: "Demo", group: "Live", label: "G · NASA X-3 three-view → 3D", run: () => S().runDemo("G") },
-  { id: "demo.recD", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: D", run: () => S().playRecorded("D") },
-  { id: "demo.recC", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: C", run: () => S().playRecorded("C") },
-  { id: "demo.recG", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: G", run: () => S().playRecorded("G") },
   { id: "in.explainMachine", menu: "Inspect", label: "Explain this machine", run: () => S().runExplain() },
   { id: "obj.placeOnBase", menu: "Object", label: "Place on base", keys: "Shift B", run: () => S().tool("place_on_base", { id: S().state.selected }) },
   { id: "in.reset", menu: "Inspect", label: "Reset inspection", run: () => S().setView({ xray: false, section: null, explode: 0, isolate: [] }, { now: true }) },

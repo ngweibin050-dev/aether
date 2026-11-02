@@ -1,4 +1,5 @@
 """AETHER Lab local server. Run: python server.py  ->  open http://localhost:8765"""
+import copy
 import json
 import mimetypes
 import os
@@ -30,7 +31,7 @@ import agent  # noqa: E402
 import compute  # noqa: E402
 import explain  # noqa: E402
 
-WEB = ROOT / "ui" / "dist" if (ROOT / "ui" / "dist" / "index.html").exists() else ROOT / "web"
+WEB = ROOT / "ui" / "dist"  # never serve the obsolete mesh-building web client
 OUT = ROOT / "output"
 OUT.mkdir(exist_ok=True)
 STATE = lab.default_state()
@@ -54,27 +55,16 @@ def lean(state):
     return out
 
 
-def restore(parts):
-    """Parts from the UI: put the geometry back that lean() left out."""
-    out = []
-    for p in parts:
-        prm = p.get("params") or {}
-        if prm.get("_geometry") == "server" and p.get("id") in HEAVY:
-            p = {**p, "params": {**{k: v for k, v in prm.items() if k != "_geometry"}, **HEAVY[p["id"]]}}
-        out.append(p)
-    return out
 HISTORY = []
 PROGRESS = {"running": False, "steps": []}
 LAST_STEPS = []                                  # the last finished run's steps, for the build report
-# the demo inputs (public domain, docs/INPUTS.md); real sizes are not on the drawings: assumed, and labelled so
-DEMOS = {"D": ("tests/inputs/US929594_fig1.png", "machine", 300, "Metal drawing press", "US Patent 929,594, Fig. 1 (public domain)"),
-         "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)")}
-REC = OUT / "recorded"                           # the last successful live demo runs, replayed ONLY with a "recorded" label
-
-
-def _recorded(demo_id):
-    f = REC / f"{demo_id}.json"
-    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+# Demos: the former demos (D, C: patent machine drawings) were built as triangle meshes and their "recorded" runs
+# restored whole mesh scenes. Both are disabled until a CAD machine-drawing builder exists (Phase C).
+DEMOS = {}
+DEMOS_NOTE = "Demos are unavailable: the machine-drawing demos were mesh reconstructions (CAD version: Phase C)."
+GONE = {"/api/demo/recorded": "Recorded demo runs are removed: they restored whole mesh scenes.",
+        "/api/export.glb": "Scene GLB export is removed (it exported mesh parts). Use /api/cad/export.glb (from the B-rep).",
+        "/api/export.stl": "Scene STL export is removed (a triangle mesh is not CAD). Use /api/cad/export.step."}
 LOCK = threading.Lock()
 
 
@@ -120,32 +110,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/state":
             return self._send(200, {"state": lean(STATE), "compute": compute.where(), "gpu": compute.status})
         if path == "/api/demos":
-            return self._send(200, {"demos": [{"id": k, "kind": v[1], "size_mm": v[2], "title": v[3], "source": v[4],
-                                               "image": f"/demo/{k}.png", "recorded_at": (_recorded(k) or {}).get("recorded_at")}
-                                              for k, v in DEMOS.items()]})
-        if path.startswith("/demo/") and path[6:-4] in DEMOS and path.endswith(".png"):
-            return self._send(200, (ROOT / DEMOS[path[6:-4]][0]).read_bytes(), "image/png")
-        if path == "/api/demo/recorded":
-            demo_id = self.path.split("id=")[-1][:4]
-            rec = _recorded(demo_id)
-            if not rec:
-                return self._send(404, {"error": f"no recorded run of demo {demo_id} yet"})
-            with LOCK:
-                STATE.clear()
-                STATE.update(rec["state"])
-                STATE["version"] = int(STATE.get("version", 0)) + 1000
-            return self._send(200, {**{k: v for k, v in rec.items() if k != "state"}, "state": lean(STATE)})
-        if path in ("/api/export.glb", "/api/export.stl", "/api/report.html"):   # downloads of the current scene
+            return self._send(200, {"demos": [], "note": DEMOS_NOTE})
+        if path in GONE:
+            return self._send(410, {"error": GONE[path], "error_kind": "unavailable"})
+        if path == "/api/report.html":                      # the one-page report of the last build (no geometry)
             from engine import export
             with LOCK:
-                if path.endswith(".glb"):
-                    body, ctype = export.glb(STATE), "model/gltf-binary"
-                elif path.endswith(".stl"):
-                    body, ctype = export.stl(STATE), "model/stl"
-                else:
-                    body = export.report_html(STATE, agent.LAST_REPORT, LAST_STEPS).encode()
-                    ctype = "text/html; charset=utf-8"
-            return self._send(200, body, ctype)
+                body = export.report_html(STATE, agent.LAST_REPORT, LAST_STEPS).encode()
+            return self._send(200, body, "text/html; charset=utf-8")
         if path == "/api/cad/document":
             import cad_client
             try:
@@ -208,20 +180,15 @@ class Handler(BaseHTTPRequestHandler):
                                                  "source": agent.LAST_REPORT.get("scale_source")})
                 finally:
                     PROGRESS["running"] = False
-                demo_id = json.loads(raw or b"{}").get("demo_id")
-                if demo_id in DEMOS and _recorded(demo_id):            # kept with that demo's recorded run
-                    rec = _recorded(demo_id)
-                    rec["explain"] = res
-                    (REC / f"{demo_id}.json").write_text(json.dumps(rec, default=str), encoding="utf-8")
                 return self._send(200, res)
             except Exception as e:
                 traceback.print_exc()
                 return self._send(500, {"error": f"{type(e).__name__}: {e}"})
-        if self.path in ("/api/cad/from_sheet", "/api/cad/param", "/api/cad/open"):
+        if self.path in ("/api/cad/from_sheet", "/api/cad/param", "/api/cad/open", "/api/cad/import_step"):
             try:
                 body = json.loads(raw or b"{}")
                 res = cad_route(self.path, body)
-                return self._send(200, res)
+                return self._send(409 if res.get("error") else 200, res)
             except Exception as e:
                 traceback.print_exc()
                 return self._send(500, {"error": f"{type(e).__name__}: {e}"})
@@ -230,6 +197,9 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if self.path == "/api/tool":
                     args = body.get("args", {})
+                    if body["name"] in lab.DISABLED:
+                        return self._send(410, {"error": lab.DISABLED[body["name"]], "error_kind": "unavailable",
+                                                "state": lean(STATE)})
                     if body["name"] == "export_film":
                         args["out_dir"] = str(OUT)
                     res = compute.run(STATE, body["name"], args)
@@ -256,20 +226,19 @@ class Handler(BaseHTTPRequestHandler):
                         if self.path == "/api/photo":
                             LAST_STEPS[:] = [dict(x) for x in PROGRESS["steps"]]
                     out = {"reply": reply, "trace": trace, "images": images, "state": lean(STATE), "gpu": compute.status}
-                    if body.get("demo_id") in DEMOS and not any((t.get("result") or {}).get("error") for t in trace):
-                        REC.mkdir(parents=True, exist_ok=True)       # a successful live demo run: kept as the fallback
-                        (REC / f"{body['demo_id']}.json").write_text(json.dumps(
-                            {"recorded_at": time.strftime("%Y-%m-%d %H:%M"), "reply": reply, "trace": trace, "images": images,
-                             "steps": [dict(x) for x in PROGRESS["steps"]], "state": STATE}, default=str), encoding="utf-8")
                     return self._send(200, out)
-                if self.path == "/api/scene":          # undo / redo / bulk edits from the UI
-                    STATE["parts"] = restore(body["parts"])
-                    STATE["selected"] = body.get("selected")
-                    if "view" in body:
-                        STATE["view"] = body["view"]
-                    STATE["version"] += 1
+                if self.path == "/api/scene":          # undo / redo / bulk edits: display + placement of existing parts only
+                    try:
+                        lab.apply_scene_update(STATE, body.get("parts", []), body.get("selected"), body.get("view"))
+                    except ValueError as e:
+                        return self._send(422, {"error": str(e), "error_kind": "geometry_rejected", "state": lean(STATE)})
                     return self._send(200, {"state": lean(STATE)})
                 if self.path == "/api/reset":
+                    import cad_client
+                    cad_client.stop_quietly()  # reset also closes the prior worker document; no stale export
+                    HEAVY.clear()
+                    agent.LAST_REPORT.clear()
+                    LAST_STEPS.clear()
                     STATE.clear()
                     STATE.update(lab.default_state())
                     HISTORY = []
@@ -284,54 +253,94 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def cad_import_current(name, status_extra=None):
-    """Bring the worker's current CAD model into the scene (tessellation of the validated B-rep)."""
+    """Bring the worker's current CAD model into the scene (tessellation of the validated B-rep). It REPLACES the scene:
+    no earlier model, mesh or result stays next to it."""
     import cad_client
     m = cad_client.call("meshes")
     doc = cad_client.call("document")
     with LOCK:
-        res = lab.import_cad(STATE, m["meshes"], m["groups"], name, doc["document_id"],
-                             provenance={"maturity": doc["maturity"], "stale": m["stale"]})
+        staged = copy.deepcopy(STATE)
+        res = lab.import_cad(staged, m["meshes"], m["groups"], name, doc["document_id"],
+                             provenance={"maturity": doc["maturity"], "stale": m["stale"], "route": doc.get("route")})
         # shown on the desk at one uniform DISPLAY scale (the CAD document keeps its real millimetres)
-        res["display_fit"] = agent._fit_to_desk(STATE, res["id"])
+        res["display_fit"] = agent._fit_to_desk(staged, res["id"])
+        STATE.clear()
+        STATE.update(staged)
     return res, doc
+
+
+def _cad_failed(stage, err, extra=None):
+    """A CAD build / edit that did not produce a valid document: the scene and the last valid document are unchanged."""
+    return {"error": f"{stage}: {err}", "scene_unchanged": True, "state": lean(STATE), **(extra or {})}
+
+
+def _decode_upload(data_url):
+    import base64
+    return base64.b64decode(data_url.split(",", 1)[-1])
 
 
 def cad_route(path, body):
     """/api/cad/from_sheet {image (data URL), decisions?, ai_mode?}: the three-view CAD pipeline (cad/), model into the
     scene. /api/cad/param {id, value | clear_override}: transactional parameter edit + recompute, model refreshed.
-    /api/cad/open {path}: open a saved .aethercad (recompute with replayed model answers)."""
-    import base64
+    /api/cad/open {path}: open a saved .aethercad (recompute with replayed model answers).
+    /api/cad/import_step {file (data URL or base64), name?}: an external STEP file -> validated B-rep components
+    (external provenance, no AETHER feature history).
+    On any failure the scene and the worker's last valid document are left unchanged and an error is returned."""
     import cad_client
+    if not cad_client.available():
+        return _cad_failed("CAD environment", "not installed (aether-lab/cad-worker/setup.ps1 or setup.sh); nothing was built")
     out = OUT / "cad" / "current"
     if path == "/api/cad/from_sheet":
-        out.mkdir(parents=True, exist_ok=True)
-        raw = base64.b64decode(body["image"].split(",", 1)[-1])
-        sheet = out / "sheet.png"
-        from PIL import Image
         import io
-        Image.open(io.BytesIO(raw)).convert("RGB").save(sheet)
+        from PIL import Image
+        incoming = OUT / "cad" / "incoming"
+        incoming.mkdir(parents=True, exist_ok=True)
+        sheet = incoming / "sheet.png"
+        Image.open(io.BytesIO(_decode_upload(body["image"]))).convert("RGB").save(sheet)
         PROGRESS.update(running=True, steps=[{"label": "cad_pipeline", "state": "run", "t0": time.time(), "who": "AETHER CAD"}])
+        ok = False
         try:
             r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), decisions=body.get("decisions"),
                                 ai_mode=body.get("ai_mode", "live"), stored_from=body.get("stored_from"))
+            ok = r["status"].get("state") == "ok"
+        except Exception as e:
+            r = {"error": f"{type(e).__name__}: {e}"}
         finally:
             PROGRESS["running"] = False
-            PROGRESS["steps"][-1].update(state="ok", s=round(time.time() - PROGRESS["steps"][-1]["t0"], 1))
+            PROGRESS["steps"][-1].update(state="ok" if ok else "error", s=round(time.time() - PROGRESS["steps"][-1]["t0"], 1))
+        if not ok:
+            return _cad_failed("CAD reconstruction failed", r.get("error") or r.get("status"), {"build": r})
         imp, doc = cad_import_current(body.get("name") or "CAD model (three-view)")
         return {"build": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
     if path == "/api/cad/param":
         r = cad_client.call("set_param", id=body["id"], value=body.get("value"), clear_override=bool(body.get("clear_override")))
+        if r["status"].get("state") != "ok":
+            return _cad_failed("parameter edit rolled back", r["status"].get("error"), {"edit": r})
         imp, doc = cad_import_current(body.get("name") or "CAD model (three-view)")
         return {"edit": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
     if path == "/api/cad/open":
         r = cad_client.call("open", path=body["path"], sheet=body.get("sheet"), out_dir=body.get("out_dir"))
+        if r["status"].get("state") != "ok":
+            return _cad_failed("document did not recompute", r["status"].get("error"), {"open": r})
         imp, doc = cad_import_current(body.get("name") or "CAD model")
         return {"open": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
+    if path == "/api/cad/import_step":
+        incoming = OUT / "cad" / "incoming"
+        incoming.mkdir(parents=True, exist_ok=True)
+        f = incoming / "import.step"
+        f.write_bytes(_decode_upload(body["file"]))
+        name = (body.get("name") or "Imported STEP")[:80]
+        try:
+            r = cad_client.call("import_step", path=str(f), out_dir=str(OUT / "cad" / "current"), name=name)
+        except Exception as e:
+            return _cad_failed("STEP import failed", f"{type(e).__name__}: {e}")
+        imp, doc = cad_import_current(f"{name} (external STEP)")
+        return {"import_step": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
     raise ValueError(path)
 
 
 def _doc_brief(doc):
-    return {k: doc[k] for k in ("title", "document_id", "maturity", "status", "stale")}
+    return {k: doc.get(k) for k in ("title", "document_id", "route", "maturity", "status", "stale")}
 
 
 if __name__ == "__main__":

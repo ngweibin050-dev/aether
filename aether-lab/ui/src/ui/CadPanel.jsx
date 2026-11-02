@@ -36,13 +36,14 @@ export default function CadPanel() {
   const [tab, setTab] = useState("params");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
-  const hasCad = useStore((s) => (s.state?.parts || []).some((p) => p.type === "cad"));
+  const docId = useStore((s) => (s.state?.parts || []).find((p) => p.type === "cad")?.eng?.cad_document);
+  const hasCad = !!docId;
 
   const load = useCallback(() => {
     fetch("/api/cad/document").then((r) => r.json()).then((j) => { if (j.error) { setErr(j.error); setDoc(null); } else { setErr(null); setDoc(j); } })
       .catch((e) => setErr(String(e)));
   }, []);
-  useEffect(() => { if (open || hasCad) load(); }, [open, hasCad, load]);
+  useEffect(() => { if (open || hasCad) load(); }, [open, hasCad, docId, load]);
   useEffect(() => { if (hasCad && !useStore.getState().panels.cad) useStore.getState().setPanel("cad", true); }, [hasCad]);
 
   const edit = async (id, value, clear) => {
