@@ -35,9 +35,10 @@ export const importSTEP = () => document.getElementById("step-input")?.click();
 export const COMMANDS = [
   // File
   { id: "file.new", menu: "File", label: "New scene", run: () => S().resetScene() },
-  { id: "file.import", menu: "File", label: "Import STEP…", run: importSTEP },
+  { id: "file.import", menu: "File", label: "Import STEP or CAD package…", run: importSTEP },
   { id: "file.step", menu: "File", label: "Export STEP (CAD B-rep, from the CAD document)", run: () => download("/api/cad/export.step", "aether-model.step") },
-  { id: "file.aethercad", menu: "File", label: "Export .aethercad (editable CAD document)", run: () => download("/api/cad/export.aethercad", "aether-model.aethercad") },
+  { id: "file.aethercad", menu: "File", label: "Export document JSON (not self-contained)", run: () => download("/api/cad/export.aethercad", "aether-model.aethercad") },
+  { id: "file.package", menu: "File", label: "Export portable CAD package", run: () => download("/api/cad/export.package", "aether-model.aether.zip") },
   { id: "view.cad", menu: "View", label: "CAD document panel", run: () => S().setPanel("cad") },
   { id: "file.report", menu: "File", label: "Build report (one page)", run: () => window.open("/api/report.html", "_blank") },
   { id: "file.film", menu: "File", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },

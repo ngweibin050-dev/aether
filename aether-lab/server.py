@@ -126,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, cad_client.call("document"))
                 except Exception as e:
                     return self._send(409, {"error": str(e)})
-        if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.blender.glb", "/api/cad/export.aethercad", "/api/cad/report.json"):
+        if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.blender.glb", "/api/cad/export.aethercad", "/api/cad/export.package", "/api/cad/report.json"):
             import cad_client
             kind = "blender_glb" if path.endswith("export.blender.glb") else path.rsplit(".", 1)[-1]
             kind = {"json": "report"}.get(kind, kind)
@@ -135,7 +135,7 @@ class Handler(BaseHTTPRequestHandler):
                     f = cad_client.call("export", kind=kind)["path"]
                 except Exception as e:
                     return self._send(409, {"error": str(e)})
-                ctype = {"step": "model/step", "glb": "model/gltf-binary", "blender_glb": "model/gltf-binary", "aethercad": "application/json", "report": "application/json"}[kind]
+                ctype = {"step": "model/step", "glb": "model/gltf-binary", "blender_glb": "model/gltf-binary", "aethercad": "application/json", "package": "application/zip", "report": "application/json"}[kind]
                 return self._send(200, Path(f).read_bytes(), ctype)
         if path.startswith("/api/cad/image/"):
             with LOCK:
@@ -161,6 +161,9 @@ class Handler(BaseHTTPRequestHandler):
         global HISTORY
         self._t0 = time.time()
         n = int(self.headers.get("Content-Length", 0))
+        if self.path == "/api/cad/import_package" and (n < 0 or n > 180 * 1024 * 1024):
+            self.close_connection = True
+            return self._send(413, {"error": "CAD package request too large"})
         raw = self.rfile.read(n)
         print(f"POST {self.path} received {len(raw)}/{n} B", flush=True)
         if self.path == "/api/transcribe":
@@ -189,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 return self._send(500, {"error": f"{type(e).__name__}: {e}"})
-        if self.path in ("/api/cad/from_sheet", "/api/cad/param", "/api/cad/open", "/api/cad/import_step"):
+        if self.path in ("/api/cad/from_sheet", "/api/cad/param", "/api/cad/open", "/api/cad/import_step", "/api/cad/import_package"):
             import cad_client
             with LOCK:
                 before = copy.deepcopy(STATE)
@@ -341,6 +344,21 @@ def cad_route(path, body):
             return _cad_failed("document did not recompute", r["status"].get("error"), {"open": r})
         imp, doc = cad_import_current(body.get("name") or "CAD model")
         return {"open": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
+    if path == "/api/cad/import_package":
+        import base64
+        incoming = OUT / "cad" / "incoming"
+        incoming.mkdir(parents=True, exist_ok=True)
+        f = incoming / "import.aether.zip"
+        try:
+            encoded = body["file"].split(",", 1)[-1]
+            f.write_bytes(base64.b64decode(encoded, validate=True))
+            r = cad_client.call("import_package", path=str(f), out_dir=str(out))
+            if r["status"].get("state") != "ok":
+                return _cad_failed("CAD package import failed", r["status"].get("error"), {"open": r})
+        except Exception as e:
+            return _cad_failed("CAD package import failed", f"{type(e).__name__}: {e}")
+        imp, doc = cad_import_current(body.get("name") or "CAD package")
+        return {"import_package": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
     if path == "/api/cad/import_step":
         incoming = OUT / "cad" / "incoming"
         incoming.mkdir(parents=True, exist_ok=True)

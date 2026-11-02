@@ -127,14 +127,16 @@ export default function Outliner() {
     <FloatPanel id="outliner" title="Scene" icon="layers" open={open} onClose={() => st.setPanel("outliner", false)}
       style={{ left: L.gap, top: L.top, bottom: L.bottom, width: L.left }}
       right={<>
-        <button className="grid h-6 w-6 place-items-center rounded-md text-silver hover:bg-white/10 hover:text-white" title="Import STEP B-rep"
+        <button className="grid h-6 w-6 place-items-center rounded-md text-silver hover:bg-white/10 hover:text-white" title="Import STEP B-rep or AETHER CAD package"
           onClick={() => file.current.click()}><Icon name="upload" className="h-3.5 w-3.5" /></button>
-        <input id="step-input" ref={file} type="file" accept=".step,.stp" hidden onChange={async (e) => {
+        <input id="step-input" ref={file} type="file" accept=".step,.stp,.zip" hidden onChange={async (e) => {
           const f = e.target.files[0]; e.target.value = ""; if (!f) return;
           try {
             const data = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(f); });
-            const j = await (await import("../api")).api("/api/cad/import_step", { file: data, name: f.name });
-            st.applyState(j.state); st.setPanel("cad", true); st.notify("STEP imported as external B-rep; feature history is not available.");
+            const isPackage = f.name.toLowerCase().endsWith(".aether.zip");
+            if (!isPackage && !/\.(step|stp)$/i.test(f.name)) throw new Error("Select a STEP or .aether.zip CAD package.");
+            const j = await (await import("../api")).api(isPackage ? "/api/cad/import_package" : "/api/cad/import_step", { file: data, name: f.name });
+            st.applyState(j.state); st.setPanel("cad", true); st.notify(isPackage ? "CAD package restored and recomputed." : "STEP imported as external B-rep; feature history is not available.");
           } catch (err) { st.notify(err.message, "error"); }
         }} />
       </>}>

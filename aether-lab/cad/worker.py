@@ -315,6 +315,40 @@ def cmd_import_step(a):
             "checks": [{k: c.get(k) for k in ("name", "valid", "volume_mm3", "bbox_mm", "faces")} for c in checks]}
 
 
+def cmd_import_package(a):
+    """Restore a self-contained document only after recomputing and validating it."""
+    from cad import package as PK
+    from cad.document import Document
+    from cad.ops import OPS
+    out = os.path.abspath(a["out_dir"])
+    st = _staging(out)
+    try:
+        data, sheet = PK.read(a["path"], st)
+        doc = Document(data, OPS)
+        doc.base_dir = st
+        if status := _unresolved_view_status(doc):
+            return {"status": status, "kept_previous_document": True}
+        status = doc.recompute(validate=_full_validate)
+        if status["state"] != "ok":
+            return {"status": status, "kept_previous_document": True}
+        res = None
+        if sheet:
+            from cad import observations as O, vehicle as Vh
+            obs, aux = O.observe(sheet)
+            res = {"obs": obs, "aux": aux, "F": Vh.frames(obs, doc.data["decisions"])}
+        # Checks from the original environment are not fresh certification.
+        doc.data["validation"] = {"package_import": "recomputed; previous reports not imported"}
+        doc.data["maturity"] = "geometrically_valid"
+        doc.save(os.path.join(st, "model.aethercad"))
+        _swap_in(st, out)
+        doc.base_dir = out
+        sheet = os.path.join(out, os.path.basename(sheet)) if sheet else None
+        STATE.update(doc=doc, res=res, out_dir=out, sheet=sheet)
+        return {"status": status, "route": doc.data.get("route"), "source_sheet_included": bool(sheet)}
+    finally:
+        shutil.rmtree(st, ignore_errors=True)
+
+
 def cmd_open(a):
     """Open a saved document: the observations / views are re-measured from its source sheet (needed for
     reprojection) and the features recompute from the document itself; no model is called."""
@@ -399,7 +433,7 @@ def cmd_set_param(a):
     st = doc.set_param(a["id"], a.get("value"), clear_override=a.get("clear_override", False), validate=_full_validate,
                        note=a.get("note"))
     if st["state"] == "ok":
-        if doc.data.get("route") == "three_view":
+        if doc.data.get("route") == "three_view" and "overall_length" in doc.data["parameters"]:
             from cad import vehicle as Vh
             length = doc.data["parameters"]["overall_length"]
             doc.data["decisions"]["overall_length_mm"] = {
@@ -457,6 +491,13 @@ def cmd_export(a):
         return {"path": f"{out}/model.aethercad"}
     if doc.data["status"].get("state") != "ok" or doc.stale:
         raise RuntimeError("export blocked: the document is not in a valid, recomputed state")
+    if kind == "package":
+        from cad import package as PK
+        if not P.assembly_validation(doc, interference=True)["all_valid"]:
+            raise RuntimeError("export blocked: assembly validation failed")
+        path = os.path.join(out, "model.aether.zip")
+        PK.write(doc, STATE.get("sheet"), path)
+        return {"path": path}
     if kind in ("glb", "blender_glb", "step"):
         val = P.assembly_validation(doc, interference=True)
         if not val["all_valid"]:
@@ -511,7 +552,8 @@ def _brief(rep):
 CMDS = {"checkpoint": cmd_checkpoint, "checkpoint_commit": cmd_checkpoint_commit, "checkpoint_rollback": cmd_checkpoint_rollback,
         "recover_checkpoint": cmd_recover_checkpoint,
         "ping": cmd_ping, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
-        "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "import_step": cmd_import_step}
+        "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "import_step": cmd_import_step,
+        "import_package": cmd_import_package}
 
 
 def main():
