@@ -41,7 +41,7 @@ export default function MenuBar() {
         <a href="#/" title="Back to the AETHER home page" className="flex items-center gap-2 rounded-lg pl-1 pr-2 transition hover:bg-white/[0.06]">
           <div className="relative h-5 w-5 rounded-full border border-cyan-glow/70 shadow-glow"><div className="absolute inset-[5px] rounded-full bg-cyan-glow/80" /></div>
           <span className="font-display text-[13px] font-bold tracking-[0.22em]">AETHER</span>
-          <span className="grad-text-lab font-mono text-[10px] font-semibold">	v0.1.0</span>
+          <span className="grad-text-lab font-mono text-[10px] font-semibold"> v0.1.0</span>
         </a>
         {MENUS.map((m) => (
           <div key={m} className="relative">
