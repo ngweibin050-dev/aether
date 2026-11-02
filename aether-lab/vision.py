@@ -33,13 +33,13 @@ KINDS = ("machine", "three_view", "part")
 
 def upload_kind(data_url, views_side=1000):
     """What an upload is, measured on the image (no AI, no comma in a prompt):
-    - "three_view": three or more separate views whose sizes agree as one object's side / top / front (sheet.match,
-      size disagreement <= 15 %, the same limit lab.import_sheet enforces);
+    - "three_view": a sheet with three or more separate views of one object whose lengths agree (side and plan view;
+      engine/views.py). It is rebuilt as parametric CAD (cad/ package, OpenCascade B-rep);
     - "machine": any other line drawing (one view of a machine);
     - "part": a photo (smooth shading, few sharp edges): SAM 3.1 cuts out one part.
     Line drawing = dense sharp edges: >= 6 % of pixels have a grey-level step > 25 per pixel (drawings measured
     0.195-0.199, the sample phone photo 0.007). Returns (kind, evidence)."""
-    from engine import sheet
+    from engine import views
     raw = base64.b64decode(data_url.split(",", 1)[-1])
     im = Image.open(io.BytesIO(raw)).convert("L")
     im.thumbnail((512, 512))
@@ -49,19 +49,9 @@ def upload_kind(data_url, views_side=1000):
     ev = {"edge_density": round(edge, 3)}
     if edge < 0.06:
         return "part", ev
-    G = sheet._gray(raw, views_side)
-    boxes = sheet.panels(G)
-    if len(boxes) < 3:                               # one drawing on the sheet: no silhouettes needed (they cost ~15 s)
-        ev["views_found"] = len(boxes)
-        return "machine", ev
-    views = [v for v in (sheet.view_mask(G, b) for b in boxes) if v[0] is not None and v[0].sum() > 200]
-    ev["views_found"] = len(views)
-    if len(views) >= 3:
-        err = sheet.match([v[0] for v in views])[-1]
-        ev["size_disagreement_pct"] = round(100 * err, 1)
-        if err <= 0.15:
-            return "three_view", ev
-    return "machine", ev
+    multi, vev = views.multi_view(raw, views_side)
+    ev.update({k: (float(v) if isinstance(v, (np.floating,)) else v) for k, v in vev.items()})
+    return ("three_view" if multi else "machine"), ev
 
 
 def _data_url(im, fmt="PNG"):

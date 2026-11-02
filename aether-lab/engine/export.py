@@ -135,7 +135,7 @@ def report_html(state, build=None, steps=None, title="AETHER build report"):
     who = {"read_drawing": ("Muse Spark", "read drawing"), "complete_views": ("Muse Wonder", "complete the unseen views"),
            "Muse Spark": ("Muse Spark", "thinking"), "sam_3_1": ("SAM 3.1", "outline"), "voice": ("Muse Voice Transcribe", "speech to text"),
            "explain · Muse Spark": ("Muse Spark", "explanation"), "illustration · Muse Image": ("Muse Image", "illustration"),
-           "read_views": ("Modal T4 GPU", "find the views, carve the 3D shape"), "desk_score": ("Modal T4 GPU", "desk sharpness score"),
+           "cad_pipeline": ("AETHER CAD (OpenCascade)", "three-view sheet -> parametric CAD"), "desk_score": ("Modal T4 GPU", "desk sharpness score"),
            "focus_sweep": ("Modal T4 GPU", "eye focus sweep"), "eye_view": ("Modal T4 GPU", "eye view"),
            "make_hologram": ("Modal T4 GPU", "lab phase hologram"), "classify_upload": ("AETHER engine", "what the image is"),
            "measure_circles": ("AETHER engine", "measure circles on the ink"), "rebuild_3d": ("AETHER engine", "rebuild each part in 3D"),

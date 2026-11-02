@@ -2,7 +2,7 @@
 Light tools (scene edits) always run here; heavy ones (holograms, eye views, sweeps, desk scores) run on Modal only.
 
 Version check: Modal runs a copy of the engine frozen at the last deploy. If this computer's engine is newer, the
-old copy does not know new part types or arguments (KeyError: 'inflate', TypeError: gear() got an unexpected
+old copy does not know new part types or arguments (KeyError: 'outline', TypeError: gear() got an unexpected
 keyword 'module'). The server compares engine fingerprints when it starts and before heavy tools; when they differ
 it redeploys Modal itself (`modal deploy modal_app.py`, the account this computer is logged in to) and then runs the
 tool on Modal. The fingerprint is the ONLY reason to redeploy: arguments are checked against the tool's signature

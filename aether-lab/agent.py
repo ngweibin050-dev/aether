@@ -287,8 +287,7 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
                     kind="auto"):
     """An upload -> a 3D model, routed by what it IS:
     - "machine": one view of a machine -> Muse Spark reads it like an engineer -> 3D mechanism (_blueprint_to_design);
-    - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/, OpenCascade B-rep) when the
-      CAD environment is installed; mode="hull" (or no CAD environment) -> the LEGACY visual-hull preview (not CAD);
+    - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/ package, OpenCascade B-rep);
     - "part": a phone photo of one part -> SAM 3.1 cut-out + measurements -> Muse Spark rebuilds it.
     kind "auto" measures the image (vision.upload_kind: edge density, views and their size agreement); the UI can
     also say it ("Machine drawing"). prompt is an optional hint (what the object is), not a router.
@@ -307,20 +306,16 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     def first(out):
         reply, trace, images, hist = out
         return reply, [route] + trace, images, hist
-    if kind == "three_view" and mode != "hull":
-        import cad_client
-        if cad_client.available():
-            return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step))
-        route["result"]["cad"] = "CAD environment not installed (cad-worker/.venv): legacy visual-hull PREVIEW used, not CAD"
     if kind == "three_view":
-        out = _sheet_to_design(state, history, data_url, (hints or ["object"])[0], size_mm, out_dir, step)
-        if out:
-            return first(out)
-        if route["result"]["by"] == "the user's choice":
-            return first(("This sheet does not hold three views of one object that agree in size (side, top and front). "
-                          "Choose 'Machine drawing' for one view of a machine.", [], {}, history))
-        route["result"]["fallback"] = "the views did not agree in size: read as one machine view instead"
-        kind = "machine"
+        # a multi-view sheet is ALWAYS rebuilt as parametric CAD (cad/ package, OpenCascade B-rep). There is no mesh
+        # fallback: without the CAD environment the upload stops here and says how to install it.
+        import cad_client
+        if not cad_client.available():
+            route["result"]["cad"] = "CAD environment missing"
+            return first(("This is a multi-view sheet. It is rebuilt as parametric CAD, which needs the CAD environment "
+                          "(once: aether-lab/cad-worker/setup.ps1 on Windows, setup.sh on Linux/macOS). Nothing was built.",
+                          [], {}, history))
+        return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step))
     if kind == "machine":
         prompts = (hints + [h for h in MACHINE_HINTS if h not in hints])[:6]
         return first(_blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, step, mode))
@@ -344,49 +339,6 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     reply, trace, more, hist = chat(state, history, content, out_dir, on_step)
     images.update(more)
     return reply, [route, sam] + trace, images, hist
-
-
-def _spark_which_front(cands, name):
-    """Muse Spark looks at the two end views and says which one is the front. None if it cannot tell (then only
-    the side and top views' lines are put on the model, so nothing lands on the wrong end)."""
-    if len(cands) != 2:
-        return None
-    msg = [{"type": "text", "text": f"These are two end views of the same {name} from an orthographic drawing. Which one "
-                                    "shows the FRONT (e.g. headlights, grille, windscreen, the face it moves towards)? "
-                                    "Answer with exactly one character: 1 or 2. If you cannot tell, answer 0."}]
-    for k, (_, crop) in enumerate(cands):
-        msg += [{"type": "text", "text": f"View {k + 1}:"},
-                {"type": "image_url", "image_url": {"url": vision._data_url(crop.convert("RGB"), "JPEG")}}]
-    msg[0]["text"] = msg[0]["text"].replace("Answer with exactly one character: 1 or 2. If you cannot tell, answer 0.",
-                                            'Answer {"front": 1} or {"front": 2}; {"front": 0} if you cannot tell.')
-    try:
-        obj, _ = _spark_json(msg, {"type": "object", "additionalProperties": False, "required": ["front"],
-                                   "properties": {"front": {"type": "integer", "enum": [0, 1, 2]}}}, "which_front", seed=1, timeout=60)
-    except SparkError:
-        return None                                       # unknown front: only the side and top views' lines are used
-    a = obj.get("front")
-    return cands[0][0] if a == 1 else cands[1][0] if a == 2 else None
-
-
-def _spark_name_regions(name):
-    """A namer for sheet.sheet_to_solid: Muse Spark sees each view with its regions tinted and numbered and names
-    every region the way a car / product modeller would (front door, side window, air intake, headlight...)."""
-    def namer(shown):
-        msg = [{"type": "text", "text": (
-            f"These are orthographic views of one {name} from a drawing. In each view the areas enclosed by the drawn "
-            "lines are tinted and numbered. Name every numbered area as the separate part a professional 3D modeller "
-            "would build (e.g. front door, side window, windscreen, roof, bonnet, front fender, rear fender, air "
-            "intake, side skirt, headlight, tail light, grille, diffuser, exhaust, mirror, wheel, engine cover vent). "
-            "Use 1-3 lowercase words, no left/right. Answer with one JSON object only: "
-            '{"side": {"1": "...", ...}, "top": {...}, "front": {...}, "rear": {...}} (only the views shown).')}]
-        for role, im, n in shown:
-            msg += [{"type": "text", "text": f"{role} view, areas 1-{n}:"},
-                    {"type": "image_url", "image_url": {"url": vision._data_url(im.convert("RGB"), "JPEG")}}]
-        # keys vary per sheet: json_object. Low reasoning: at the default it wrote ~15k tokens in 68-120 s (one timeout)
-        js, _ = _spark_json(msg, None, "region_names", seed=1, timeout=90, effort="low")
-        return {role: {int(k) - 1: str(v)[:40] for k, v in (js.get(role) or {}).items() if str(k).isdigit()}
-                for role, _, _ in shown}
-    return namer
 
 
 def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
@@ -429,97 +381,6 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
                                                             "document": {k: doc[k] for k in ("title", "maturity", "status")}}}]
     return text, trace, {}, history
-
-
-def _sheet_to_design(state, history, data_url, prompt, size_mm, out_dir, step):
-    """A sheet with three or more orthographic views of one object (a car blueprint: side, front, rear, top) ->
-    one solid that matches every view (engine/sheet.py, visual hull). Returns None when the sheet is not a
-    multi-view drawing of one object, so the single-view paths run instead."""
-    import io
-    from concurrent.futures import ThreadPoolExecutor
-    from engine import sheet
-    step({"stage": "tool", "tool": "read_views"})
-    name = (prompt or "").split(",")[0].strip() or "object"
-    import time
-    tl, t0 = {}, time.time()
-    im = vision.load_image(data_url, 1600)
-    try:
-        front = _spark_which_front(sheet.front_rear_candidates(im), name)
-        tl["front_rear_s"] = round(time.time() - t0, 1)
-        shown = sheet.naming_views(im, 1600, front)["shown"]          # light, here: views and numbered regions
-        tl["local_views_s"] = round(time.time() - t0 - tl["front_rear_s"], 1)
-    except ValueError:
-        step({"stage": "done", "tool": "read_views", "error": True})
-        return None
-    # Muse Spark names the regions HERE (the Meta key stays on this computer) while Modal builds the solid at the
-    # drawing's own resolution (1 px per voxel, decimated to ~40k triangles); the names are applied after
-    pool = ThreadPoolExecutor(1)
-    naming = pool.submit(_spark_name_regions(name), shown)
-    pool.shutdown(wait=False)
-    buf = io.BytesIO()
-    im.save(buf, "PNG")
-    t1 = time.time()
-    res = compute.run(state, "import_sheet", {
-        "image": "data:image/png;base64," + __import__("base64").b64encode(buf.getvalue()).decode(),
-        "length_mm": max(float(size_mm), 120.0), "name": f"{name[:40]} (from three views)", "front_panel": front,
-        "px_per_voxel": 1.0, "decimate_to": 40000, "measure": False})
-    tl["modal_build_s"] = round(time.time() - t1, 1)
-    if res.get("error"):
-        step({"stage": "done", "tool": "read_views", "error": res["error"][:200]})
-        if "ValueError" in res["error"]:                  # not one object's views after all: try the one-view paths
-            return None
-        return (f"The three-view build failed: {res['error']}", [{"tool": "read_views", "args": {}, "result": res}], {}, history)
-    t2 = time.time()
-    try:
-        names, naming_error = naming.result(), None
-    except Exception as e:                                # parts keep their position names; the report says why
-        names, naming_error = {}, f"{type(e).__name__}: {str(e)[:200]}"
-    tl["wait_for_names_s"] = round(time.time() - t2, 1)
-    t3 = time.time()
-    res.update(lab.apply_sheet_names(state, res["id"], names, res.pop("_frame")))
-    tl["names_and_measure_s"] = round(time.time() - t3, 1)
-    res["timing_local"] = tl
-    if naming_error:
-        res["naming_error"] = naming_error
-    chk = res.pop("_check")
-    fit = _fit_to_desk(state, res["id"])
-    step({"stage": "done", "tool": "read_views"})
-    iou = res["view_match_iou_pct"]
-    check = {"mode": "three-view", "views_found": res["views_found"], "view_match_iou_pct": iou,
-             "view_match_voxel_pct": res.get("view_match_voxel_pct"), "view_match_note": res.get("view_match_note"),
-             "delivered_triangles": res.get("delivered_triangles"), "mesh": res.get("mesh"),
-             "timing_modal": res.get("timing"), "timing_local": res.get("timing_local"),
-             "size_disagreement_pct": res["size_disagreement_pct"],
-             "note": "Blue: the 3D model seen from that view. Red: drawn but not built (the views disagree there)."}
-    info = {"mode": "three-view", "read_by": "AETHER three-view reader (views found and matched by size, no AI guess)"
-                                     + ("; Muse Spark told front from rear" if front is not None else ""),
-            "size_mm": res["size_mm"], "check": check, "note": res["note"], "precision": res["precision"],
-            "parts_built": res["parts_built"], "part_names": res["part_names"], "detail": res.get("detail")}
-    sam = {"tool": "read_views", "args": {"prompt": prompt, "length_mm": res["size_mm"][0]}, "result": info}
-    LAST_REPORT.clear()
-    LAST_REPORT.update({"kind": "three-view sheet", "view_match_iou_pct": iou, "image_data_url": data_url, "fit": fit,
-                        "scale_known": False, "scale_source": f"assumed: length {res['size_mm'][0]:g} mm (no scale on the sheet)"})
-    images = {"sam_check": chk}
-    step({"stage": "tool", "tool": "desk_score"})
-    score = compute.run(state, "desk_score", {})
-    step({"stage": "done", "tool": "desk_score"})
-    trace = [sam, {"tool": "desk_score", "args": {}, "result": lab.for_agent(score)}]
-    text = (f"LEGACY PREVIEW, NOT CAD: I rebuilt the sheet from its side, top and front views as a visual hull, split into {res['parts_built']} separate "
-            "parts the way a modeller builds it (every closed region the drawing's lines make is its own part, with its "
-            f"own panel lines; wheels are tyre + rim): {json.dumps({k: v for k, v in res.items() if k not in ('note',)}, default=str)}. "
-            f"It is shown on the desk at {fit['scale']}x so it fits the sharp zone {fit['sharp_zone_mm']} mm. "
-            f"desk_score: pass={score.get('pass')}, worst {score.get('min_sharpness_pct')}%. Do not rebuild or change it. "
-            "Tell the user in 3-4 short sentences: which views were found and used, how well the 3D model matches each "
-            f"view (side {iou.get('side')}%, top {iou.get('top')}%, front {iou.get('front')}% overlap; outline error in mm: "
-            f"{json.dumps(res['precision']['outline_error_mm'])}), that it is built from {res['parts_built']} separate parts "
-            "(select, hide or explode any of them in the Scene panel; names and recess depths: "
-            f"{json.dumps(res.get('detail'))}), and honestly what "
-            "a three-view rebuild cannot recover (concave detail such as the cabin glass, intakes and wheel spokes; "
-            "it is the outer shape only). No tool calls.")
-    reply, more_trace, more, hist = chat(state, history, text, out_dir, step,
-                                         tools=[d for d in TOOL_DEFS if d["function"]["name"] == "desk_score"])
-    images.update(more)
-    return reply, trace + more_trace, images, hist
 
 
 READ_DRAWING = """You are a senior mechanical engineer reading a mechanical drawing ({w} x {h} px){where}. Read it the way

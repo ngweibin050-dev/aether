@@ -9,8 +9,8 @@ lost. An engineer recovers it from what each part IS. This module does the same,
                distance snapped exactly, teeth phased so a tooth enters a gap.
 - small round (r < 8 mm or pin/bolt/axle) -> pin / shaft seen end-on: cylinder along the normal, through the stack.
 - shaft/rod drawn long -> cylinder along its long axis, diameter = traced width.
-- wheel/pulley -> traced outline (keeps its spokes and holes) made solid with rounded rim (inflate), 0.35 r thick, + hub.
-- link/lever/arm/crank -> traced outline inflated to a forged arm, 0.5 x width thick, fully rounded edges.
+- wheel/pulley -> traced outline (keeps its spokes and holes) extruded 0.35 r thick, + hub.
+- link/lever/arm/crank -> traced outline extruded to a forged arm, 0.5 x width thick.
 - spring -> helical coil along its long axis; piston/cylinder -> tube along its long axis.
 - frame/plate/housing -> a housing: back plate + walls along its outer contour through the machine depth + front plate
   (hidden by default so you can look in). Machine depth = 0.45 x the smaller drawing side (assumed), layers spread
@@ -389,8 +389,7 @@ def rebuild(parts, drawing_mm, completion=None, frame_cell_mm=1.0):
         elif k == "frame":
             continue                             # built below, around the stack
         else:                                    # wheel, link, plate: the clean profile with its holes, extruded
-            # an exact extrusion of the profile (lines, arcs; vectorised when traced), not the voxelised rounded
-            # solid of `inflate`, whose rim was a smoothed voxel staircase
+            # an exact extrusion of the profile (lines, arcs; vectorised when traced)
             spec = {"type": "outline", "params": {"polygons": q["polys"], "thickness": round(q["t"], 1)},
                     "position": [x, y, zc]}
             eng["dims"] = {"thickness_mm": [round(q["t"], 1), "assumed from its size"],

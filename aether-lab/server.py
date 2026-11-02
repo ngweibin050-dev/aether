@@ -68,8 +68,7 @@ PROGRESS = {"running": False, "steps": []}
 LAST_STEPS = []                                  # the last finished run's steps, for the build report
 # the demo inputs (public domain, docs/INPUTS.md); real sizes are not on the drawings: assumed, and labelled so
 DEMOS = {"D": ("tests/inputs/US929594_fig1.png", "machine", 300, "Metal drawing press", "US Patent 929,594, Fig. 1 (public domain)"),
-         "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)"),
-         "G": ("tests/inputs/NASA_X-3_three_view.png", "three_view", 180, "Douglas X-3 three-view", "NASA Dryden graphic (public domain)")}
+         "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)")}
 REC = OUT / "recorded"                           # the last successful live demo runs, replayed ONLY with a "recorded" label
 
 

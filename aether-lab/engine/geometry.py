@@ -295,57 +295,7 @@ def outline(polygons, thickness=5.0):
     return np.vstack(Vs), np.vstack(Fs)
 
 
-def inflate(polygons, thickness=10.0, round=1.0, cells=140, faces=3000):
-    """A traced outline made solid with a rounded cross-section (sketch inflation), instead of a flat extrusion.
-
-    Every point of the outline gets a half-thickness h(r) = t/2 * sqrt(1 - (1 - min(r/R, 1))^2), r = distance to
-    the nearest edge, R = round * t/2: edges are rounded like a cast or forged part, the middle is flat at t, and
-    narrow features (a thin arm) get thinner than wide ones, the way real castings are. Holes stay holes.
-    Voxelised, closed and smoothed by hull.surface, then decimated. Centred on z = 0."""
-    from PIL import Image, ImageDraw
-    from . import hull
-    pts = np.array([p for poly in polygons for p in poly["outer"]], float)
-    if not len(pts):
-        return box(1, 1, thickness)
-    lo, hi = pts.min(0), pts.max(0)
-    t = float(thickness)
-    cell = max(float((hi - lo).max()) / cells, t / 24, 0.2)
-    W, H = int(np.ceil((hi[0] - lo[0]) / cell)) + 3, int(np.ceil((hi[1] - lo[1]) / cell)) + 3
-    im = Image.new("1", (W, H))
-    d = ImageDraw.Draw(im)
-    tr = lambda P: [((x - lo[0]) / cell + 1, (y - lo[1]) / cell + 1) for x, y in P]
-    for poly in polygons:
-        d.polygon(tr(poly["outer"]), fill=1)
-        for h in poly.get("holes", []):
-            d.polygon(tr(h), fill=0)
-    m = np.array(im, bool).T                                  # [x, y]
-    # distance to the edge (city-block erosion steps, scaled ~ Euclidean by 1/1.2)
-    R = max(round * t / 2, cell)
-    steps = int(np.ceil(R / cell * 1.3)) + 1
-    dist = np.zeros(m.shape)
-    cur = m.copy()
-    for _ in range(steps):
-        dist += cur
-        nxt = cur.copy()
-        nxt[1:, :] &= cur[:-1, :]
-        nxt[:-1, :] &= cur[1:, :]
-        nxt[:, 1:] &= cur[:, :-1]
-        nxt[:, :-1] &= cur[:, 1:]
-        cur = nxt
-        if not cur.any():
-            break
-    r = dist * cell / 1.2
-    h = (t / 2) * np.sqrt(np.clip(1 - (1 - np.minimum(r / R, 1)) ** 2, 0, 1))
-    nz = max(4, int(np.ceil(t / cell)) + 2)
-    zc = (np.arange(nz) - (nz - 1) / 2) * cell
-    occ = m[:, :, None] & (np.abs(zc)[None, None, :] <= h[:, :, None])
-    if not occ.any():
-        return box(1, 1, thickness)
-    V, F = hull.surface(occ, cell, origin=(lo[0] - 1.5 * cell, lo[1] - 1.5 * cell, zc[0] - cell / 2), smooth=4)
-    return decimate(V, F, int(faces))
-
-
-BUILDERS = {"box": box, "profile": profile, "outline": outline, "inflate": inflate, "cylinder": cylinder, "tube": tube, "cone": cone, "sphere": sphere,
+BUILDERS = {"box": box, "profile": profile, "outline": outline, "cylinder": cylinder, "tube": tube, "cone": cone, "sphere": sphere,
             "torus": torus, "gear": gear, "nozzle": nozzle, "blade_ring": blade_ring,
             "pipe": pipe, "coil": coil}
 
@@ -356,7 +306,6 @@ PARAM_HELP = {
     "blade_ring": "count, inner, outer, thickness, height, twist", "pipe": "points [[x,y,z],...], radius",
     "coil": "radius, wire, turns, pitch",
     "outline": "polygons [{outer: [[x,y],...], holes: [...]}], thickness",
-    "inflate": "polygons (as outline), thickness, round (0..1 edge rounding): rounded cast/forged solid of an outline",
 }
 
 # ---------------- transforms ----------------

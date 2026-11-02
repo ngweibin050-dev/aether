@@ -1,7 +1,7 @@
 """Engine fingerprint: a short hash of every engine source file and data table.
 
 The Modal GPU app runs a COPY of the engine, frozen when `modal deploy` ran. When this computer's engine changes
-and Modal is not redeployed, the two disagree: a new part type ("inflate") or a new argument ("module") is unknown
+and Modal is not redeployed, the two disagree: a new part type ("outline") or a new argument ("module") is unknown
 to the old copy and the tool fails with KeyError / TypeError. compute.py compares the two fingerprints and
 redeploys Modal when they differ.
 """
