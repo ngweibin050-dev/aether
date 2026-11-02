@@ -110,3 +110,62 @@ def test_unresolved_view_preserves_previous_document_and_output(tmp_path, monkey
     assert r['status']['state'] == 'invalid' and 'unresolved' in r['status']['error']
     assert r['kept_previous_document'] and worker.STATE == original
     assert marker.read_text() == 'previous'
+
+
+def test_reopening_unresolved_draft_preserves_previous_document(tmp_path, monkeypatch):
+    import json
+    from cad import document
+    original = dict(worker.STATE)
+    class FakeDoc:
+        def __init__(self, data, ops):
+            self.data = data
+        def recompute(self, **kwargs):
+            pytest.fail('an unresolved draft must not be reopened')
+    monkeypatch.setattr(document, 'Document', FakeDoc)
+    f = tmp_path / 'unresolved.aethercad'
+    f.write_text(json.dumps({'decisions': {'front_view': {'provenance': 'unresolved'}}}))
+    r = worker.cmd_open({'path': str(f)})
+    assert r['status']['state'] == 'invalid' and r['kept_previous_document']
+    assert worker.STATE == original
+
+
+@pytest.mark.xfail(strict=True, reason='Known transaction gap: worker commits before scene import; downstream failure can replace the old document')
+def test_downstream_scene_failure_rolls_back_worker_document(tmp_path, monkeypatch):
+    """Acceptance test for the outstanding worker/scene transaction gap; must not be reported as a pass."""
+    import base64, json, sys, threading
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
+    import server, cad_client
+    from engine import lab
+    cad_client.stop_quietly()
+    monkeypatch.setenv('AETHER_CAD_PYTHON', sys.executable)
+    monkeypatch.setenv('AETHER_COMPUTE', 'local')
+    monkeypatch.setattr(server, 'OUT', tmp_path / 'output')
+    server.STATE.clear(); server.STATE.update(lab.default_state())
+    srv = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True); thread.start()
+    def upload(f):
+        body = json.dumps({'file': base64.b64encode(f.read_bytes()).decode()}).encode()
+        try:
+            with urlopen(Request(f'http://127.0.0.1:{srv.server_port}/api/cad/import_step', data=body,
+                                 headers={'Content-Type':'application/json'}), timeout=30) as r:
+                return r.status
+        except HTTPError as e:
+            return e.code
+    try:
+        files = [tmp_path / 'old.step', tmp_path / 'new.step']
+        for f, size in zip(files, (10, 20)):
+            w = STEPControl_Writer()
+            w.Transfer(BRepPrimAPI_MakeBox(size, size, size).Shape(), STEPControl_AsIs)
+            w.Write(str(f))
+        assert upload(files[0]) == 200
+        old_doc = cad_client.call('document')['document_id']
+        old_scene = copy.deepcopy(server.STATE)
+        def fail_scene(*args, **kwargs):
+            raise RuntimeError('injected post-worker scene failure')
+        monkeypatch.setattr(server, 'cad_import_current', fail_scene)
+        assert upload(files[1]) == 500
+        assert server.STATE == old_scene
+        assert cad_client.call('document')['document_id'] == old_doc  # currently fails: worker already swapped documents
+    finally:
+        srv.shutdown(); srv.server_close(); thread.join(); cad_client.stop_quietly()

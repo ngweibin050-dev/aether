@@ -270,7 +270,7 @@ def cad_import_current(name, status_extra=None):
 
 
 def _cad_failed(stage, err, extra=None):
-    """A CAD build / edit that did not produce a valid document: the scene and the last valid document are unchanged."""
+    """Report an error before scene import. Post-worker scene failures have a known transaction gap; see Phase 0/A report."""
     return {"error": f"{stage}: {err}", "scene_unchanged": True, "state": lean(STATE), **(extra or {})}
 
 
@@ -285,7 +285,7 @@ def cad_route(path, body):
     /api/cad/open {path}: open a saved .aethercad (recompute with replayed model answers).
     /api/cad/import_step {file (data URL or base64), name?}: an external STEP file -> validated B-rep components
     (external provenance, no AETHER feature history).
-    On any failure the scene and the worker's last valid document are left unchanged and an error is returned."""
+    Worker-side invalid builds preserve the last document. Post-worker scene failures are not yet atomic; see Phase 0/A report."""
     import cad_client
     if not cad_client.available():
         return _cad_failed("CAD environment", "not installed (aether-lab/cad-worker/setup.ps1 or setup.sh); nothing was built")

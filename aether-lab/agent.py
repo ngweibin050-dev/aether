@@ -317,8 +317,8 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
     Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
     STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics, and
-    ONLY when the document is valid: on any failure the worker keeps its last valid document and the scene is
-    unchanged."""
+    ONLY after worker validation. Worker build failures retain the prior document and scene. A later scene-import
+    failure is not yet atomic with the worker document; see the Phase 0/A report."""
     import base64
     import io
     from pathlib import Path

@@ -18,7 +18,8 @@ Commands
   import_step {path, out_dir, name?}         -> external STEP -> validated B-rep solids as a "step_import" document
 
 Failure integrity: build and import_step work in a staging folder; the open document (and out_dir) are replaced only
-when the new document recomputed and validated. A failure returns an error and leaves the last valid document open.
+when the new document recomputed and validated. Worker-side failures preserve the last document. A subsequent server-side
+scene-import failure can still leave document and scene out of sync; see the Phase 0/A report.
 """
 from __future__ import annotations
 
@@ -77,6 +78,13 @@ def _staging(out):
     return st
 
 
+def _unresolved_view_status(doc):
+    front = doc.data.get("decisions", {}).get("front_view", {})
+    if isinstance(front, dict) and front.get("provenance") == "unresolved":
+        return {"state": "invalid", "error": "Front/rear view interpretation is unresolved; confirm the front view before building"}
+    return None
+
+
 def cmd_build(a):
     from cad import pipeline as P
     stored = None
@@ -94,10 +102,8 @@ def cmd_build(a):
                 "failed_document": f"{st}/failed.aethercad", "seconds": res["seconds"]}
     # Valid topology does not resolve failed drawing interpretation. Never publish
     # the pipeline's placeholder front/rear choice as a successful reconstruction.
-    front = doc.data.get("decisions", {}).get("front_view", {})
-    if isinstance(front, dict) and front.get("provenance") == "unresolved":
-        return {"status": {"state": "invalid", "error": "Front/rear view interpretation is unresolved; confirm the front view before building"},
-                "maturity": doc.data["maturity"], "kept_previous_document": True, "seconds": res["seconds"]}
+    if status := _unresolved_view_status(doc):
+        return {"status": status, "maturity": doc.data["maturity"], "kept_previous_document": True, "seconds": res["seconds"]}
     rep = P.finalize(doc, res, st, log=_log, ai_mode=a.get("ai_mode", "live")) if a.get("finalize", True) else None
     if rep and (not rep.get("validation", {}).get("all_valid") or not rep.get("step_roundtrip", {}).get("all_pass")):
         return {"status": {"state": "invalid", "error": "Full validation or STEP round-trip failed"},
@@ -187,6 +193,8 @@ def cmd_open(a):
         data = json.load(f)
     doc = Document(data, OPS)
     doc.base_dir = os.path.dirname(os.path.abspath(a["path"]))
+    if status := _unresolved_view_status(doc):
+        return {"status": status, "kept_previous_document": True}
     st = doc.recompute(validate=_fast_validate)
     if st["state"] != "ok":                                # keep the last valid document open
         return {"status": st, "kept_previous_document": True}
