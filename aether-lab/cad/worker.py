@@ -92,6 +92,12 @@ def cmd_build(a):
         doc.save(f"{st}/failed.aethercad")
         return {"status": doc.data["status"], "maturity": doc.data["maturity"], "kept_previous_document": True,
                 "failed_document": f"{st}/failed.aethercad", "seconds": res["seconds"]}
+    # Valid topology does not resolve failed drawing interpretation. Never publish
+    # the pipeline's placeholder front/rear choice as a successful reconstruction.
+    front = doc.data.get("decisions", {}).get("front_view", {})
+    if isinstance(front, dict) and front.get("provenance") == "unresolved":
+        return {"status": {"state": "invalid", "error": "Front/rear view interpretation is unresolved; confirm the front view before building"},
+                "maturity": doc.data["maturity"], "kept_previous_document": True, "seconds": res["seconds"]}
     rep = P.finalize(doc, res, st, log=_log, ai_mode=a.get("ai_mode", "live")) if a.get("finalize", True) else None
     if rep and (not rep.get("validation", {}).get("all_valid") or not rep.get("step_roundtrip", {}).get("all_pass")):
         return {"status": {"state": "invalid", "error": "Full validation or STEP round-trip failed"},

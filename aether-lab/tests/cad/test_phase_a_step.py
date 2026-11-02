@@ -91,3 +91,22 @@ def test_surface_only_step_rejected(tmp_path):
     with pytest.raises(RuntimeError, match='no solid'):
         worker.cmd_import_step({'path': str(f), 'out_dir': str(tmp_path / 'current')})
     assert worker.STATE == old
+
+
+def test_unresolved_view_preserves_previous_document_and_output(tmp_path, monkeypatch):
+    from cad import pipeline
+    original = dict(worker.STATE)
+    class FakeDoc:
+        data = {'status': {'state': 'ok'}, 'maturity': 'draft_inference',
+                'decisions': {'front_view': {'value': 'end_b', 'provenance': 'unresolved'}}}
+    monkeypatch.setattr(pipeline, 'build', lambda *a, **k: (FakeDoc(), {'seconds': 0}))
+    def must_not_finalize(*args, **kwargs):
+        pytest.fail('an unresolved draft must not be finalized')
+    monkeypatch.setattr(pipeline, 'finalize', must_not_finalize)
+    drawing = tmp_path / 'drawing.png'; drawing.write_bytes(b'test')
+    current = tmp_path / 'current'; current.mkdir()
+    marker = current / 'previous.aethercad'; marker.write_text('previous')
+    r = worker.cmd_build({'sheet': str(drawing), 'out_dir': str(current)})
+    assert r['status']['state'] == 'invalid' and 'unresolved' in r['status']['error']
+    assert r['kept_previous_document'] and worker.STATE == original
+    assert marker.read_text() == 'previous'
