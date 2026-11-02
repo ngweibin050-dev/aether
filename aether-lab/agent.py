@@ -287,7 +287,8 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
                     kind="auto"):
     """An upload -> a 3D model, routed by what it IS:
     - "machine": one view of a machine -> Muse Spark reads it like an engineer -> 3D mechanism (_blueprint_to_design);
-    - "three_view": a sheet with side / top / front views of one object -> visual hull built from parts;
+    - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/, OpenCascade B-rep) when the
+      CAD environment is installed; mode="hull" (or no CAD environment) -> the LEGACY visual-hull preview (not CAD);
     - "part": a phone photo of one part -> SAM 3.1 cut-out + measurements -> Muse Spark rebuilds it.
     kind "auto" measures the image (vision.upload_kind: edge density, views and their size agreement); the UI can
     also say it ("Machine drawing"). prompt is an optional hint (what the object is), not a router.
@@ -306,6 +307,11 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     def first(out):
         reply, trace, images, hist = out
         return reply, [route] + trace, images, hist
+    if kind == "three_view" and mode != "hull":
+        import cad_client
+        if cad_client.available():
+            return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step))
+        route["result"]["cad"] = "CAD environment not installed (cad-worker/.venv): legacy visual-hull PREVIEW used, not CAD"
     if kind == "three_view":
         out = _sheet_to_design(state, history, data_url, (hints or ["object"])[0], size_mm, out_dir, step)
         if out:
@@ -383,6 +389,48 @@ def _spark_name_regions(name):
     return namer
 
 
+def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
+    """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
+    Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
+    STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics."""
+    import base64
+    import io
+    from pathlib import Path
+    import cad_client
+    from PIL import Image
+    out = Path(out_dir) / "cad" / "current"
+    out.mkdir(parents=True, exist_ok=True)
+    sheet = out / "sheet.png"
+    Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
+    step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
+    try:
+        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out))
+    except Exception as e:
+        step({"stage": "done", "tool": "cad_pipeline", "error": str(e)[:300]})
+        return (f"The CAD reconstruction failed: {e}", [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e)}}], {}, history)
+    step({"stage": "done", "tool": "cad_pipeline", "error": None if r["status"].get("state") == "ok" else r["status"].get("error")})
+    m = cad_client.call("meshes")
+    doc = cad_client.call("document")
+    imp = lab.import_cad(state, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
+                         provenance={"maturity": doc["maturity"]})
+    imp["display_fit"] = _fit_to_desk(state, imp["id"])     # display scale only; the CAD document stays in real mm
+    rep = r.get("report") or {}
+    LAST_REPORT.clear()
+    LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,
+                        "scale_source": "assumed: overall length 4500 mm (no dimension on the sheet)",
+                        "view_match_iou_pct": {k: round(100 * v, 1) for k, v in (rep.get("reprojection_iou") or {}).items()}})
+    feats = [f for f in doc["features"]]
+    text = (f"Built a parametric CAD model ({len(feats)} features, {len([c for c in doc['components'] if not c.get('group')])} "
+            f"solid components) from the sheet. Maturity: {doc['maturity'].replace('_', ' ')}. All solids valid: "
+            f"{rep.get('all_valid')}. STEP round trip: {'passed' if rep.get('step_all_pass') else 'not passed'}. "
+            "Reprojection IoU per view: " + ", ".join(f"{k} {v:.3f}" for k, v in (rep.get("reprojection_iou") or {}).items())
+            + ". Real size is assumed (4.5 m overall length) until you enter a real dimension; the cross-sections between "
+              "the end views and every recess depth are inferred or assumed and labelled so in the CAD panel.")
+    trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
+                                                            "document": {k: doc[k] for k in ("title", "maturity", "status")}}}]
+    return text, trace, {}, history
+
+
 def _sheet_to_design(state, history, data_url, prompt, size_mm, out_dir, step):
     """A sheet with three or more orthographic views of one object (a car blueprint: side, front, rear, top) ->
     one solid that matches every view (engine/sheet.py, visual hull). Returns None when the sheet is not a
@@ -456,7 +504,7 @@ def _sheet_to_design(state, history, data_url, prompt, size_mm, out_dir, step):
     score = compute.run(state, "desk_score", {})
     step({"stage": "done", "tool": "desk_score"})
     trace = [sam, {"tool": "desk_score", "args": {}, "result": lab.for_agent(score)}]
-    text = (f"I rebuilt the sheet from its side, top and front views (visual hull), split into {res['parts_built']} separate "
+    text = (f"LEGACY PREVIEW, NOT CAD: I rebuilt the sheet from its side, top and front views as a visual hull, split into {res['parts_built']} separate "
             "parts the way a modeller builds it (every closed region the drawing's lines make is its own part, with its "
             f"own panel lines; wheels are tyre + rim): {json.dumps({k: v for k, v in res.items() if k not in ('note',)}, default=str)}. "
             f"It is shown on the desk at {fit['scale']}x so it fits the sharp zone {fit['sharp_zone_mm']} mm. "

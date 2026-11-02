@@ -37,7 +37,7 @@ STATE = lab.default_state()
 # Imported meshes carry their whole geometry in params (vertices, faces, drawn lines: megabytes). The UI gets that
 # geometry once from /api/meshes; the state it is sent leaves those fields out, and parts coming back from the UI
 # (undo, edits) get them back from here, by part id.
-HEAVY_KEYS = ("vertices", "faces", "lines")
+HEAVY_KEYS = ("vertices", "faces", "lines", "normals")
 HEAVY = {}
 
 
@@ -147,6 +147,28 @@ class Handler(BaseHTTPRequestHandler):
                     body = export.report_html(STATE, agent.LAST_REPORT, LAST_STEPS).encode()
                     ctype = "text/html; charset=utf-8"
             return self._send(200, body, ctype)
+        if path == "/api/cad/document":
+            import cad_client
+            try:
+                return self._send(200, cad_client.call("document"))
+            except Exception as e:
+                return self._send(409, {"error": str(e)})
+        if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.aethercad", "/api/cad/report.json"):
+            import cad_client
+            kind = path.rsplit(".", 1)[-1]
+            kind = {"json": "report"}.get(kind, kind)
+            try:
+                f = cad_client.call("export", kind=kind)["path"]
+            except Exception as e:
+                return self._send(409, {"error": str(e)})
+            ctype = {"step": "model/step", "glb": "model/gltf-binary", "aethercad": "application/json", "report": "application/json"}[kind]
+            return self._send(200, Path(f).read_bytes(), ctype)
+        if path.startswith("/api/cad/image/"):
+            name = Path(path).name
+            f = OUT / "cad" / "current" / name
+            if f.suffix == ".png" and f.is_file():
+                return self._send(200, f.read_bytes(), "image/png")
+            return self._send(404, {"error": "not found"})
         if path == "/api/meshes":
             return self._send(200, {"version": STATE["version"], "meshes": lab.meshes(STATE),
                                     "offsets": lab.explode_offsets(STATE)})
@@ -192,6 +214,14 @@ class Handler(BaseHTTPRequestHandler):
                     rec = _recorded(demo_id)
                     rec["explain"] = res
                     (REC / f"{demo_id}.json").write_text(json.dumps(rec, default=str), encoding="utf-8")
+                return self._send(200, res)
+            except Exception as e:
+                traceback.print_exc()
+                return self._send(500, {"error": f"{type(e).__name__}: {e}"})
+        if self.path in ("/api/cad/from_sheet", "/api/cad/param", "/api/cad/open"):
+            try:
+                body = json.loads(raw or b"{}")
+                res = cad_route(self.path, body)
                 return self._send(200, res)
             except Exception as e:
                 traceback.print_exc()
@@ -252,6 +282,57 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, {"error": f"{type(e).__name__}: {e}"})
             except OSError as e2:                      # the browser already hung up
                 print(f"POST {self.path}: could not send the error ({e2})", flush=True)
+
+
+def cad_import_current(name, status_extra=None):
+    """Bring the worker's current CAD model into the scene (tessellation of the validated B-rep)."""
+    import cad_client
+    m = cad_client.call("meshes")
+    doc = cad_client.call("document")
+    with LOCK:
+        res = lab.import_cad(STATE, m["meshes"], m["groups"], name, doc["document_id"],
+                             provenance={"maturity": doc["maturity"], "stale": m["stale"]})
+        # shown on the desk at one uniform DISPLAY scale (the CAD document keeps its real millimetres)
+        res["display_fit"] = agent._fit_to_desk(STATE, res["id"])
+    return res, doc
+
+
+def cad_route(path, body):
+    """/api/cad/from_sheet {image (data URL), decisions?, ai_mode?}: the three-view CAD pipeline (cad/), model into the
+    scene. /api/cad/param {id, value | clear_override}: transactional parameter edit + recompute, model refreshed.
+    /api/cad/open {path}: open a saved .aethercad (recompute with replayed model answers)."""
+    import base64
+    import cad_client
+    out = OUT / "cad" / "current"
+    if path == "/api/cad/from_sheet":
+        out.mkdir(parents=True, exist_ok=True)
+        raw = base64.b64decode(body["image"].split(",", 1)[-1])
+        sheet = out / "sheet.png"
+        from PIL import Image
+        import io
+        Image.open(io.BytesIO(raw)).convert("RGB").save(sheet)
+        PROGRESS.update(running=True, steps=[{"label": "cad_pipeline", "state": "run", "t0": time.time(), "who": "AETHER CAD"}])
+        try:
+            r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), decisions=body.get("decisions"),
+                                ai_mode=body.get("ai_mode", "live"), stored_from=body.get("stored_from"))
+        finally:
+            PROGRESS["running"] = False
+            PROGRESS["steps"][-1].update(state="ok", s=round(time.time() - PROGRESS["steps"][-1]["t0"], 1))
+        imp, doc = cad_import_current(body.get("name") or "CAD model (three-view)")
+        return {"build": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
+    if path == "/api/cad/param":
+        r = cad_client.call("set_param", id=body["id"], value=body.get("value"), clear_override=bool(body.get("clear_override")))
+        imp, doc = cad_import_current(body.get("name") or "CAD model (three-view)")
+        return {"edit": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
+    if path == "/api/cad/open":
+        r = cad_client.call("open", path=body["path"], sheet=body.get("sheet"), out_dir=body.get("out_dir"))
+        imp, doc = cad_import_current(body.get("name") or "CAD model")
+        return {"open": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
+    raise ValueError(path)
+
+
+def _doc_brief(doc):
+    return {k: doc[k] for k in ("title", "document_id", "maturity", "status", "stale")}
 
 
 if __name__ == "__main__":

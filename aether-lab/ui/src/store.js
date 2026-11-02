@@ -27,8 +27,8 @@ export const useStore = create((set, get) => ({
   menu: null,                // { kind, x, y }
   modal: null,               // live G/R/S readout
   dock: null,                // open dock popover: section | explode
-  panels: { orchestrator: true, outliner: true, physics: true, toolbar: true },
-  win: { orchestrator: "normal", outliner: "normal", physics: "normal" },   // normal | min | max
+  panels: { orchestrator: true, outliner: true, physics: true, toolbar: true, cad: false },
+  win: { orchestrator: "normal", outliner: "normal", physics: "normal", cad: "normal" },   // normal | min | max
   dockBar: false,            // the tool strip (hologram, section, explode…) is in Tools; this shows it as a bar too
   outlinerTab: "outliner",
   busy: {},

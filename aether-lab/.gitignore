@@ -10,3 +10,5 @@ tests/machine_dense.jpg
 tests/car_three_view.gif
 # scratch renders
 g_side_ceiling*.png
+tests/inputs_local/
+cad-worker/.venv/

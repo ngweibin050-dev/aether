@@ -52,13 +52,15 @@ Every step in the UI shows which model (or engine) did it and in how many second
 
 ## What you can do with it
 
-- **Drawing → 3D assembly**, **three-view sheet → 3D model**, **photo of a part → model**, or **text → parametric
-  assembly** (Muse Spark designs from primitives).
+- **Drawing → 3D assembly**, **three-view sheet → parametric CAD** (OpenCascade B-rep with a feature history, STEP;
+  [cad/README.md](cad/README.md)), **photo of a part → model**, or **text → parametric assembly** (Muse Spark designs
+  from primitives). The old three-view visual hull remains only as a labelled legacy preview.
 - **Explain this machine**: a step player (Back / Next / Play) highlights each step's parts, moves the camera,
   explodes or cuts the model.
 - **Check it on the desk**: sharp zone (−108 … +87 mm around the surface for a seated viewer), Window Law, speckle;
   an AI design loop moves the model until every part is ≥ 80 % as sharp as a full 2D hologram. **Simulation.**
-- **Export**: GLB (metres, every part's sizes and their source inside), STL (mm), one-page build report.
+- **Export**: STEP + `.aethercad` (CAD models), GLB (metres, every part's sizes and their source inside), STL (mm),
+  one-page build report.
 - **Demo menu**: D, C and G live, each with a recorded fallback that is always labelled "RECORDED · not live".
 
 ## Run locally (Windows)
@@ -71,6 +73,8 @@ Every step in the UI shows which model (or engine) did it and in how many second
 3. `python server.py`, then open http://localhost:8765 (the built UI is in `ui/dist`; Node is only needed to change
    it: `cd ui && npm install && npm run build`).
 4. Tests: `python tests/test_physics.py` (36 tests, no API key needed); `python tests/smoke_meta.py` (live Meta API).
+5. Three-view CAD: run `cad-worker\setup.ps1` once (an isolated Python 3.12 + CadQuery/OpenCascade environment; the
+   lab's own Python is untouched). CAD tests: `cad-worker\.venv\Scripts\python.exe -m pytest tests\cad -q`.
 
 ## Honesty
 

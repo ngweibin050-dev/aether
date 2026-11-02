@@ -166,7 +166,7 @@ def _clean(v):
 
 def add_part(state, type, params=None, name=None, position=(0, 0, 60), rotation=(0, 0, 0),
              scale=(1, 1, 1), parent=None, brightness=1.0, color=None):
-    if type not in geometry.BUILDERS and type not in ("group", "mesh"):
+    if type not in geometry.BUILDERS and type not in ("group", "mesh", "cad"):
         raise ValueError(f"unknown part type {type}; use one of {sorted(geometry.BUILDERS)}")
     if parent:
         parent = _find(state, parent)["id"]
@@ -350,7 +350,7 @@ def turn_gear(state, id, degrees=15.0):
 
 def list_parts(state):
     return {"parts": [{"id": p["id"], "name": p["name"], "type": p["type"], "params": p["params"]
-                       if p["type"] != "mesh" else {"faces": len(p["params"]["faces"]) // 3},
+                       if p["type"] not in ("mesh", "cad") else {"faces": len(p["params"]["faces"]) // 3},
                        "position": p["position"], "rotation": p["rotation"], "parent": p.get("parent")}
                       for p in state["parts"]]}
 
@@ -371,6 +371,40 @@ def import_mesh(state, name, vertices, faces, target_faces=4000, position=(0, 0,
     state["selected"] = p["id"]
     place_on_base(state, p["id"], float(position[2]))           # position z = height of its lowest point
     return {"id": p["id"], "faces_before": before, "faces_after": int(len(F))}
+
+
+def import_cad(state, meshes, groups, name, document_id, replace=True, provenance=None):
+    """A CAD model (cad/ worker) into the scene: one group, one part per component (type "cad": the tessellation of
+    that component's validated B-rep, with the B-rep's own surface normals and edge lines), wheel assemblies as
+    sub-groups. Units: mm; the CAD model frame (X along the object, Y lateral, Z up) becomes the scene frame; the group
+    stands on the display surface. The parts are display/physics geometry only: the CAD document is authoritative and
+    edits go through /api/cad/param, never through the mesh."""
+    if replace:
+        state["parts"] = [p for p in state["parts"] if not (p.get("eng") or {}).get("cad_document")]
+    g = _part("group", {}, name, (0, 0, 0))
+    g["eng"] = {"kind": "cad assembly", "cad_document": document_id, "dims": {}, "joints": [], **(provenance or {})}
+    state["parts"].append(g)
+    sub = {}
+    for gr in groups:
+        q = _part("group", {}, gr["name"], (0, 0, 0), parent=g["id"])
+        q["eng"] = {"kind": gr["kind"], "cad_document": document_id, "cad_component": gr["id"], "dims": {}, "joints": []}
+        state["parts"].append(q)
+        sub[gr["id"]] = q["id"]
+    for cid, m in meshes.items():
+        prm = {"vertices": m["v"], "faces": m["f"], "normals": m["n"], "lines": m["l"]}
+        p = _part("cad", prm, m["name"] if not m.get("parent") else f"{m['name']} ({m['parent'].replace('_', ' ')})",
+                  (0, 0, 0), parent=sub.get(m.get("parent"), g["id"]))
+        if m.get("colour"):
+            p["color"] = retina.hex_color(m["colour"])
+        p["eng"] = {"kind": m["kind"], "cad_document": document_id, "cad_component": cid, "dims": {}, "joints": [],
+                    "material": m.get("material")}
+        state["parts"].append(p)
+    state["selected"] = g["id"]
+    _bump(state)
+    lo, hi = geometry.bounds(subtree(state, g["id"]))
+    g["position"] = [float(-(lo[0] + hi[0]) / 2), float(-(lo[1] + hi[1]) / 2), 0.0]
+    place_on_base(state, g["id"], 0.0)
+    return {"id": g["id"], "parts": len(meshes), "size_mm": _clean(np.round(hi - lo, 1))}
 
 
 def import_three_view(state, front, top, side, width_mm=80.0, name="three-view part", position=None, voxels=96):
@@ -1078,11 +1112,13 @@ def meshes(state):
             out[p["id"]] = {"v": np.round(V, 3).astype(np.float32).ravel().tolist(), "f": F.ravel().tolist()}
             if p.get("params", {}).get("lines"):
                 out[p["id"]]["l"] = p["params"]["lines"]
+            if p["type"] == "cad" and p["params"].get("normals"):
+                out[p["id"]]["n"] = p["params"]["normals"]          # surface normals from the B-rep
     return out
 
 
 TOOLS = {f.__name__: f for f in (add_part, update_part, delete_part, clear_scene, build_assembly, place_on_base, turn_gear, list_parts,
-                                  import_mesh, import_three_view, import_sheet, set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
+                                  import_mesh, import_three_view, import_sheet, import_cad, set_display, set_eye, set_view, set_hands, make_hologram, propagate, desk_wave_view,
                                   focus_sweep, eye_view, lab_focus_sweep, lab_eye_view, window_check, hand_check, desk_check,
                                   search_column_width, desk_score, speckle_compare, export_film)}
 HEAVY = {"make_hologram", "propagate", "desk_wave_view", "focus_sweep", "eye_view", "lab_focus_sweep", "lab_eye_view", "desk_check", "search_column_width",
