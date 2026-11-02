@@ -38,8 +38,7 @@ function summary(t) {
 }
 
 const EXAMPLES = [
-  ["Electric motor", "Generate an electric car motor (stator, rotor, housing, shaft) and place it 10 cm above the screen"],
-  ["Cut and explode it", "Cut it in half and explode it so I can see the stator and rotor"],
+  ["Cut and explode it", "Cut and explode the current CAD model so I can inspect it"],
   ["Is it sharp on the desk?", "Can AETHER Desk show this sharply? Check the Window Law too"],
   ["How grainy?", "How grainy will it look, and do sparse point groups help?"],
 ];
@@ -99,7 +98,7 @@ async function toWav(blob, rate = 16000) {
 const KINDS = [
   ["auto", "Auto", "The server measures the image: a line drawing with one view = machine, three matching views = three-view sheet, a photo = one part", 240],
   ["machine", "Machine drawing", "Unavailable until the machine-drawing CAD builder is implemented", 240],
-  ["three_view", "Three-view sheet", "Side, top and front views of one object (e.g. a car) → a solid built from named parts that matches every view", 180],
+  ["three_view", "Three-view sheet", "Side, top and end views of one object → an attempted B-rep reconstruction; validation and view-match results are reported", 180],
   ["part", "Part photo", "Unavailable until the part-photo CAD builder is implemented", 80],
 ];
 
@@ -311,7 +310,7 @@ export default function Orchestrator() {
             onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
           <input id="ai-input" ref={input} value={text} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && e.target.blur()}
-            placeholder={rec ? "Listening… release to send" : "Ask Muse Spark to design, change or check something…"}
+            placeholder={rec ? "Listening… release to send" : "Ask Muse Spark to inspect or adjust the current CAD scene…"}
             className="min-w-0 flex-1 truncate bg-transparent px-1 py-1.5 text-[12.5px] text-white outline-none placeholder:text-white/35" />
           <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky-400 via-indigo-500 to-violet-500 text-white shadow-[0_6px_18px_-6px_rgba(99,102,241,.9)] transition hover:brightness-110 disabled:bg-none disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none"
             disabled={busy || !text.trim()}><Icon name="send" /></button>

@@ -103,8 +103,8 @@ function Hero() {
           </Reveal>
           <Reveal i={2}>
             <p className="s-lead mt-6 max-w-[540px]">
-              AETHER is a holographic design studio. Speak or sketch a machine, Meta's Muse Spark builds real parts,
-              and a wave-optics eye simulation checks that the hologram will look sharp before a single photon is printed.
+              AETHER is a holographic design studio. Import a STEP solid or try the existing multi-view CAD route,
+              then use wave-optics simulation to assess how a design may look. Other reconstruction routes remain unavailable.
             </p>
           </Reveal>
           <Reveal i={3}>

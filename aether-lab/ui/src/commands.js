@@ -54,7 +54,7 @@ export const COMMANDS = [
   { id: "sel.parent", menu: "Select", label: "Parent assembly", keys: "Shift G", when: () => !!one()?.parent, run: () => S().select(one().parent) },
   { id: "sel.children", menu: "Select", label: "Children", keys: "Shift ]", when: hasSel, run: () => S().selectMany(S().state.parts.filter((p) => S().selection.includes(p.parent)).map((p) => p.id)) },
   // Add
-  { id: "add.photo", menu: "Add", label: "Model from a photo (SAM 3.1)…", group: "AI", run: () => document.getElementById("photo-input")?.click() },
+  { id: "add.photo", menu: "Add", label: "Upload a multi-view drawing…", group: "AI", run: () => document.getElementById("photo-input")?.click() },
   { id: "ai.fix", menu: "Add", label: "Fix design for the desk (AI loop)", group: "AI", run: () => S().optimize(80) },
   // Object
   { id: "obj.move", menu: "Object", label: "Move", keys: "G", when: hasSel, run: () => startModal("G") },
