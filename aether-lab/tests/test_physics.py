@@ -2,10 +2,22 @@
 import time
 
 import numpy as np
+import pytest
 
 from engine import optics, measure, eye
 
 GRID = optics.Grid(n=512, pitch=8e-6, wavelength=532e-9)
+
+
+def cad_state(*names):
+    """Synthetic test solids tessellated by OpenCascade; see fixtures/generate_brep_physics.py."""
+    import json
+    from pathlib import Path
+    from engine import lab
+    data = json.loads((Path(__file__).parent / 'fixtures' / 'brep_physics.json').read_text())
+    st = lab.default_state()
+    lab.import_cad(st, {n: data[n] for n in names}, [], 'Synthetic B-rep fixtures', 'synthetic-fixture')
+    return st
 
 
 def test_single_point_focuses():
@@ -106,10 +118,8 @@ def test_window_law_and_hand():
 def test_see_inside():
     """7. Section cut, X-ray and explode reach the hologram: a part hidden inside a shell becomes visible."""
     from engine import lab
-    st = lab.default_state()
-    lab.build_assembly(st, "box in a ball", [
-        {"name": "shell", "type": "sphere", "params": {"radius": 30}},
-        {"name": "core", "type": "box", "params": {"w": 12, "d": 12, "h": 12}}], position=(0, 0, 30))   # bottom at 30: centre 60
+    st = cad_state('shell', 'core')
+    lab.update_part(st, st['selected'], position=[0, 0, 30])  # shell centre z = 60
 
     def core_visible():
         P, owner, vis = lab._samples(st)
@@ -131,14 +141,14 @@ def test_see_inside():
 def test_desk_score_loop():
     """8. Design loop score: a tall design fails on the desk; moved onto the panel plane it passes."""
     from engine import lab
-    st = lab.default_state()
-    lab.build_assembly(st, "Tall", [{"name": "Body", "type": "tube", "params": {"outer": 40, "inner": 36, "height": 150}}],
-                       position=[0, 0, 110])
+    st = cad_state('tube')
+    lab.update_part(st, st['selected'], position=[0, 0, 110])
     a = lab.desk_score(st)
     root = [p for p in st["parts"] if not p.get("parent")][0]
-    lab.update_part(st, root["id"], position=[0, 0, 0])
+    # This fixture spans z=0..150; centre it on the display plane.
+    lab.update_part(st, root["id"], position=[0, 0, -75])
     b = lab.desk_score(st)
-    print(f"  at z 110: {a['min_sharpness_pct']}% pass {a['pass']}; at z 0: {b['min_sharpness_pct']}% pass {b['pass']}")
+    print(f"  base at z 110: {a['min_sharpness_pct']}% pass {a['pass']}; centred on z 0: {b['min_sharpness_pct']}% pass {b['pass']}")
     assert not a["pass"] and b["pass"] and b["min_sharpness_pct"] > a["min_sharpness_pct"]
 
 
@@ -167,6 +177,7 @@ def test_relative_sharpness_metric():
     assert on > 0.95 and off < on and ok.all() and abs(d[0] - D[0]) < 1e-9 and d[1] > D[1]
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_outline_watertight():
     """11. Drawing outline -> closed solid: a plate with a hole has no open edges and the right volume."""
     from engine import outline
@@ -187,11 +198,11 @@ def test_outline_watertight():
 
 def test_involute_mesh():
     """12. Involute gears: z20/z30 m2 at 50 mm centres have contact ratio > 1.2 and their teeth do not overlap."""
-    from engine import geometry, rebuild
-    chk = geometry.gear_mesh_check(20, 30, 2, 50)
-    ph = rebuild.mesh_phase(0.0, 20, 30, 0.0)
+    from engine import gearmath
+    chk = gearmath.gear_mesh_check(20, 30, 2, 50)
+    ph = gearmath.mesh_phase(0.0, 20, 30, 0.0)
     # rasterise both gears at the mesh phase: tooth areas must not overlap
-    from engine.geometry import gear_profile
+    from engine.gearmath import gear_profile
     def raster(z, phase, cx):
         from PIL import Image, ImageDraw
         im = Image.new("1", (1200, 800), 0)
@@ -203,6 +214,7 @@ def test_involute_mesh():
     assert chk["contact_ratio"] > 1.2 and chk["ok"] and over < 0.5
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_rebuild_synthetic():
     """13. Drawing rebuild: frame + two meshing gears + pin + link + spring become a layered 3D mechanism that
     stands upright, fits the sharp zone and passes the desk score (synthetic drawing, no network)."""
@@ -249,8 +261,8 @@ def test_retina_full2d_is_100():
     is focused. (A layer the eye is NOT focused on can score above 100%: the desk's horizontal stays focused at
     the panel, which may be nearer the eye's focus than the defocused 2D image. That is physics, not a bug.)"""
     from engine import lab, retina
-    st = lab.default_state()
-    lab.add_part(st, "box", {"w": 40, "d": 40, "h": 2}, "Plate", position=[0, 0, 60])
+    st = cad_state('plate')
+    lab.update_part(st, st['selected'], position=[0, 0, 59])
     full = retina.retina(st, focus_z_mm=60, display="full2d", n=240, speckle=False)
     desk = retina.retina(st, focus_z_mm=60, display="desk1d", n=240, speckle=False)
     print(f"  in focus (+-0.25 D): full 2D {full['in_focus_vs_2d']:.1%}, desk 1D {desk['in_focus_vs_2d']:.1%} "
@@ -272,6 +284,7 @@ def test_phase_only_pupil_gs():
         assert abs(a - c) < 0.02 and k < 0.5 * c
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_interpret_read():
     """19. Engineer's interpretation: a drawing reading (types, boxes, axis ends) becomes clean standard parts -
     gears, a spoked wheel, forged links, cylinders - in a housing with real depth that passes the desk score."""
@@ -300,6 +313,7 @@ def test_interpret_read():
 
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_frame_clear_of_parts():
     """20. A base strip drawn behind a gear (as SAM traces it) must not become a slab through the gear: the frame
     body is cut clear of every part's silhouette (0 mm2 overlap), and the built-vs-drawing check runs."""
@@ -408,6 +422,7 @@ def test_modal_engine_mismatch():
 
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_clean_edges():
     """27. No pixel staircase reaches a built part: a pixel-traced outline is vectorised into lines and arcs within
     1.5 px of the trace (staircase 0 %), and every part of the synthetic machine (test 13) scores 0 %."""
@@ -495,6 +510,7 @@ def test_explain_grounded():
     assert r["illustration"]["label"] == "AI illustration — concept, not the measured model"
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_plausible_parts_and_section_gears():
     """31. Rebuild sanity on a one-view reading (no API): a shaft whose traced width is < 1 % of the machine takes its
     box estimate when that is plausible and is dropped when it is not (both listed in report["implausible"]); two gears
@@ -531,6 +547,7 @@ def test_plausible_parts_and_section_gears():
     assert any(j["type"] == "gear_mesh" and "geometry" in j["source"] for j in sun["eng"]["joints"])
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_models_stand_on_base():
     """32. Every build route leaves the model standing on the display surface: the lowest point of the whole group is
     at z = 0 (within 0.1 mm), x / y as built. Routes: text-to-CAD (a 160 mm motor built around its origin, which used to
@@ -582,6 +599,7 @@ def test_models_stand_on_base():
     assert abs(below) <= 0.1 or (below < 0 and "behind the display surface" in fit["note"] and abs(below - fit["bottom_z_mm"]) <= 0.1)
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_export_files():
     """33. Export (engine/export.py): the STL holds every visible triangle in millimetres with the scene's bounds; the GLB
     is valid glTF 2.0 (header, JSON + BIN chunks), one node per part, positions in metres with y up, and each node's
@@ -676,6 +694,7 @@ def test_fill_holes_fast():
     assert np.array_equal(f, g) and dt < 1.0
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_demo_drawings_replayed():
     """36. The demo drawings D and C, rebuilt from their saved Muse Spark readings (no API): outline (recall and parts
     precision against the drawing), surface (no pixel staircase on any part) and time (rebuild < 5 s), at today's
@@ -713,6 +732,7 @@ def test_demo_drawings_replayed():
         assert rec >= min_rec and prec >= min_prec and worst == 0 and dt < 5
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_machine_reading():
     """A dense one-view machine sheet: circles measured on the ink, close-up readings merged, pins sized by their part."""
     from PIL import Image, ImageDraw
@@ -751,6 +771,7 @@ def test_machine_reading():
     assert not any("block" in s["name"] for s in specs)
 
 
+@pytest.mark.skip(reason="Legacy mesh reconstruction removed in Phase A; CAD replacement coverage remains pending")
 def test_reading_agreement():
     """24. Muse Spark reads each image twice: a part is kept when both readings agree or a measured circle confirms it,
     the rest is logged as dropped; an answer that is not JSON is retried once, then fails loudly (no made-up parts)."""
@@ -806,9 +827,40 @@ def test_reading_agreement():
         agent._post = real
 
 
+def test_circle_observations_without_mesh_rebuild():
+    """Keep the 2-D circle observation checks; no geometry is reconstructed."""
+    from PIL import Image, ImageDraw
+    from engine import circles
+    im = Image.new("RGB", (800, 500), "white")
+    d = ImageDraw.Draw(im)
+    for x in range(0, 800, 7):
+        d.line([(x, 380), (x + 60, 480)], fill=(70, 90, 200), width=1)
+    for x, y, r in [(200, 200, 80), (200, 200, 20), (520, 180, 45), (650, 330, 12), (120, 400, 10)]:
+        d.ellipse([x-r, y-r, x+r, y+r], outline=(30, 40, 160), width=2)
+    found = circles.find(im)
+    for x, y, r in [(200, 200, 80), (520, 180, 45), (650, 330, 12), (120, 400, 10)]:
+        assert any(abs(c['cx']-x) <= 3 and abs(c['cy']-y) <= 3 and abs(c['r']-r) <= 3 for c in found)
+    assert len(found) == 4
+    assert any(abs(q-20) <= 3 for q in next(c for c in found if c['r'] > 70)['rings'])
+
+
+def test_strict_json_retry_without_mesh_rebuild(monkeypatch):
+    """Invalid model JSON is retried once and then fails rather than inventing parts."""
+    import agent
+    answers = iter(['not JSON', '{"view":"side","parts":[],"dimensions":[]}'])
+    sent = []
+    def fake_post(path, body, timeout=120):
+        sent.append(body)
+        return {'choices': [{'message': {'content': next(answers)}}]}
+    monkeypatch.setattr(agent, '_post', fake_post)
+    obj, meta = agent._spark_json('read', agent.READ_SCHEMA, 't')
+    assert obj['view'] == 'side' and meta['retried'] and meta['calls'] == 2
+    assert sent[0]['response_format']['json_schema']['strict']
+    assert 'not valid JSON' in sent[1]['messages'][-1]['content']
+    answers = iter(['bad', 'still bad'])
+    with pytest.raises(agent.SparkError):
+        agent._spark_json('read', None, 't')
+
+
 if __name__ == "__main__":
-    for name, fn in list(globals().items()):
-        if name.startswith("test_"):
-            print(name, "-", fn.__doc__.strip())
-            fn()
-            print("  PASS")
+    raise SystemExit(pytest.main([__file__, "-q"]))

@@ -78,3 +78,10 @@ def gear_mesh_check(z1, z2, module, centre_distance, pressure_angle=20.0):
     return {"ideal_centre_distance_mm": round(a0, 3), "centre_distance_mm": round(a, 3),
             "error_mm": round(a - a0, 3), "contact_ratio": round(float(eps), 3),
             "ok": bool(abs(a - a0) <= 0.05 * module and eps >= 1.2)}
+
+
+def mesh_phase(phi1_deg, z1, z2, theta12_deg):
+    """Pure gear-meshing phase in degrees; does not construct scene geometry."""
+    phi1, th = np.radians(phi1_deg), np.radians(theta12_deg)
+    d1 = (th - phi1) % (2 * np.pi / z1)
+    return float(np.degrees(th + np.pi + np.pi / z2 + d1 * z1 / z2))
