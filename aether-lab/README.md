@@ -67,7 +67,7 @@ Every step in the UI shows which model (or engine) did it and in how many second
    by hand). `AETHER_COMPUTE=local` exists only for the offline tests.
 3. `python server.py`, then open http://localhost:8765 (the built UI is in `ui/dist`; Node is only needed to change
    it: `cd ui && npm install && npm run build`).
-4. Tests: see [Phase 0/A report](docs/PHASE_0_A_REPORT.md) for current commands, failures and skips. The older mesh tests need migration.
+4. Tests: see [Phase 0/A report](docs/PHASE_0_A_REPORT.md) for current commands, failures and skips. Legacy mesh tests are explicitly deferred and CAD replacements remain pending.
 5. Three-view CAD: run `cad-worker\setup.ps1` once (an isolated Python 3.12 + CadQuery/OpenCascade environment; the
    lab's own Python is untouched). CAD tests: `cad-worker\.venv\Scripts\python.exe -m pytest tests\cad -q`.
 
