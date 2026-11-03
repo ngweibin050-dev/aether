@@ -116,6 +116,21 @@ def test_D2_failed_edit_rolls_back(tmp_path):
     assert doc.data["history"][-1]["rolled_back"] is True
 
 
+# ------------------------------------------------------------------------------------------------ S0 (Windows regression)
+@pytest.mark.slow
+def test_S0_step_roundtrip_on_this_platform(tmp_path):
+    """The STEP round trip runs in a FRESH process whose sys.path is derived from __file__ (cad/export.py). That
+    derivation once used rsplit('/cad/') and silently broke on Windows paths: the child could not import the package
+    and every component came back null. This test runs the real round trip on whatever OS it is on."""
+    from cad import export as EX
+    cyl = K.cylinder((0, 0, 0), (0, 0, 1), 10, 20)
+    comps = [{"id": "s0_cyl", "name": "s0_cyl", "shape": cyl, "colour": "#b9c3cf"}]
+    rt = EX.roundtrip(comps, str(tmp_path / "m.step"), str(tmp_path / "brep"))
+    assert rt["all_pass"], json.dumps(rt)[:400]
+    r = rt["components"]["s0_cyl"]
+    assert r["volume_rel_diff"] < 1e-6 and r["dist_orig_to_reimport_mm"]["max"] <= 0.01
+
+
 # ------------------------------------------------------------------------------------------------ M1 / M3
 @pytest.mark.parametrize("bad", [
     {"regions": [{"n": 0, "kind": "window", "confidence": 0.9}]},                       # not in the enum

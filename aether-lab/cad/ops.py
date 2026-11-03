@@ -259,7 +259,41 @@ def _region_prism(view, polys, lo, hi):
     return out
 
 
+IMPRINT_INSETS_MM = (0.0, 0.5, 1.0, 2.0)
+
+
+def _inset(poly, d):
+    """The outline moved inward by about d mm (each point toward the outline's centre): enough to take a cutting face
+    off a surface it grazes, far below drawing accuracy on a car-sized body."""
+    P = np.asarray(poly, float)
+    if d <= 0 or len(P) < 3:
+        return P.tolist()
+    c = P.mean(0)
+    v = P - c
+    n = np.linalg.norm(v, axis=1, keepdims=True)
+    return (P - d * v / np.maximum(n, 1e-9)).tolist()
+
+
 def op_imprint_projection(p, inputs, doc):
+    """An imprint that keeps the B-rep tolerance budget. The exact drawn outline is tried first; where its cutting
+    faces graze the body (the side windows run along the curved beltline: tolerance 0.209 mm against the 0.2 mm
+    budget), the outline is retried inset by 0.5, 1 and 2 mm. The inset used is recorded in the result."""
+    scaled = [[[c * p.get("scale", 1.0) for c in q] for q in poly] for poly in p["polygons"]]
+    last = None
+    for d in IMPRINT_INSETS_MM:
+        try:
+            sol, info = _imprint_once({**p, "scale": 1.0, "polygons": [_inset(q, d) for q in scaled]}, inputs, doc)
+        except K.KernelError as e:
+            last = e
+            continue
+        info["outline_inset_mm"] = d
+        if d:
+            info["note"] = f"outline inset by {d} mm: the exact outline grazed the body ({last})"[:400]
+        return sol, info
+    raise last
+
+
+def _imprint_once(p, inputs, doc):
     """Imprint drawn region outlines (windows, lights, panel lines) onto the body: the region polygon is extruded
     along the view direction; the intersection curves of its SIDE faces with the body (BRepAlgoAPI_Section) are imprinted
     on the body by the general splitter (BRepAlgoAPI_Splitter, solid as argument, edges as tools: faces are split, the

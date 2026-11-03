@@ -2,7 +2,7 @@
 
     python tools/build_replay.py
 
-For each demo (D, C, G): the model as GLB (engine/export.py), the drawing check image, Muse Spark's reading overlay,
+For each demo (D, C): the model as GLB (engine/export.py), the drawing check image, Muse Spark's reading overlay,
 the explanation (steps, part names to highlight, camera, explode) with its labelled Muse Image illustration, the
 timed steps (who did what) and the measured numbers of THAT recorded run. No key, no endpoint, no server: the site is
 plain files, and every number on it comes from the recorded run (labelled as recorded on the page)."""
@@ -18,14 +18,13 @@ from engine import export, geometry  # noqa: E402
 REC = ROOT / "output" / "recorded"
 OUT = ROOT / "docs" / "replay"
 DEMOS = {"D": ("Metal drawing press", "US Patent 929,594, Fig. 1 (public domain)", "machine"),
-         "C": ("Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain; held out before step 3)", "machine"),
-         "G": ("Douglas X-3 three-view", "NASA Dryden graphic (public domain)", "three_view")}
+         "C": ("Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain; held out before step 3)", "machine")}
 WHO = {"read_drawing": "Muse Spark", "complete_views": "Muse Wonder", "Muse Spark": "Muse Spark",
        "explain · Muse Spark": "Muse Spark", "illustration · Muse Image": "Muse Image", "sam_3_1": "SAM 3.1",
-       "read_views": "Modal T4 GPU", "desk_score": "Modal T4 GPU", "focus_sweep": "Modal T4 GPU"}
+       "desk_score": "Modal T4 GPU", "focus_sweep": "Modal T4 GPU"}
 WHAT = {"read_drawing": "read drawing", "complete_views": "complete the unseen views", "Muse Spark": "thinking",
         "rebuild_3d": "rebuild each part in 3D", "measure_circles": "measure circles on the ink",
-        "classify_upload": "what the image is", "read_views": "find the views, carve the 3D shape",
+        "classify_upload": "what the image is",
         "desk_score": "desk sharpness score", "focus_sweep": "eye focus sweep"}
 
 
@@ -62,9 +61,6 @@ def build(k):
             out["metrics"] = {"recall_pct": chk.get("drawing_lines_on_built_parts_pct"),
                               "parts_precision_pct": (chk.get("outline_on_ink_pct") or {}).get("parts"),
                               "staircase_pct": chk.get("staircase_pct"), "scale": res.get("scale_source")}
-        if t["tool"] == "read_views":
-            out["metrics"] = {"view_match_pct": chk.get("view_match_iou_pct"), "triangles": chk.get("delivered_triangles"),
-                              "scale": f"assumed: length {res.get('size_mm', [0])[0]} mm (no scale on the sheet)"}
         if t["tool"] == "desk_score":
             out["desk"] = {"parts_ok": res.get("parts_ok"), "parts": res.get("parts"), "min_sharpness_pct": res.get("min_sharpness_pct")}
     ex = rec.get("explain")

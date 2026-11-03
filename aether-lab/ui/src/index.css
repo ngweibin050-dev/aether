@@ -4,7 +4,9 @@
 
 @layer base {
   html, body, #root { height: 100%; }
-  body { @apply bg-ink-950 text-white font-sans antialiased overflow-hidden select-none; }
+  body { @apply bg-ink-950 text-white font-sans antialiased overflow-hidden; }
+  /* text is selectable and copyable; the 3D view, buttons and panel headers (drag handles) are not */
+  canvas, button, header, [role="radio"], .no-select { user-select: none; -webkit-user-select: none; }
   ::selection { background: rgba(95, 225, 255, 0.3); }
 }
 
@@ -93,3 +95,7 @@ html.site-mode { scroll-behavior: auto; }
 .reveal-veil { position: fixed; inset: 0; z-index: 60; pointer-events: none; background: #04060b;
   transition: clip-path 1.1s cubic-bezier(.7,0,.2,1); }
 @media (prefers-reduced-motion: reduce) { .marquee { animation: none; } .reveal-veil { transition: none; } }
+
+/* also left out while moving: floating 3D labels (re-placed every frame), CSS animations, the vignette overlay */
+html.view-moving .r3f-label, html.view-moving .vignette-overlay { visibility: hidden !important; }
+html.view-moving [class*="animate-"] { animation-play-state: paused !important; }

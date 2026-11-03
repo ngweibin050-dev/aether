@@ -250,7 +250,9 @@ class Document:
             return [self.resolve(x, PV) for x in v]
         return v
 
-    def recompute(self, validate=None):
+    DETAIL_OPS = ("pocket_projection", "imprint_projection")   # decoration on the body: seconds of shape, minutes of Booleans
+
+    def recompute(self, validate=None, defer_detail=False):
         """Rebuild every feature in order (cached by the hash of its resolved inputs). Transactional: on any
         failure the document's status says which feature failed and why, self.shapes keeps the LAST VALID result
         and self.stale is True (callers must show that geometry as stale, not current). Returns the status dict."""
@@ -272,6 +274,13 @@ class Document:
             if key in self._cache:
                 shapes[fid], info[fid] = self._cache[key]
                 f["status"] = "ok"
+                continue
+            if defer_detail and f["op"] in self.DETAIL_OPS and f.get("inputs"):
+                # progressive build: the model is shown without this decoration first; the detail pass (a full
+                # recompute, everything else cached) adds it. Status "deferred" says so; the input passes through.
+                f["status"] = "deferred"
+                shapes[fid], info[fid] = shapes[f["inputs"][0]], {**info[f["inputs"][0]], "deferred": fid}
+                keys[fid] = key + ":deferred"
                 continue
             try:
                 shp, inf = self.ops[f["op"]](params, [(shapes[i], info[i]) for i in f.get("inputs", [])], self)

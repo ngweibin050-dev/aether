@@ -13,7 +13,7 @@ export const STATS = [
 ];
 
 export const TECH = ["Muse Spark", "SAM 3.1", "Modal GPU", "CuPy", "React Three Fiber", "MediaPipe Hands", "Wave optics",
-  "Gerchberg–Saxton", "Involute gears", "Visual hull", "Taubin smoothing", "Thibos chromatic eye"];
+  "Gerchberg–Saxton", "Involute gears", "OpenCascade B-rep", "Taubin smoothing", "Thibos chromatic eye"];
 
 export const VISION = [
   { k: "01", t: "Design in the air", d: "Speak, sketch or point. The model appears above the desk and you shape it with your hands, like a workshop with no screen in between." },
@@ -31,7 +31,7 @@ export const PIPELINE = [
 
 export const FEATURES = [
   { t: "Interpret or trace", d: "Read a drawing as clean standard parts, or trace its exact outline with SAM 3.1.", i: "scan" },
-  { t: "Three-view to solid", d: "Front, top and side views carve a watertight visual hull in seconds.", i: "cube" },
+  { t: "Drawing to CAD", d: "Every part rebuilt as an exact OpenCascade solid: validated, mated, exported as STEP.", i: "cube" },
   { t: "Gears that turn", d: "Meshing pairs rotate at −z₁/z₂; coaxial parts follow. Real modules and contact ratio.", i: "gear" },
   { t: "See inside", d: "Section plane, exploded view and x-ray, in the editor and in the hologram.", i: "layers" },
   { t: "Full hand mode", d: "Pinch, grab, rotate and scale with MediaPipe hand tracking. Blender-style keys too.", i: "hand" },

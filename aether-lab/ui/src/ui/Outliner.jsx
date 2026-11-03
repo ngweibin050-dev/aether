@@ -49,7 +49,8 @@ function Row({ p, depth, kids }) {
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/aether"); if (id && id !== p.id) st.parentTo([id], p.id); }}
         onClick={(e) => st.select(p.id, { extend: e.shiftKey || e.ctrlKey })}
-        onDoubleClick={() => setName(p.name)}
+        onDoubleClick={() => { st.select(p.id); useStore.setState({ outlinerTab: "item" }); }}
+        onKeyDown={(e) => { if (e.key === "F2") setName(p.name); }} tabIndex={0}
         className={`group flex h-7 cursor-pointer items-center gap-1.5 rounded-md pr-1.5 text-[12px] transition ${active ? "bg-cyan-glow/[0.16] text-white" : sel ? "bg-cyan-glow/[0.08] text-white" : "text-white/75 hover:bg-white/[0.05]"}`}
         style={{ paddingLeft: 6 + depth * 14 }}>
         <button className={`text-silver transition ${kids.length ? "" : "invisible"} ${open ? "rotate-90" : ""}`}
@@ -61,6 +62,8 @@ function Row({ p, depth, kids }) {
             onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setName(null); }} />
         ) : <span className={`truncate ${p.visible === false ? "opacity-35" : ""}`}>{p.name}</span>}
         <span className="ml-auto font-mono text-[9.5px] text-white/30">{p.type}</span>
+        <button title="Rename (F2)" className="text-[11px] text-silver opacity-0 hover:text-white group-hover:opacity-100"
+          onClick={(e) => { e.stopPropagation(); setName(p.name); }}>✎</button>
         <button title="Hide in viewport" className="text-silver opacity-60 hover:text-white group-hover:opacity-100"
           onClick={(e) => { e.stopPropagation(); st.setVisible([p.id], p.visible === false); }}>
           <Icon name={p.visible === false ? "eyeoff" : "eye"} className="h-3.5 w-3.5" /></button>
@@ -177,20 +180,6 @@ function importCAD(file) {
   });
 }
 
-// Three orthographic views (front, top, right side) -> visual-hull solid at real size
-async function importThreeView(files) {
-  const { tool, notify } = useStore.getState();
-  if (files.length !== 3) throw new Error("pick exactly 3 images: front, top, right side");
-  const order = ["front", "top", "side"].map((k) => files.find((f) => f.name.toLowerCase().includes(k)));
-  const picked = order.every(Boolean) && new Set(order).size === 3 ? order : files;
-  const url = (f) => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = bad; r.readAsDataURL(f); });
-  const [front, top, side] = await Promise.all(picked.map(url));
-  const w = parseFloat(window.prompt(`Front view width in mm (${picked.map((f) => f.name).join(" / ")})`, "80"));
-  if (!(w > 0)) return;
-  notify("Carving the three views into a solid…");
-  return tool("import_three_view", { front, top, side, width_mm: w, name: picked[0].name.replace(/\.[^.]+$/, "") });
-}
-
 function importGLB(file) {
   const { tool, notify } = useStore.getState();
   return import("three/examples/jsm/loaders/GLTFLoader.js").then(async ({ GLTFLoader }) => {
@@ -218,7 +207,7 @@ export default function Outliner() {
   const parts = useStore((s) => s.state?.parts || []);
   const open = useStore((s) => s.panels.outliner);
   const tab = useStore((s) => s.outlinerTab);
-  const file = useRef(), views = useRef();
+  const file = useRef();
   const tree = useMemo(() => {
     const kids = {}, ids = new Set(parts.map((p) => p.id));
     for (const p of parts) (kids[p.parent && ids.has(p.parent) ? p.parent : "root"] ||= []).push(p);
@@ -238,13 +227,6 @@ export default function Outliner() {
         <input id="glb-input" ref={file} type="file" accept=".glb,.gltf,.stl,.obj" hidden onChange={(e) => {
           const f = e.target.files[0]; e.target.value = "";
           if (f) (/\.(stl|obj)$/i.test(f.name) ? importCAD(f) : importGLB(f)).catch((err) => st.notify(err.message, "error"));
-        }} />
-        <button className="grid h-6 w-6 place-items-center rounded-md font-mono text-[9px] text-silver hover:bg-white/10 hover:text-white"
-          title="Three-view drawing → 3D: pick 3 images (front, top, right side; names containing front/top/side set the order)"
-          onClick={() => views.current.click()}>3V</button>
-        <input ref={views} type="file" accept="image/*" multiple hidden onChange={(e) => {
-          const fs = [...e.target.files]; e.target.value = "";
-          if (fs.length) importThreeView(fs).catch((err) => st.notify(err.message, "error"));
         }} />
       </>}>
       <div className="mx-3.5 mb-2 flex gap-1 rounded-lg bg-black/25 p-0.5">

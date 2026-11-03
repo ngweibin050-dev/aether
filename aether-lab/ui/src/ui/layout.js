@@ -7,10 +7,12 @@ export const L = { top: 60, bottom: 30, gap: 12, left: 300, right: 340, icon: 44
 export function useLayout() {
   const panels = useStore((s) => s.panels);
   const win = useStore((s) => s.win);
-  const leftOn = panels.outliner && win.outliner !== "min";
-  const rightOn = panels.physics && win.physics !== "min";
-  const leftTab = panels.outliner && win.outliner === "min";
-  const rightTab = panels.physics && win.physics === "min";
+  const rects = useStore((s) => s.rects);
+  // a floating panel does not push the tools aside: only a docked one does
+  const leftOn = panels.outliner && win.outliner !== "min" && !rects.outliner;
+  const rightOn = panels.physics && win.physics !== "min" && !rects.physics;
+  const leftTab = false;                         // minimised panels live in the panel tray, not at the edges
+  const rightTab = false;
   return {
     leftOn, rightOn, leftTab, rightTab, win, panels,
     // tools sit next to the panel, or next to its icon when it is minimised, or at the edge when it is closed

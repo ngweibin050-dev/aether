@@ -128,7 +128,7 @@ def _score_shape(C, G, shape, obs, aux, F):
 
 
 # ------------------------------------------------------------------------------------------------ build
-def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print, run_s5=True):
+def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print, run_s5=True, defer_detail=False):
     """sheet: path of the drawing. decisions: user decisions (overall_length_mm, end_view_scale). stored: a list of
     stored AI records (hypotheses) to replay. Returns (Document, report dict)."""
     t0 = time.time()
@@ -154,6 +154,21 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     decisions.setdefault("end_view_scale", {"value": "per_view", "provenance": "user_confirmed",
                                             "note": "end views fitted at their own scale (user default)"})
 
+    # S3 region labels start first: they label the four fixed view slots (side, top, end A, end B) and do not need
+    # S1's decision of which end is the front, so S1 and S3 run at the same time
+    import concurrent.futures as cf
+
+    def s3(role):
+        regs = obs["regions"][role]
+        ov = O.region_overlay(aux["gray"], aux["region_labels"][role], obs["views"][role]["extent"], regs)
+        ov.save(os.path.join(out_dir, f"regions_{role}.png"))
+        name = {"end_a": "end A", "end_b": "end B"}.get(role, role)
+        return role, AI.s3_region_labels(ai, name, ov, len(regs), decisions.get("object", "car"))
+    t_s3 = time.time()
+    s3_pool = cf.ThreadPoolExecutor(4)
+    s3_futs = [(r, s3_pool.submit(s3, r)) for r in ("side", "top", "end_a", "end_b")]
+    s3_pool.shutdown(wait=False)
+
     # 2. AI stages: S1 view roles
     t = time.time()
     s1, s1_ev = AI.s1_view_roles(ai, crops, O.nose_left_cv(obs))
@@ -170,24 +185,28 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     crops["end_front"], crops["end_rear"] = crops[F["front"]["key"]], crops[F["rear"]["key"]]
     offsets["end_front"], offsets["end_rear"] = offsets[F["front"]["key"]], offsets[F["rear"]["key"]]
 
-    # S2 SAM 3.1 checks
-    t = time.time()
-    s2 = AI.s2_sam_checks(ai, crops, offsets, aux["ink"], obs["side"]["wheels"])
-    stage("S2 SAM 3.1 segmentation checks", t)
+    # S2, S6 and S7 depend only on the crops (and S1's front / rear): started together, collected before the plan
+    side_pool = cf.ThreadPoolExecutor(3)
+    t_side = time.time()
+    f_s2 = side_pool.submit(AI.s2_sam_checks, ai, crops, offsets, aux["ink"], obs["side"]["wheels"])
+    f_s6 = side_pool.submit(AI.s6_transitions, ai, crops)
+    f_s7 = side_pool.submit(AI.s7_ambiguities, ai, crops, [
+        ("brake_disc", "Inside each rim a ring at ~0.6 of the tyre radius is drawn: brake disc, or the rim's inner step?"),
+        ("end_view_scale", "The end views are ~4.4 % shorter than the side view: drawn at another scale, or a drawing error?"),
+        ("intake_depth", "How deep is the side air intake behind the door?")])
 
     # S3 region labels
     t = time.time()
     labels, s3_err = {}, {}
-    for role in ("side", "top", "end_a", "end_b"):
-        regs = obs["regions"][role]
-        ov = O.region_overlay(aux["gray"], aux["region_labels"][role], obs["views"][role]["extent"], regs)
-        ov.save(f"{out_dir}/regions_{role}.png")
-        name = {"end_a": "end A", "end_b": "end B"}.get(role, role)
-        lab, err = AI.s3_region_labels(ai, name, ov, len(regs), decisions.get("object", "car"))
+    for role, fut in s3_futs:
+        lab, err = fut.result()[1]
         labels[role] = lab
         if err:
             s3_err[role] = err
-    stage("S3 region labels (Muse Spark + Muse Wonder)", t)
+    t = t_s3
+    stage("S3 region labels (Muse Spark + Muse Wonder, started with S1)", t)
+    s2 = f_s2.result()
+    stage("S2 SAM 3.1 segmentation checks (in parallel with S3)", t_side)
     rep["S3"] = {"labels": labels, "errors": s3_err,
                  "counts": {r: {s: sum(1 for l in v.values() if l["status"] == s) for s in ("accepted", "ambiguous", "unconfirmed", "unlabelled")}
                             for r, v in labels.items()}}
@@ -232,33 +251,42 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
         f"{x:.0f}, {np.interp(x, C['x'], C['ztop']):.0f}, {np.interp(x, C['x'], C['zbot']):.0f}, "
         f"{np.interp(x, C['xt'], C['ybody']):.0f}, {'yes' if Vh.cabin_weight(C, G, x) > 0.5 else 'no'}"
         for x in np.linspace(C["x"][0], C["x"][-1], 16))
-    s5 = AI.s5_section_hypotheses(ai, crops, table) if run_s5 else []
-    for smp in s5:
-        if "answer" not in smp:
-            continue
-        sh = json.loads(json.dumps(Vh.DEFAULT_SHAPE))
-        for g in smp["answer"]["groups"]:
-            sh[g["group"]] = {k: float(g[k]) for k in ("crown_frac", "deck_drop_frac", "sill_radius_frac", "glass_bulge_frac")}
-        cands.append({"name": f"Muse Wonder seed {smp['seed']}", "shape": sh, "source": "inferred",
-                      "model": smp.get("model"), "fallback": smp.get("fallback"), "reasoning": smp["answer"]["reasoning"]})
-    for c in cands:
+    s5 = AI.s5_section_hypotheses(ai, crops, table) if (run_s5 and not defer_detail) else []
+
+    def wonder_cands(samples):
+        out = []
+        for smp in samples:
+            if "answer" not in smp:
+                continue
+            sh = json.loads(json.dumps(Vh.DEFAULT_SHAPE))
+            for g in smp["answer"]["groups"]:
+                sh[g["group"]] = {k: float(g[k]) for k in ("crown_frac", "deck_drop_frac", "sill_radius_frac", "glass_bulge_frac")}
+            out.append({"name": f"Muse Wonder seed {smp['seed']}", "shape": sh, "source": "inferred",
+                        "model": smp.get("model"), "fallback": smp.get("fallback"), "reasoning": smp["answer"]["reasoning"]})
+        return out
+    cands += wonder_cands(s5)
+
+    def score(c):
         try:
             c["score_mean_iou"], c["score_views"] = _score_shape(C, G, c["shape"], obs, aux, F)
         except Exception as e:
             c["score_mean_iou"], c["error"] = -1.0, f"{type(e).__name__}: {e}"[:300]
-    best = max(cands, key=lambda c: c["score_mean_iou"])
+    if len(cands) > 1:
+        with cf.ThreadPoolExecutor(len(cands)) as pool:     # each candidate body is built and scored on its own
+            list(pool.map(score, cands))
+    else:
+        cands[0]["score_mean_iou"] = None                   # nothing to choose between yet (progressive build)
+    best = max(cands, key=lambda c: c["score_mean_iou"] if c["score_mean_iou"] is not None else -2)
     stage("S5 section hypotheses (Muse Wonder) built + scored", t)
     rep["S5"] = {"candidates": [{k: v for k, v in c.items() if k != "shape"} | {"shape": c["shape"]} for c in cands],
                  "chosen": best["name"], "rule": "highest mean front/rear body IoU (reprojection), not model confidence"}
 
     # S6 / S7 (recorded; S7 never decides)
     t = time.time()
-    s6, s6_model = AI.s6_transitions(ai, crops)
-    s7, s7_model = AI.s7_ambiguities(ai, crops, [
-        ("brake_disc", "Inside each rim a ring at ~0.6 of the tyre radius is drawn: brake disc, or the rim's inner step?"),
-        ("end_view_scale", "The end views are ~4.4 % shorter than the side view: drawn at another scale, or a drawing error?"),
-        ("intake_depth", "How deep is the side air intake behind the door?")])
-    stage("S6 transitions + S7 ambiguities (Muse Wonder)", t)
+    s6, s6_model = f_s6.result()
+    s7, s7_model = f_s7.result()
+    side_pool.shutdown()
+    stage("S6 transitions + S7 ambiguities (Muse Wonder, started with S2 / S3)", t)
 
     # 4. plan + CAD construction
     t = time.time()
@@ -270,11 +298,33 @@ def build(sheet, out_dir, decisions=None, ai_mode="live", stored=None, log=print
     doc = Document(data, OPS)
     stage("plan (typed document)", t)
     t = time.time()
-    st = doc.recompute(validate=_validate_fast)
+    st = doc.recompute(validate=_validate_fast, defer_detail=defer_detail)
     stage(f"recompute ({len(doc.data['features'])} features) -> {st['state']}", t)
     rep["recompute"] = st
+
+    def replan(shape, name, source):
+        """The same sheet re-planned with another section shape (the deferred S5 found a better one)."""
+        decisions["section_shape"] = {"value": name, "provenance": source}
+        d2 = PL.plan_vehicle(obs, labels, decisions, shape, F, C, G, tips, lugs, s2=s2, s6=s6, s7=s7,
+                             region_feats=region_feats)
+        d2["hypotheses"] = store
+        d2["pipeline_report"] = {k: rep[k] for k in ("S1", "S3", "S5", "regions")}
+        return Document(d2, OPS)
+
+    def run_s5():
+        """Deferred S5: Muse Wonder's section hypotheses, every candidate (the default too) built and scored by
+        reprojection; returns (best, candidates)."""
+        cs = [{"name": "default (assumed)", "shape": Vh.DEFAULT_SHAPE, "source": "assumed"}] + \
+            wonder_cands(AI.s5_section_hypotheses(ai, crops, table))
+        with cf.ThreadPoolExecutor(len(cs)) as pool:
+            list(pool.map(score, cs))
+        b = max(cs, key=lambda c: c["score_mean_iou"])
+        rep["S5"] = {"candidates": [{k: v for k, v in c.items()} for c in cs], "chosen": b["name"],
+                     "rule": "highest mean front/rear body IoU (reprojection), not model confidence", "deferred": True}
+        return b, cs
     return doc, {"report": rep, "timings": timings, "obs": obs, "aux": aux, "F": F, "C": C, "G": G,
-                 "seconds": round(time.time() - t0, 1)}
+                 "seconds": round(time.time() - t0, 1),
+                 **({"deferred_s5": {"run": run_s5, "replan": replan}} if defer_detail and run_s5 else {})}
 
 
 MATERIALS = {"glass": "#1d2b3a", "light": "#dfe7ef", "panel": None}
@@ -355,59 +405,80 @@ def components_for_export(doc):
     return out
 
 
-def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay"):
+def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay", skip_step_roundtrip=False):
     """Validation (with interference), STEP export + fresh-process round trip, GLB, three-view reprojection, S8
-    advisory check, report. Returns the report dict (also written to out_dir/report.json)."""
+    advisory check, report. Returns the report dict (also written to out_dir/report.json).
+
+    skip_step_roundtrip: defer the round trip (it is most of the wall time) to an explicit export / maturity
+    promotion; the report then says so and maturity is capped at geometrically_valid until it runs."""
+    t_all = time.time()
     rep = {"title": doc.data["title"], "maturity": doc.data["maturity"]}
     if doc.data["status"].get("state") != "ok":
         rep["recompute_failed"] = doc.data["status"]
         rep["exports"] = {"blocked": "the document did not recompute: nothing is exported"}
-        with open(f"{out_dir}/report.json", "w") as f:
+        with open(os.path.join(out_dir, "report.json"), "w") as f:
             json.dump(rep, f, indent=1, default=str)
         log("recompute failed: " + json.dumps(doc.data["status"], default=str)[:400])
         return rep
     t = time.time()
     val = assembly_validation(doc, interference=True)
+    t_val = time.time() - t
     rep["validation"] = val
-    log(f"[{time.time() - t:7.2f} s] assembly validation: all_valid={val['all_valid']}")
+    log(f"[{t_val:7.2f} s] assembly validation: all_valid={val['all_valid']}")
     comps = components_for_export(doc)
     solids = [c for c in comps if not c.get("group")]
     from . import export as EX
     rep["exports"] = {}
     if val["all_valid"]:
-        t = time.time()
-        os.makedirs(f"{out_dir}/brep", exist_ok=True)
-        rt = EX.roundtrip(solids, f"{out_dir}/model.step", f"{out_dir}/brep")
-        rep["step_roundtrip"] = rt
-        rep["exports"]["step"] = "model.step"
-        log(f"[{time.time() - t:7.2f} s] STEP export + round trip: all_pass={rt['all_pass']}")
+        if skip_step_roundtrip:
+            rep["step_roundtrip"] = {"deferred": "STEP written and round-trip checked on export / maturity promotion "
+                                                 "(the round trip is the slowest stage; the document is not blocked on it)"}
+            t = time.time()
+            EX.write_step(solids, os.path.join(out_dir, "model.step"))
+            rep["exports"]["step"] = "model.step"
+            log(f"[{time.time() - t:7.2f} s] STEP written (round trip deferred)")
+        else:
+            t = time.time()
+            os.makedirs(os.path.join(out_dir, "brep"), exist_ok=True)
+            rt = EX.roundtrip(solids, os.path.join(out_dir, "model.step"), os.path.join(out_dir, "brep"))
+            rt_s = time.time() - t
+            rep["step_roundtrip"] = rt
+            rep["exports"]["step"] = "model.step"
+            log(f"[{rt_s:7.2f} s] STEP export + round trip: all_pass={rt['all_pass']}")
     else:
         rep["step_roundtrip"] = {"skipped": "STEP export is blocked: the model is not valid"}
     t = time.time()
     extras = {"authoritative": "model.aethercad (feature history) + model.step (B-rep)", "maturity": doc.data["maturity"],
               "units_source": "mm (GLB stores metres, Y up)"}
-    with open(f"{out_dir}/model.glb", "wb") as f:
+    with open(os.path.join(out_dir, "model.glb"), "wb") as f:
         f.write(EX.glb(comps, extras))
+    glb_s = time.time() - t
     rep["exports"]["glb"] = "model.glb"
-    log(f"[{time.time() - t:7.2f} s] GLB (tessellated from the B-rep)")
+    log(f"[{glb_s:7.2f} s] GLB (tessellated from the B-rep)")
     t = time.time()
     meshes = []
     for c in solids:
         V, F, _, _ = T.mesh(c["shape"], 0.5, 0.2)
         meshes.append((V.astype(float), F))
-    rp = RP.evaluate(meshes, res["obs"], res["aux"], res["F"], out_dir)
-    rep["reprojection"] = rp
-    rep["reprojection_note"] = ("Silhouette agreement is necessary, not sufficient: the cross-sections between the end views, "
-                                "the wheel-well depth and the deck crowns are inferred and are not tested by these numbers.")
-    log(f"[{time.time() - t:7.2f} s] reprojection: " + ", ".join(f"{k} IoU {v['iou']}" for k, v in rp.items()))
-    if s8:
+    rp, rp_s = None, 0.0
+    if res.get("obs") and res.get("aux") and res.get("F"):
+        rp = RP.evaluate(meshes, res["obs"], res["aux"], res["F"], out_dir)
+        rp_s = time.time() - t
+        rep["reprojection"] = rp
+        rep["reprojection_note"] = ("Silhouette agreement is necessary, not sufficient: the cross-sections between the end views, "
+                                    "the wheel-well depth and the deck crowns are inferred and are not tested by these numbers.")
+        log(f"[{rp_s:7.2f} s] reprojection: " + ", ".join(f"{k} IoU {v['iou']}" for k, v in rp.items()))
+    else:
+        rep["reprojection"] = {"skipped": "no source sheet observations (opened document without its sheet, or an imported model)"}
+        log("[   0.00 s] reprojection: skipped (no observations)")
+    if s8 and rp and "skipped" not in rp:
         try:
             store = doc.data["hypotheses"]
             ai = AI.AI(store, ai_mode)
-            ims = {k: Image.open(f"{out_dir}/{v['image']}") for k, v in rp.items()}
+            ims = {k: Image.open(os.path.join(out_dir, v["image"])) for k, v in rp.items()}
             import hashlib
             key = hashlib.sha1(json.dumps({k: v["iou"] for k, v in rp.items()}, sort_keys=True).encode()
-                               + b"".join(open(f"{out_dir}/{v['image']}", "rb").read() for v in rp.values())).hexdigest()[:16]
+                               + b"".join(open(os.path.join(out_dir, v["image"]), "rb").read() for v in rp.values())).hexdigest()[:16]
             rep["S8_verification"] = AI.s8_verify(ai, ims, key)        # keyed by the images: never a stale verdict
         except Exception as e:
             rep["S8_verification"] = {"error": f"{type(e).__name__}: {e}"[:200]}
@@ -419,14 +490,33 @@ def finalize(doc, res, out_dir, log=print, s8=True, ai_mode="replay"):
     rep["features_not_built"] = [{"id": f["id"], "label": f.get("label"), "why": f.get("error")}
                                  for f in doc.data["features"] if f.get("status") == "failed_optional"]
     rep["assumptions"] = doc.data["assumptions"]
+    iou_ok = rp and "skipped" not in rp and all(v["iou"] >= 0.9 for v in rp.values())
     rep["maturity_reached"] = ("drawing_consistent" if val["all_valid"] and rep.get("step_roundtrip", {}).get("all_pass")
-                               and all(v["iou"] >= 0.9 for v in rp.values()) else
+                               and iou_ok else
                                "geometrically_valid" if val["all_valid"] else "draft_inference")
     doc.data["maturity"] = rep["maturity_reached"]
     doc.data["validation"] = {"summary": {"all_valid": val["all_valid"],
                                           "step_roundtrip_pass": rep.get("step_roundtrip", {}).get("all_pass"),
-                                          "reprojection_iou": {k: v["iou"] for k, v in rp.items()}},
+                                          "step_roundtrip_deferred": bool(rep.get("step_roundtrip", {}).get("deferred")),
+                                          "reprojection_iou": ({k: v["iou"] for k, v in rp.items()}
+                                                               if rp and "skipped" not in rp else None)},
                               "interference": val["interference"]}
-    with open(f"{out_dir}/report.json", "w") as f:
+    # ---- timing record (the 3-minute target is measured, not asserted): build stages + finalize stages + total
+    build_t = dict(res.get("timings") or {})
+    fin_t = {"assembly_validation": round(t_val, 2)}
+    if "step_roundtrip" in rep and "rt_s" in locals():
+        fin_t["step_roundtrip"] = round(rt_s, 2)
+    if "glb_s" in locals():
+        fin_t["glb"] = round(glb_s, 2)
+    if "rp_s" in locals():
+        fin_t["reprojection"] = round(rp_s, 2)
+    rep["timings"] = {"build": build_t, "finalize": fin_t,
+                      "build_seconds": res.get("seconds"), "finalize_seconds": round(time.time() - t_all, 1),
+                      "total_seconds": round((res.get("seconds") or 0) + (time.time() - t_all), 1),
+                      "budget": {"target_viewport_seconds": 180,
+                                 "met": bool((res.get("seconds") or 0) <= 180),
+                                 "note": "target: valid model + viewport meshes within 180 s of upload; validation / "
+                                         "STEP round trip may finish afterwards (backgrounded by the server)"}}
+    with open(os.path.join(out_dir, "report.json"), "w") as f:
         json.dump(rep, f, indent=1, default=str)
     return rep

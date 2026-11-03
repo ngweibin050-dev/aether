@@ -5,6 +5,7 @@ import FloatPanel, { IconTile } from "./FloatPanel";
 import { L, useLayout } from "./layout";
 import Icon from "./Icon";
 import { SineLoader } from "./Charts";
+import Markdown from "./Markdown";
 
 const NAMES = {
   build_assembly: "Build assembly", add_part: "Add part", update_part: "Edit part", delete_part: "Delete part",
@@ -12,7 +13,11 @@ const NAMES = {
   propagate: "Propagate light", focus_sweep: "Focus sweep", eye_view: "Eye view", window_check: "Window Law",
   hand_check: "Hand check", desk_check: "Desk sharpness", search_column_width: "Design search",
   speckle_compare: "Speckle", export_film: "Film export", desk_score: "Desk score", optimize_for_desk: "AI design loop",
-  sam_3_1: "SAM 3.1 cut-out", turn_gear: "Turn gear", desk_wave_view: "Desk wave check", import_three_view: "Three-view → 3D", read_views: "Three-view drawing → 3D", classify_upload: "What the image is",
+  sam_3_1: "SAM 3.1 cut-out", turn_gear: "Turn gear", desk_wave_view: "Desk wave check", classify_upload: "What the image is",
+  calculate: "Calculate", web_search: "Web search", inspect: "Inspect model", explain_machine: "Explain the machine",
+  create_model: "Create model", add_parts: "Add parts", modify: "Change", remove: "Remove", export_model: "Export file",
+  make_drawing: "Technical drawing", build_from_drawing: "Build from drawing", import_file: "Import file", undo: "Undo",
+  ask_user: "Question", open_panel: "Open panel",
 };
 const KIND_NAME = { machine: "machine drawing (one view)", three_view: "three-view sheet", part: "photo of one part" };
 function summary(t) {
@@ -30,6 +35,14 @@ function summary(t) {
     case "desk_score": return `${r.parts_ok}/${r.parts} parts ok · min ${r.min_sharpness_pct}%`;
     case "optimize_for_desk": return `${r.before?.min_sharpness_pct}% → ${r.after?.min_sharpness_pct}% · ${r.rounds?.length} rounds`;
     case "turn_gear": return r.turned?.map((x) => `${x.part} ${x.turned_deg}°`).join(" · ");
+    case "calculate": return `${r.expression} = ${r.result}`;
+    case "web_search": return `${r.sources?.length || 0} source(s)`;
+    case "modify": return (r.changed || []).join(" · ");
+    case "remove": return (r.removed || []).join(", ");
+    case "add_parts": return `${r.added?.length} part(s) → ${r.model}`;
+    case "export_model": return r.file;
+    case "make_drawing": return `${r.solids} solids · 3 views`;
+    case "undo": return r.undone ? "done" : r.why;
     case "classify_upload": return `${KIND_NAME[r.kind] || r.kind} · ${r.by}${r.fallback ? " · " + r.fallback : ""}`;
     case "read_views": return `${r.check?.views_found} views · side ${r.check?.view_match_iou_pct?.side}% · top ${r.check?.view_match_iou_pct?.top}% · front ${r.check?.view_match_iou_pct?.front}% match`;
     case "sam_3_1": return r.mode === "interpret" ? `${r.parts?.length} parts read · clean standard parts · ${r.scale_source?.startsWith("read") ? "scale read" : "scale assumed"}` : r.mode === "blueprint" ? `${r.parts?.length} parts traced · ${r.scale_source?.startsWith("read") ? "scale read" : "scale assumed"}` : `${r.width_mm}×${r.height_mm} mm${r.lobes_around_centre ? ` · ${r.lobes_around_centre} lobes` : ""}${r.centre_hole ? " · hole" : ""}`;
@@ -38,10 +51,11 @@ function summary(t) {
 }
 
 const EXAMPLES = [
-  ["Electric motor", "Generate an electric car motor (stator, rotor, housing, shaft) and place it 10 cm above the screen"],
-  ["Cut and explode it", "Cut it in half and explode it so I can see the stator and rotor"],
-  ["Is it sharp on the desk?", "Can AETHER Desk show this sharply? Check the Window Law too"],
-  ["How grainy?", "How grainy will it look, and do sparse point groups help?"],
+  ["Explain this machine", "Explain this machine step by step"],
+  ["Make it more detailed", "Make the selected model more detailed"],
+  ["Technical drawing", "Make a technical drawing of the model on the desk"],
+  ["Export GLB", "Export the model on the desk to GLB and send it here"],
+  ["Sharp on the desk?", "Can the AETHER Desk show this sharply? Check the Window Law too"],
 ];
 
 // Every step says WHO did it (a Meta model, or AETHER's own engine on the Modal GPU / this computer) and WHAT.
@@ -143,6 +157,65 @@ function PhotoForm({ image, onCancel }) {
   );
 }
 
+// errors in words a user can act on (the technical text stays on hover)
+function friendlyError(t = "") {
+  if (/Failed to fetch|NetworkError|ECONNREFUSED/i.test(t)) return "The AETHER server is not reachable. Is python server.py still running?";
+  if (/timed? ?out|timeout/i.test(t)) return "Muse Spark took too long to answer. Try again, or ask for something smaller.";
+  if (/META_API/i.test(t)) return "No Meta API key: put META_API=... in the .env file and restart the server.";
+  if (/HTTP 4(29|03)|rate/i.test(t)) return "The Meta API is busy or refused the request (rate limit). Wait a moment and try again.";
+  return "Something went wrong on the server: " + t.replace(/^[A-Za-z]+Error: /, "").slice(0, 160);
+}
+
+const FILE_ICON = { image: "camera", pdf: "film", mesh: "cube", cad: "holo", other: "upload" };
+
+function Chip({ f, onRemove }) {
+  return (
+    <span className="flex max-w-[220px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] text-slate-200">
+      <Icon name={FILE_ICON[f.kind] || "upload"} className="h-3.5 w-3.5 shrink-0 text-cyan-glow" />
+      <span className="truncate">{f.name}</span>
+      {f.page_count ? <span className="shrink-0 font-mono text-[9.5px] text-slate-500">{f.page_count} p</span> : null}
+      {f.uploading && <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-cyan-glow" />}
+      {onRemove && <button type="button" onClick={onRemove} className="shrink-0 text-slate-500 hover:text-white" title="Remove">×</button>}
+    </span>
+  );
+}
+
+// What the assistant did, as the scene itself reports it, plus its files, sources and question
+function Extras({ x, onOption }) {
+  if (!x) return null;
+  return (
+    <div className="mt-2 space-y-2">
+      {x.changes?.length > 0 && (
+        <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.05] px-2.5 py-1.5">
+          <div className="mb-0.5 font-mono text-[9.5px] uppercase tracking-wide text-emerald-300/90">What changed</div>
+          {x.changes.map((c, i) => <div key={i} className="text-[11.5px] text-slate-200">• {c}</div>)}
+          <button type="button" onClick={() => onOption("undo")} className="mt-1 font-mono text-[10px] text-slate-400 hover:text-white">↶ undo this</button>
+        </div>)}
+      {x.downloads?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {x.downloads.map((d) => (
+            <a key={d.url} href={d.url} download={d.name}
+              className="flex items-center gap-2 rounded-lg border border-cyan-glow/30 bg-cyan-glow/[0.07] px-2.5 py-1.5 text-[11.5px] text-white hover:bg-cyan-glow/15">
+              <Icon name="upload" className="h-3.5 w-3.5 rotate-180 text-cyan-glow" />
+              <span><span className="block font-semibold">{d.label}</span><span className="font-mono text-[9.5px] text-slate-400">{d.name} · {(d.bytes / 1024).toFixed(0)} KB</span></span>
+            </a>))}
+        </div>)}
+      {x.question?.options?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {x.question.options.map((o) => (
+            <button key={o} type="button" onClick={() => onOption(o)}
+              className="rounded-lg border border-violet-300/30 bg-violet-400/10 px-2.5 py-1 text-[11.5px] text-violet-100 hover:bg-violet-400/20">{o}</button>))}
+        </div>)}
+      {x.sources?.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="font-mono text-[9.5px] uppercase tracking-wide text-slate-500">Sources</div>
+          {x.sources.map((s, i) => <a key={i} href={s.url} target="_blank" rel="noreferrer" className="block truncate text-[11px] text-sky-300 hover:underline">{i + 1}. {s.title}</a>)}
+        </div>)}
+      {x.notes?.map((n, i) => <div key={i} className="text-[10.5px] text-amber-200/90">{n}</div>)}
+    </div>
+  );
+}
+
 // What Muse Spark is doing right now: one line per model call or tool, live from the server.
 function LiveSteps() {
   const steps = useStore((s) => s.progress);
@@ -160,13 +233,48 @@ function LiveSteps() {
   );
 }
 
-// The finished turn's steps stay in the chat: who did what, in how many seconds.
+// The finished turn's steps stay in the chat, folded to one line (who did what, in how many seconds on click).
 function Timeline({ steps }) {
+  const [open, setOpen] = useState(false);
   const total = steps.reduce((a, st) => a + (st.s || 0), 0);
   return (
-    <div className="space-y-1 rounded-xl border border-white/[0.06] bg-black/10 px-3 py-2">
-      {steps.map((st, i) => <StepRow key={i} st={st} />)}
-      <div className="flex font-mono text-[10px] text-slate-500"><span>steps</span><span className="ml-auto tabular-nums">{total.toFixed(1)} s</span></div>
+    <div className="rounded-xl border border-white/[0.06] bg-black/10 px-3 py-1.5">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 font-mono text-[10px] text-slate-400 hover:text-white">
+        <Icon name="chevron" className={`h-3 w-3 transition ${open ? "rotate-90" : ""}`} />
+        <span>{steps.length} step{steps.length === 1 ? "" : "s"} · {[...new Set(steps.map((s) => (STEP[s.label] || [s.who || "AETHER engine"])[0]))].slice(0, 3).join(", ")}</span>
+        <span className="ml-auto tabular-nums">{total.toFixed(1)} s</span></button>
+      {open && <div className="mt-1 space-y-1">{steps.map((st, i) => <StepRow key={i} st={st} />)}</div>}
+    </div>
+  );
+}
+
+function ToolSteps({ trace }) {
+  const [open, setOpen] = useState(false);
+  const bad = trace.filter((t) => t.result?.error).length;
+  return (
+    <div className="rounded-lg border border-white/[0.06] bg-black/25 px-2 py-1 text-[11px]">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full min-w-0 items-center gap-2 text-left text-white/80 hover:text-white">
+        <Icon name="chevron" className={`h-3 w-3 shrink-0 transition ${open ? "rotate-90" : ""}`} />
+        <span className="truncate">{[...new Set(trace.map((t) => NAMES[t.tool] || t.tool))].join(" · ")}</span>
+        {bad > 0 && <span className="ml-auto shrink-0 font-mono text-[10px] text-amber-300" title="Tool calls that failed and were retried">{bad} retried</span>}
+      </button>
+      {open && <div className="mt-1 space-y-1">{trace.map((t, j) => (
+        <div key={j} className="flex min-w-0 items-center gap-2 pl-5">
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.result?.error ? "bg-bad" : "bg-cyan-glow shadow-glow"}`} />
+          <span className="shrink-0 whitespace-nowrap text-white/85">{NAMES[t.tool] || t.tool}</span>
+          <span className={`ml-auto min-w-0 truncate font-mono text-[10px] ${t.result?.error ? "text-rose-300" : "text-cyan-glow/80"}`} title={summary(t)}>{summary(t)}</span>
+        </div>))}</div>}
+    </div>
+  );
+}
+
+function MsgActions({ text, onRetry }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-1.5 flex gap-3 font-mono text-[10px] text-slate-500 opacity-0 transition group-hover:opacity-100">
+      <button type="button" className="hover:text-white" onClick={() => { navigator.clipboard?.writeText(text || ""); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>
+        {copied ? "copied" : "copy"}</button>
+      {onRetry && <button type="button" className="hover:text-white" onClick={onRetry} title="Send the previous message again">retry</button>}
     </div>
   );
 }
@@ -180,8 +288,19 @@ export default function Orchestrator() {
   const [text, setText] = useState("");
   const [rec, setRec] = useState(null);
   const [photo, setPhoto] = useState(null);
+  const [files, setFiles] = useState([]);           // attachments of the message being written (uploaded at once)
+  const [drag, setDrag] = useState(false);
   const file = useRef();
-  const pickPhoto = (f) => { if (!f) return; const r = new FileReader(); r.onload = () => setPhoto(r.result); r.readAsDataURL(f); };
+  const attach = async (list) => {
+    for (const f of [...(list || [])]) {
+      const tmp = { name: f.name, kind: "other", uploading: true, key: Math.random() };
+      setFiles((x) => [...x, tmp]);
+      try {
+        const meta = await useStore.getState().upload(f);
+        setFiles((x) => x.map((y) => (y.key === tmp.key ? meta : y)));
+      } catch (e) { setFiles((x) => x.filter((y) => y.key !== tmp.key)); notify(`${f.name}: ${e.message}`, "error"); }
+    }
+  };
   const log = useRef();
   const input = useRef();
 
@@ -191,7 +310,13 @@ export default function Orchestrator() {
     addEventListener("keydown", f); return () => removeEventListener("keydown", f);
   }, []);
 
-  const send = (q) => { const t = (q ?? text).trim(); if (!t || busy) return; setText(""); ask(t); };
+  const send = (q) => {
+    const t = (q ?? text).trim();
+    const ready = files.filter((f) => !f.uploading);
+    if ((!t && !ready.length) || busy || files.some((f) => f.uploading)) return;
+    setText(""); setFiles([]);
+    ask(t || "Here is a file.", ready);
+  };
   // voice: the transcript goes to Muse Spark, tagged with the model and its seconds; "Explain this machine" (or
   // "explain the machine / this / it") starts the step-by-step explanation directly
   const fromVoice = (t0, sec) => {
@@ -275,23 +400,31 @@ export default function Orchestrator() {
     <FloatPanel id="orchestrator" title="Muse Spark · AI orchestrator" icon="sparkle" open={open} busy={busy} right={modeSwitch} resizeTop={resizeTop}
       onClose={() => useStore.getState().setPanel("orchestrator", false)}
       style={place} className="mx-auto max-w-[760px]">
-      <div className="flex min-h-0 flex-1 flex-col gap-2 px-3.5 pb-3">
+      <div className={`relative flex min-h-0 flex-1 flex-col gap-2 px-3.5 pb-3 ${drag ? "ring-2 ring-inset ring-cyan-glow/50" : ""}`}
+        onDragOver={(e) => { if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); setDrag(true); } }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => { if (e.dataTransfer?.files?.length) { e.preventDefault(); setDrag(false); attach(e.dataTransfer.files); } }}>
         {(chat.length > 0 || busy || h) && (
           <div ref={log} className="scroll-thin min-h-0 flex-1 space-y-2 overflow-y-auto py-1.5 pr-1 [mask-image:linear-gradient(transparent,#000_12px,#000_calc(100%-12px),transparent)]"
             style={lay.win.orchestrator === "max" || h ? undefined : { maxHeight: "min(32vh, 300px)" }}>
             {chat.map((m, i) => m.role === "timeline" ? <Timeline key={i} steps={m.steps} /> : m.role === "steps" ? (
-              <div key={i} className="space-y-1">{m.trace.map((t, j) => (
-                <div key={j} className="flex min-w-0 items-center gap-2 rounded-lg border border-white/[0.06] bg-black/25 px-2 py-1 text-[11px]">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.result.error ? "bg-bad" : "bg-cyan-glow shadow-glow"}`} />
-                  <span className="shrink-0 whitespace-nowrap text-white/85">{NAMES[t.tool] || t.tool}</span>
-                  <span className={`ml-auto min-w-0 truncate font-mono text-[10px] ${t.result.error ? "text-rose-300" : "text-cyan-glow/80"}`} title={summary(t)}>{summary(t)}</span>
-                </div>))}</div>
+              <ToolSteps key={i} trace={m.trace} />
             ) : (
-              <div key={i} className={`whitespace-pre-wrap break-words rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
+              <div key={i} className={`group break-words rounded-xl px-3 py-2 text-[12px] leading-relaxed ${m.role === "ai" ? "" : "whitespace-pre-wrap"} ${
                 m.role === "user" ? "ml-auto w-fit max-w-[85%] border border-cyan-glow/20 bg-gradient-to-r from-sky-400/[0.10] to-violet-500/[0.10]"
-                  : m.role === "error" ? "border border-bad/30 bg-bad/10 text-rose-200" : "mr-6 border border-white/[0.07] bg-white/[0.04] text-white/90"}`}>
-                {m.img && <img src={m.img} className="mb-1.5 h-20 max-w-full rounded-lg object-cover" />}{m.text}
-                {m.via && <div className="mt-1 font-mono text-[9.5px] text-cyan-glow/80">{m.via}</div>}</div>
+                  : m.role === "error" ? "border border-bad/30 bg-bad/10 text-rose-200" : "mr-6 border border-white/[0.07] bg-white/[0.04] text-white/90"}`}
+                title={m.role === "error" ? m.text : undefined}>
+                {m.files?.length > 0 && <div className="mb-1.5 flex flex-wrap gap-1">{m.files.map((f) => <Chip key={f.name} f={f} />)}</div>}
+                {m.img && <img src={m.img} className="mb-1.5 max-h-64 max-w-full rounded-lg bg-white object-contain" />}
+                <div className="select-text">{m.role === "ai" ? <Markdown text={m.text} /> : m.role === "error" ? friendlyError(m.text) : m.text}</div>
+                {m.role === "error" && <button type="button" className="mt-1 font-mono text-[10px] text-rose-200/80 hover:text-white"
+                  onClick={() => { const prev = chat.slice(0, i).reverse().find((x) => x.role === "user"); if (prev) ask(prev.text, prev.files || []); }}>try again</button>}
+                {m.via && <div className="mt-1 font-mono text-[9.5px] text-cyan-glow/80">{m.via}</div>}
+                {m.role === "ai" && <Extras x={m.extras} onOption={(o) => send(o)} />}
+                {m.role === "ai" && <MsgActions text={m.text} onRetry={busy ? null : () => {
+                  const prev = chat.slice(0, i).reverse().find((x) => x.role === "user");
+                  if (prev) ask(prev.text, prev.files || []);
+                }} />}</div>
             ))}
             {busy && <LiveSteps />}
           </div>
@@ -304,22 +437,31 @@ export default function Orchestrator() {
           </div>
         )}
         {photo && <PhotoForm image={photo} onCancel={() => setPhoto(null)} />}
+        {files.length > 0 && <div className="flex shrink-0 flex-wrap gap-1.5">{files.map((f, i) => (
+          <Chip key={f.key || f.name} f={f} onRemove={() => setFiles((x) => x.filter((_, j) => j !== i))} />))}</div>}
         <form onSubmit={(e) => { e.preventDefault(); send(); }}
           className={`relative flex shrink-0 items-center gap-1.5 overflow-hidden rounded-xl border bg-black/35 p-1 transition ${busy ? "border-cyan-glow/40" : "border-white/10 focus-within:border-cyan-glow/50 focus-within:shadow-[0_0_24px_rgba(95,225,255,.18)]"}`}>
           <button type="button" title="Hold to talk (Muse Voice)" onPointerDown={startRec} onPointerUp={stopRec} onPointerLeave={stopRec}
             className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition ${rec ? "animate-pulse bg-magenta-glow/25 text-magenta-glow" : "text-silver hover:bg-white/10 hover:text-white"}`}>
             <Icon name="mic" /></button>
-          <button type="button" title="Photo or drawing → 3D model" disabled={busy} onClick={() => file.current?.click()}
+          <button type="button" title="Attach files: drawings, photos, PDF, GLB / STL / OBJ, STEP (or paste / drop them here)" disabled={busy}
+            onClick={() => file.current?.click()}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-silver transition hover:bg-white/10 hover:text-white disabled:opacity-40">
-            <Icon name="camera" /></button>
-          <input ref={file} id="photo-input" type="file" accept="image/*" capture="environment" className="hidden"
-            onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+            <Icon name="plus" /></button>
+          <input ref={file} id="photo-input" type="file" multiple className="hidden"
+            accept="image/*,.pdf,.glb,.gltf,.stl,.obj,.step,.stp"
+            onChange={(e) => { attach(e.target.files); e.target.value = ""; }} />
           <input id="ai-input" ref={input} value={text} onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => { if (e.clipboardData?.files?.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
             onKeyDown={(e) => e.key === "Escape" && e.target.blur()}
             placeholder={rec ? "Listening… release to send" : "Ask Muse Spark to design, change or check something…"}
             className="min-w-0 flex-1 truncate bg-transparent px-1 py-1.5 text-[12.5px] text-white outline-none placeholder:text-white/35" />
-          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky-400 via-indigo-500 to-violet-500 text-white shadow-[0_6px_18px_-6px_rgba(99,102,241,.9)] transition hover:brightness-110 disabled:bg-none disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none"
-            disabled={busy || !text.trim()}><Icon name="send" /></button>
+          {busy && <button type="button" title="Stop (after the current step)"
+            onClick={() => { fetch("/api/chat/stop", { method: "POST", body: "{}" }); notify("Stopping after the current step…"); }}
+            className="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/10 text-white hover:bg-rose-500/40">
+            <span className="h-2.5 w-2.5 rounded-sm bg-white" /></button>}
+          {!busy && <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky-400 via-indigo-500 to-violet-500 text-white shadow-[0_6px_18px_-6px_rgba(99,102,241,.9)] transition hover:brightness-110 disabled:bg-none disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none"
+            disabled={(!text.trim() && !files.length) || files.some((f) => f.uploading)}><Icon name="send" /></button>}
           {busy && <div className="pointer-events-none absolute inset-0 busy-sheen" />}
         </form>
       </div>

@@ -2,3 +2,6 @@
 export const objects = new Map();
 // The live camera, canvas and navigation controller, shared with code outside the <Canvas> (hand mode, nav gizmo).
 export const view = { camera: null, dom: null, nav: null, hitPart: false, scene: null };
+
+// for scripted checks (frame-rate measurement, automated UI tests): the camera rig and the part objects
+if (typeof window !== "undefined") window.__aether = { view, objects };

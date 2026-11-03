@@ -219,7 +219,7 @@ solves it for an eye-tracked pupil: band-limited Gerchberg–Saxton that fits th
 0.775 (8 cm in front), scene image within 2.2 % of complex modulation, 0.2 % haze. Cost: light and ~200 FFTs per
 column and subframe.
 
-### 3.12 Drawing → 3D (`engine/outline.py`, `engine/rebuild.py`, `engine/hull.py`)
+### 3.12 Drawing → 3D (`engine/outline.py`, `engine/rebuild.py`, `cad/assembly.py`)
 
 - Outlines: marching squares → RDP → hole nesting → ear clipping with hole bridges → watertight extrusion.
 - Gears: standard involute (ISO 54 module snap, r = mz/2, rb = r cos α, ra = r + m, rf = r − 1.25m), contact ratio
@@ -230,8 +230,9 @@ column and subframe.
   side); links, plates and wheels are inflated to rounded cast/forged solids (`inflate` builder); gears and wheels
   get hubs; pins run along the axis; frames become a housing (back plate + walls along the outer contour through
   the depth + hidden front plate). Each part keeps `eng.dims` with the source of every number (read from drawing / measured / assumed).
-- Three views (front, top, right side) → visual hull on a voxel grid → watertight surface + Taubin smoothing
-  (`import_three_view`, button 3V). Hidden pockets and blind holes are filled; dashed lines are not read.
+- The rebuilt machine → exact OpenCascade solids per part (`cad/assembly.py`): validation, inferred bores, mates,
+  interference, true sections, STEP. Three-view sheets go to the parametric CAD pipeline (`cad/`); there is no
+  visual-hull path (`engine/views.py` only finds and matches the views to classify an upload).
 - CAD meshes: STL / OBJ / GLB import keeps real millimetres (`import_mesh` with `size_mm = 0`). STEP: export STL.
 
 ### 3.9 Lab-scale phase hologram (`make_hologram`, `optics.image_hologram`)

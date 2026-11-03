@@ -33,13 +33,13 @@ KINDS = ("machine", "three_view", "part")
 
 def upload_kind(data_url, views_side=1000):
     """What an upload is, measured on the image (no AI, no comma in a prompt):
-    - "three_view": three or more separate views whose sizes agree as one object's side / top / front (sheet.match,
-      size disagreement <= 15 %, the same limit lab.import_sheet enforces);
+    - "three_view": three or more separate views whose sizes agree as one object's side / top / front (views.match,
+      size disagreement <= 15 %, the CAD pipeline's limit);
     - "machine": any other line drawing (one view of a machine);
     - "part": a photo (smooth shading, few sharp edges): SAM 3.1 cuts out one part.
     Line drawing = dense sharp edges: >= 6 % of pixels have a grey-level step > 25 per pixel (drawings measured
     0.195-0.199, the sample phone photo 0.007). Returns (kind, evidence)."""
-    from engine import sheet
+    from engine import views as sheet
     raw = base64.b64decode(data_url.split(",", 1)[-1])
     im = Image.open(io.BytesIO(raw)).convert("L")
     im.thumbnail((512, 512))

@@ -27,6 +27,7 @@ def build(name, run_dir):
     parts = interpret.parts_from_read(rp["read_parts_px"], W, H, rp["mm_per_px"], ink=circles.ink_mask(im)[0])
     specs, rep = rebuild.rebuild(parts, rp["drawing_mm"], rp.get("completion"), frame_cell_mm=rp["mm_per_px"])
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "replay", specs, position=[0, 0, 0], rotation=[0, 0, 0])
     return st, rp["mm_per_px"], im, rep
 

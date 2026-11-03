@@ -24,6 +24,7 @@ import urllib.error
 import urllib.request
 
 import numpy as np
+from PIL import Image
 
 API = os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
 SPARK = os.environ.get("META_MODEL", "muse-spark-1.3")
@@ -36,9 +37,15 @@ class ModelUnavailable(RuntimeError):
     """No stored answer and the model could not be called (no key, network, HTTP error, invalid JSON twice)."""
 
 
-def _img_url(im, fmt="JPEG"):
+def _img_url(im, fmt="JPEG", max_side=1280):
+    """An image for a model call: at most max_side px on its long side (a bigger image costs upload and model time,
+    not reading accuracy: the numbered regions and drawn lines stay legible at 1280 px)."""
     buf = io.BytesIO()
-    im.convert("RGB").save(buf, fmt, quality=92)
+    im = im.convert("RGB")
+    if max(im.size) > max_side:
+        k = max_side / max(im.size)
+        im = im.resize((round(im.size[0] * k), round(im.size[1] * k)), Image.LANCZOS)
+    im.save(buf, fmt, quality=88)
     return f"data:image/{fmt.lower()};base64," + base64.b64encode(buf.getvalue()).decode()
 
 
@@ -283,13 +290,18 @@ def s1_view_roles(ai, crops, cv_nose_left):
                      ("end view B", crops["end_b"])):
         content += [{"type": "text", "text": name + ":"}, {"type": "image_url", "image_url": {"url": _img_url(im)}}]
     answers, recs = [], []
-    for seed in (1, 2):
+
+    def one(seed):
         try:
-            a, r = ai.ask_json("S1_view_roles", f"seed{seed}", SPARK, content, S1_SCHEMA, seed=seed)
-            answers.append(a)
-            recs.append(r)
+            return ai.ask_json("S1_view_roles", f"seed{seed}", SPARK, content, S1_SCHEMA, seed=seed)
         except ModelUnavailable as e:
-            recs.append({"error": str(e)})
+            return None, {"error": str(e)}
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(2) as pool:                  # the two seeds are independent readings: ask at once
+        for a, r in pool.map(one, (1, 2)):
+            if a is not None:
+                answers.append(a)
+            recs.append(r)
     ev = {"answers": answers, "cv_nose_left": cv_nose_left}
     ok = (len(answers) == 2 and all(a[k] == answers[0][k] for a in answers for k in ("end_a", "end_b", "side_nose", "top_nose"))
           and {answers[0]["end_a"], answers[0]["end_b"]} == {"front", "rear"}
@@ -312,15 +324,24 @@ def s2_sam_checks(ai, crops, offsets, ink, wheels_px):
     out = {}
     jobs = [("side", "wheel"), ("side", "side mirror"), ("top", "side mirror"), ("end_rear", "exhaust pipe"),
             ("end_front", "headlight")]
-    for view, prompt in jobs:
-        im = crops.get(view)
-        if im is None:
-            continue
+    def seg(job):
+        view, prompt = job
+        if crops.get(view) is None:
+            return job, None, None
         try:
-            objs, rec = ai.sam("S2_sam", f"{view}:{prompt}", im, prompt)
+            return job, ai.sam("S2_sam", f"{view}:{prompt}", crops[view], prompt), None
         except ModelUnavailable as e:
-            out[f"{view}:{prompt}"] = {"error": str(e)[:200]}
+            return job, None, str(e)[:200]
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(len(jobs)) as pool:          # the SAM calls are independent: all at once
+        done = list(pool.map(seg, jobs))
+    for (view, prompt), res, err in done:
+        if err:
+            out[f"{view}:{prompt}"] = {"error": err}
             continue
+        if res is None:
+            continue
+        objs, rec = res
         ox, oy, sc = offsets[view]
         acc = []
         for o in objs:
@@ -368,13 +389,19 @@ def s3_region_labels(ai, view, overlay, n_regions, object_name):
         "nothing fits. Answer with the JSON object only.")},
                {"type": "image_url", "image_url": {"url": _img_url(overlay, "PNG")}}]
     res = {}
-    for who, model in (("spark", SPARK), ("wonder", WONDER)):
+
+    def ask(who, model):
+        # labelling numbered areas is a lookup, not a reasoning task: low effort for both models (Muse Spark's default
+        # effort is high, ~90-100 s per view; the two models and the four views run in parallel)
         try:
             a, rec = ai.ask_json("S3_region_labels", f"{view}:{who}", model, content, S3_SCHEMA, seed=1,
-                                 effort="low" if model == WONDER else None, fallback=False, timeout=180)
+                                 effort="low", fallback=False, timeout=180)
             res[who] = {int(r["n"]): (r["kind"], float(r["confidence"])) for r in a["regions"] if r["n"] < n_regions}
         except ModelUnavailable as e:
             res[who] = {"_error": str(e)[:200]}
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(2) as pool:
+        list(pool.map(lambda wm: ask(*wm), (("spark", SPARK), ("wonder", WONDER))))
     labels = {}
     for n in range(n_regions):
         sp = res.get("spark", {}).get(n)
@@ -411,15 +438,16 @@ def s5_section_hypotheses(ai, crops, station_table, seeds=(1, 2)):
         "fraction of the glass height; 0 for deck groups). One reason each. JSON only.\n" + station_table)}]
     for name in ("side", "top", "end_front", "end_rear"):
         content += [{"type": "text", "text": name + ":"}, {"type": "image_url", "image_url": {"url": _img_url(crops[name])}}]
-    out = []
-    for seed in seeds:
+    def one(seed):
         try:
-            a, rec = ai.ask_json("S5_sections", f"seed{seed}", WONDER, content, S5_SCHEMA, seed=seed, effort="medium",
+            a, rec = ai.ask_json("S5_sections", f"seed{seed}", WONDER, content, S5_SCHEMA, seed=seed, effort="low",
                                  timeout=240)
-            out.append({"seed": seed, "answer": a, "model": rec.get("model"), "fallback": rec.get("fallback")})
+            return {"seed": seed, "answer": a, "model": rec.get("model"), "fallback": rec.get("fallback")}
         except ModelUnavailable as e:
-            out.append({"seed": seed, "error": str(e)[:200]})
-    return out
+            return {"seed": seed, "error": str(e)[:200]}
+    import concurrent.futures as cf
+    with cf.ThreadPoolExecutor(len(seeds)) as pool:
+        return list(pool.map(one, seeds))
 
 
 def s6_transitions(ai, crops):

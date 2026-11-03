@@ -10,9 +10,11 @@
 from __future__ import annotations
 
 import json
+import os
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 from OCP.BRepTools import BRepTools
@@ -198,13 +200,17 @@ def roundtrip(components, step_path, brep_dir):
     """Write STEP, then re-read and compare in a FRESH Python process (no shared kernel state). The originals are
     handed over as .brep files (OCCT's native exact format)."""
     write_step(components, step_path)
+    os.makedirs(brep_dir, exist_ok=True)
     names = []
     for c in components:
-        p = f"{brep_dir}/{c['id']}.brep"
+        p = os.path.join(brep_dir, c["id"] + ".brep")
         BRepTools.Write_s(c["shape"], p)
+        if not os.path.isfile(p):
+            raise RuntimeError(f"brep write failed: {p} was not created")
         names.append(c["id"])
+    # a fresh interpreter with no shared kernel state; the repo root is derived with os.path so it works on any platform
     code = ("import json,sys; sys.path.insert(0, %r); from cad import export as E; print(json.dumps(E._roundtrip_child(%r, %r, %r)))"
-            % (str(__file__).rsplit("/cad/", 1)[0], str(step_path), str(brep_dir), names))
+            % (str(Path(__file__).resolve().parents[1]), str(step_path), str(brep_dir), names))
     p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=1800)
     if p.returncode:
         raise RuntimeError("STEP round-trip process failed: " + (p.stderr or "")[-800:])
@@ -212,6 +218,23 @@ def roundtrip(components, step_path, brep_dir):
     res["tolerance_mm"] = STEP_TOL_MM
     res["all_pass"] = all(r.get("pass") for r in res["components"].values()) and not res["missing"]
     return res
+
+
+# the only functions ever run in a fresh process (fixed code, never model output; tests/cad M7 checks subprocess use)
+FRESH_ALLOWED = {("export", "_roundtrip_child"), ("assembly", "_roundtrip_child")}
+
+
+def fresh_process(module, func, *args, timeout=3600):
+    """Run cad.<module>.<func>(*args) in a fresh interpreter (no kernel state shared with the caller) and return its
+    JSON result. Only the allow-listed functions; the arguments are plain paths / names, passed as Python literals."""
+    if (module, func) not in FRESH_ALLOWED:
+        raise ValueError(f"{module}.{func} may not run in a fresh process")
+    code = ("import json,sys; sys.path.insert(0, %r); from cad import %s as M; print(json.dumps(M.%s(*%r)))"
+            % (str(Path(__file__).resolve().parents[1]), module, func, list(args)))
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=timeout)
+    if p.returncode:
+        raise RuntimeError(f"fresh process {module}.{func} failed: " + (p.stderr or "")[-800:])
+    return json.loads(p.stdout.strip().splitlines()[-1])
 
 
 def _roundtrip_child(step_path, brep_dir, names):
@@ -224,7 +247,10 @@ def _roundtrip_child(step_path, brep_dir, names):
             missing.append(nm)
             continue
         a = TopoDS_Shape()
-        BRepTools.Read_s(a, f"{brep_dir}/{nm}.brep", BRep_Builder())
+        BRepTools.Read_s(a, os.path.join(brep_dir, nm + ".brep"), BRep_Builder())
+        if a.IsNull():
+            out[nm] = {"pass": False, "error": f"brep re-read of {nm}.brep returned a null shape"}
+            continue
         out[nm] = compare_shapes(a, got[nm])
     return {"components": out, "missing": missing, "read_names": sorted(got)}
 

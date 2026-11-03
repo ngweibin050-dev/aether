@@ -107,6 +107,7 @@ def test_see_inside():
     """7. Section cut, X-ray and explode reach the hologram: a part hidden inside a shell becomes visible."""
     from engine import lab
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "box in a ball", [
         {"name": "shell", "type": "sphere", "params": {"radius": 30}},
         {"name": "core", "type": "box", "params": {"w": 12, "d": 12, "h": 12}}], position=(0, 0, 30))   # bottom at 30: centre 60
@@ -132,6 +133,7 @@ def test_desk_score_loop():
     """8. Design loop score: a tall design fails on the desk; moved onto the panel plane it passes."""
     from engine import lab
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "Tall", [{"name": "Body", "type": "tube", "params": {"outer": 40, "inner": 36, "height": 150}}],
                        position=[0, 0, 110])
     a = lab.desk_score(st)
@@ -214,6 +216,7 @@ def test_rebuild_synthetic():
     info, _ = vision.blueprint_parts(im, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
     specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "M", specs, position=[0, 0, 0], rotation=[90, 0, 0])
     fit = agent._fit_to_desk(st, st["selected"])
     sc = lab.desk_score(st)
@@ -242,29 +245,6 @@ def test_wave_matches_eye_model():
         a, b = desk_wave.mtf_1d(prof, dth), desk_wave.mtf_1d(marg / marg.sum(), dth)
         print(f"  point {D} m, panel {d} m: wave {a:.3f}, eye model {b:.3f}")
         assert abs(a - b) < 0.02 * max(b, 0.1) + 0.01
-
-
-def test_three_view_hull():
-    """15. Three-view drawing -> solid: an L-bracket's visual hull has the right size and volume and is closed."""
-    from PIL import Image, ImageDraw
-    from engine import hull
-    S = 4
-    def view(w, h, rects):
-        im = Image.new("L", (w * S + 80, h * S + 80), 255)
-        d = ImageDraw.Draw(im)
-        for x0, y0, x1, y1 in rects:
-            d.rectangle([40 + x0 * S, 40 + y0 * S, 40 + x1 * S, 40 + y1 * S], fill=0)
-        return im
-    front = view(60, 50, [(0, 0, 60, 50)])
-    top = view(60, 40, [(0, 0, 60, 40)])
-    side = view(40, 50, [(0, 40, 40, 50), (30, 0, 40, 50)])
-    V, F, rep = hull.three_view(front, top, side, 60)
-    vol = abs(np.einsum("ij,ij->i", V[F[:, 0]], np.cross(V[F[:, 1]], V[F[:, 2]])).sum() / 6)
-    e = np.sort(np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), 1)
-    _, c = np.unique(e, axis=0, return_counts=True)
-    print(f"  size {rep['size_mm']} mm, volume {vol:.0f} mm3 (true 48000), open edges {(c != 2).sum()}")
-    assert all(abs(a - b) < 1.5 for a, b in zip(rep["size_mm"], (60, 40, 50)))
-    assert abs(vol / 48000 - 1) < 0.05 and (c != 2).sum() == 0
 
 
 def test_retina_full2d_is_100():
@@ -324,6 +304,7 @@ def test_interpret_read():
     parts = interpret.parts_from_read(read, 1600, 1600, 300 / 1600)
     specs, rep = rebuild.rebuild(parts, (300, 300))
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "M", specs, position=[0, 0, 0], rotation=[90, 0, 0])
     agent._fit_to_desk(st, st["selected"])
     sc = lab.desk_score(st)
@@ -444,56 +425,11 @@ def test_modal_engine_mismatch():
 
 
 
-def test_three_view_sheet():
-    """22. One sheet with side, front, rear and top views of a car: the views are found and matched by size without
-    being told which is which, the solid matches every view (>= 95%), and both axles' wheels are found."""
-    import json
-    import os
-    from engine import lab
-    st = lab.default_state()
-    path = os.path.join(os.path.dirname(__file__), "car_three_view.gif")
-    if not os.path.exists(path):                       # third-party sheet, not shipped in the public repo
-        print("  SKIPPED: tests/car_three_view.gif is not in this copy")
-        return
-    src = open(path, "rb").read()
-    r = lab.import_sheet(st, src, 120)
-    iou = r["view_match_iou_pct"]
-    print(f"  {r['views_found']} views, size disagreement {r['size_disagreement_pct']}%, match {iou}, "
-          f"size {r['size_mm']} mm, wheels at x = {[w['x'] for w in r['wheels']]} mm")
-    assert r["views_found"] >= 3 and r["size_disagreement_pct"] < 6
-    # the hull (voxel field) and the delivered meshes (official, tyres and rims included) match every view. The end
-    # view was held at >= 90 until the ground-line rule stopped erasing the tyres' outer lines there (Nov 1: 99.0 %)
-    assert min(r["view_match_voxel_pct"].values()) >= 95
-    assert iou["side"] >= 95 and iou["top"] >= 95 and iou["front"] >= 95
-    assert len(r["wheels"]) == 2 and r["wheels"][0]["x"] < 0 < r["wheels"][1]["x"]
-    assert sum(p["type"] == "cylinder" for p in st["parts"]) == 8          # 4 tyres + 4 rims
-    assert 0.4 < r["size_mm"][1] / r["size_mm"][0] < 0.6 and 0.2 < r["size_mm"][2] / r["size_mm"][0] < 0.35
-    # built like a modeller: many separate parts under one group, each with its own panel lines
-    meshes = [p for p in st["parts"] if p["type"] == "mesh"]
-    print(f"  {len(meshes)} body parts, e.g. {r['part_names'][:6]}")
-    assert len(meshes) >= 20 and all(p["parent"] == r["id"] for p in meshes)
-    assert sum(len(p["params"]["lines"]) > 0 for p in meshes) >= len(meshes) // 2
-    assert len({p["color"] for p in meshes}) >= 6
-    assert all(p["parent"] == r["id"] for p in st["parts"] if p["type"] == "cylinder")
-    # named like a modeller (a fixed reading stands in for Muse Spark offline): materials and real recesses
-    names = json.load(open(os.path.join(os.path.dirname(__file__), "car_three_view_names.json")))
-    namer = lambda shown: {role: {int(k) - 1: v for k, v in names.get(role, {}).items()} for role, _, _ in shown}
-    st = lab.default_state()
-    r = lab.import_sheet(st, src, 120, front_panel=2, namer=namer)
-    d = r["detail"]
-    print(f"  named: {d['kinds']}; recessed {len(d['recessed_mm'])} parts, e.g. {list(d['recessed_mm'].items())[:4]}")
-    got = {p["name"] for p in st["parts"]}
-    assert {"door left", "door right", "windscreen", "bonnet"} <= got and any(n.startswith("headlight") for n in got)
-    assert d["kinds"].get("glass", 0) >= 3 and d["kinds"].get("intake", 0) >= 6 and len(d["recessed_mm"]) >= 8
-    deep = max(d["recessed_mm"].values())
-    assert 0.5 < deep <= 0.022 * 120 + 1e-6                                # intakes sink in, bounded by the rule
-    assert any(p.get("material") == "glass" for p in st["parts"])
-
 def test_ground_line_rule():
     """25. A ground line under a view is not part of the object and is erased; a part's own flat bottom edge stays.
     The line counts as ground only if it runs past the object's outline (measured just above it) on at least one side."""
     import numpy as np
-    from engine import sheet
+    from engine import views as sheet
     # a: a body on two wheels standing on a ground line that runs past the body on the right
     m = np.zeros((120, 400), bool)
     m[20:22, 40:300] = m[60:62, 40:300] = m[20:62, 40:42] = m[20:62, 298:300] = True             # body outline
@@ -508,33 +444,6 @@ def test_ground_line_rule():
     p[30:32, 50:350] = p[90:92, 50:350] = p[30:92, 50:52] = p[30:92, 348:350] = True
     assert sheet._drop_ground_under(p)[90:92, 50:350].all()
     print("  ground line past the body erased, a plate's own bottom edge kept")
-
-
-def test_thin_wing_survives():
-    """26. A wing only 2 px thick in the front view survives the fine three-view build (1 px per voxel, no blur before
-    the surface): the mesh's silhouettes match all three drawn views >= 99 %. With the coarse build's two blur passes
-    it fell to 89 % (top) / 85 % (front) - the way NASA's X-36 wing tips went missing."""
-    import numpy as np
-    from engine import hull, sheet
-    L = 400
-    top = np.zeros((300, L), bool)
-    side = np.zeros((40, L), bool)
-    front = np.zeros((40, 300), bool)
-    yy, xx = np.mgrid[:300, :L]
-    top |= (np.abs(yy - 150) <= (xx - 100) * 0.5) & (xx >= 100) & (xx < 300)
-    top |= (np.abs(yy - 150) <= 6) & (xx >= 20) & (xx < 380)
-    side[17:23, 20:380] = True
-    side[19:21, 100:300] = True
-    front[17:23, 144:156] = True
-    front[19:21, 50:250] = True
-    occ, step, _ = hull.carve(side, top, front, float(L), L)
-    field = sheet.hull_field_slabs(side, top, front, False, False, occ.shape)
-    V, F, c = hull.surface_nets(field, step, blur=0, smooth=16, return_centre=True)
-    m = sheet.mesh_view_masks([(V, F)], {"grid": occ.shape, "step": step, "centre": c, "flips": {"top": False, "front": False},
-                                         "shapes": {"side": side.shape, "top": top.shape, "front": front.shape}})
-    iou = {k: round(100 * (m[k] & ref).sum() / max((m[k] | ref).sum(), 1), 1) for k, ref in (("side", side), ("top", top), ("front", front))}
-    print(f"  2-px wing at 1 px per voxel, delivered mesh: {iou}")
-    assert min(iou.values()) >= 99
 
 
 def test_clean_edges():
@@ -557,6 +466,7 @@ def test_clean_edges():
     info, _ = vision.blueprint_parts(im, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
     specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "synthetic", specs, position=[0, 0, 0], rotation=[0, 0, 0])
     worst = max(quality.part_staircase(V, F, mmpx)[0] for p, V, F in geometry.scene_meshes(st["parts"]) if p["type"] != "group" and len(F))
     print(f"  synthetic machine: worst part staircase {worst} %, frame outline deviation {rep['checks']['frame_outline_max_dev_mm']} mm")
@@ -565,10 +475,9 @@ def test_clean_edges():
 
 def test_surface_check():
     """28. 3-D surface check of a delivered mesh (what no view's outline shows): a vertex pushed through a plate is
-    counted as a fold and keep_unflipped puts it back; a thin plate whose rim zig-zags (G's wing-edge ribs) has steps
-    that mesh_staircase finds in the top view, the same plate with a straight rim has none."""
+    counted as a fold and keep_unflipped puts it back."""
     import numpy as np
-    from engine import hull, quality
+    from engine import quality
     n = 12
     yy, xx = np.mgrid[:n, :n]
     V0 = np.c_[xx.ravel(), yy.ravel(), np.zeros(n * n)].astype(float)
@@ -579,47 +488,6 @@ def test_surface_check():
     bad, fixed = quality.folds(V1, F), quality.keep_unflipped(V0, V1, F)
     print(f"  pushed vertex: {bad}; put back {fixed[1]} vertices -> {quality.folds(fixed[0], F)}")
     assert bad["flipped_triangles"] > 0 and quality.folds(fixed[0], F)["flipped_triangles"] == 0
-    xx, yy, zz = np.mgrid[:120, :80, :12]                  # surface_nets: vertex axes = grid axes
-    V, F = hull.surface_nets((zz >= 4) & (zz < 7) & (np.abs(yy - 40) < 12) & (xx > 10) & (xx < 110), 1.0, blur=0, smooth=0)
-    rim = (V[:, 1] > V[:, 1].max() - 0.6) & (np.abs(V[:, 0]) < 40)
-    Vr = V.copy()                                     # a sawtooth on one long rim, every vertex 0.8 px in / out
-    Vr[rim, 1] += np.where(np.floor(V[rim, 0]).astype(int) % 2, -0.8, 0.0)
-    s = {nm: quality.mesh_staircase(v, F, 1.0)["top"] for nm, v in (("straight rim", V), ("sawtooth rim", Vr))}
-    print(f"  thin plate, top-view steps px: {s}")
-    assert s["straight rim"] == 0 and s["sawtooth rim"] > 50
-
-
-def test_smooth_body_stays_smooth():
-    """29. A smooth body (three ellipses) through the product's fine three-view build (lab.import_sheet, 1 px per voxel)
-    comes out smooth AND on its outlines: view match >= 99 % in every view, surface roughness (quality.roughness) RMS
-    <= 3 deg with <= 3 % of the surface bent > 10 deg. Without the anti-aliased view masks and blur_thick it was 4.9 deg /
-    8.9 %: the pixel terraces that made the car sheet look like crushed foil (12.7 deg / 35 % on that sheet)."""
-    import io
-    import numpy as np
-    from PIL import Image, ImageDraw
-    from engine import geometry, lab, quality
-    im = Image.new("L", (900, 560), 255)
-    d = ImageDraw.Draw(im)
-    d.ellipse((60, 40, 420, 130), outline=0, width=2)                  # side 360 x 90
-    d.ellipse((60, 260, 420, 410), outline=0, width=2)                 # top 360 x 150
-    d.ellipse((600, 40, 750, 130), outline=0, width=2)                 # front 150 x 90
-    b = io.BytesIO()
-    im.save(b, "PNG")
-    st = lab.default_state()
-    r = lab.import_sheet(st, b.getvalue(), 120, px_per_voxel=1.0)
-    Vs, Fs, n = [], [], 0
-    for p in st["parts"]:
-        if p.get("parent") == r["id"] and p["type"] == "mesh":
-            Vl, Fl = geometry.local_mesh(p)
-            M = geometry.matrix(p)
-            Vs.append(np.asarray(Vl) @ M[:3, :3].T + M[:3, 3])
-            Fs.append(np.asarray(Fl) + n)
-            n += len(Vl)
-    ro = quality.roughness(np.concatenate(Vs), np.concatenate(Fs))
-    print(f"  smooth body, delivered mesh: view match {r['view_match_iou_pct']}, roughness {ro}, "
-          f"surface check {r['surface_check']['folds']}")
-    assert min(r["view_match_iou_pct"].values()) >= 99
-    assert ro["rms_deg"] <= 3 and ro["bent_over_10deg_pct"] <= 3
 
 
 def test_explain_grounded():
@@ -739,10 +607,12 @@ def test_models_stand_on_base():
         return float(geometry.bounds(lab.subtree(st, g["id"]))[0][2])
     got = {}
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "motor", [{"type": "cylinder", "name": "stator", "params": {"radius": 60, "height": 160}},
                                      {"type": "cylinder", "name": "shaft", "params": {"radius": 8, "height": 220}}])
     got["text-to-CAD"] = bottom(st)
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "motor", [{"type": "box", "name": "b", "params": {"w": 40, "d": 40, "h": 40}}], position=[0, 0, 100])
     got["text-to-CAD, 100 mm up"] = bottom(st) - 100
     st = lab.default_state()
@@ -750,20 +620,11 @@ def test_models_stand_on_base():
     F = [[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1], [2, 3, 7], [2, 7, 6], [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]]
     lab.import_mesh(st, "box", V.ravel().tolist(), np.array(F).ravel().tolist(), size_mm=0)
     got["mesh import"] = bottom(st)
-    im = Image.new("L", (900, 560), 255)
-    d = ImageDraw.Draw(im)
-    d.ellipse((60, 40, 420, 130), outline=0, width=2)
-    d.ellipse((60, 260, 420, 410), outline=0, width=2)
-    d.ellipse((600, 40, 750, 130), outline=0, width=2)
-    b = io.BytesIO()
-    im.save(b, "PNG")
-    st = lab.default_state()
-    lab.import_sheet(st, b.getvalue(), 120, measure=False)
-    got["three-view sheet"] = bottom(st)
     dim, objs, mmpx = drawing()
     info, _ = vision.blueprint_parts(dim, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
     specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "Machine from drawing", specs, position=[0, 0, 0], rotation=[90, 0, 0])
     fit = agent._fit_to_desk(st, st["selected"])
     below = bottom(st)
@@ -789,6 +650,7 @@ def test_export_files():
     info, _ = vision.blueprint_parts(im, ["gear"], objs=objs, mm_per_px=mmpx, scale_source="test")
     specs, rep = rebuild.rebuild(info["parts"], info["drawing_mm"])
     st = lab.default_state()
+    lab.clear_scene(st)                   # a scene with only this design
     lab.build_assembly(st, "synthetic", specs, rotation=[90, 0, 0])
     meshes = [(p, V, F) for p, V, F in geometry.scene_meshes(st["parts"]) if p["type"] != "group" and len(F)]
     lo, hi = geometry.bounds(st["parts"])
@@ -897,6 +759,7 @@ def test_demo_drawings_replayed():
         dt = time.time() - t
         chk, _ = interpret.drawing_check(im, rep.pop("_silhouette"), rp["mm_per_px"])
         st = lab.default_state()
+        lab.clear_scene(st)                   # a scene with only this design
         lab.build_assembly(st, "replay", specs, position=[0, 0, 0], rotation=[0, 0, 0])
         worst = max(quality.part_staircase(V, F, rp["mm_per_px"])[0]
                     for p, V, F in geometry.scene_meshes(st["parts"]) if p["type"] != "group" and len(F))

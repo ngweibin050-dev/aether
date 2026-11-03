@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useStore } from "../store";
 import { COMMANDS, MENUS } from "../commands";
 import Icon from "./Icon";
+import ProjectMenu from "./ProjectMenu";
 
 export function MenuList({ items, onDone }) {
   let group = null;
@@ -43,6 +44,9 @@ export default function MenuBar() {
           <span className="font-display text-[13px] font-bold tracking-[0.22em]">AETHER</span>
           <span className="grad-text-lab font-mono text-[10px] font-semibold"> v0.1.0</span>
         </a>
+        <span className="mx-1 h-5 w-px bg-white/10" />
+        <ProjectMenu />
+        <span className="mx-1 h-5 w-px bg-white/10" />
         {MENUS.map((m) => (
           <div key={m} className="relative">
             <button onClick={() => setOpen(open === m ? null : m)} onPointerEnter={() => open && setOpen(m)}

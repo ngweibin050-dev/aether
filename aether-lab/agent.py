@@ -280,6 +280,7 @@ MACHINE_HINTS = ["gear", "wheel", "lever", "shaft", "pin", "frame"]
 READ_DEADLINE_S, READ_HARD_LIMIT_S = 60, 120     # reading stage: go on with what is back / wait no longer for a whole-sheet reading
 LAST_BUILD = {}
 LAST_REPORT = {}                                 # the last build's checks for the one-page report (engine/export.py)
+ON_CAD_DETAIL = None                             # set by the server: starts the CAD detail pass in the background
 LAST_IMAGE = {}                                  # the drawing the current machine was built from (Explain shows it to Muse Spark)
 
 
@@ -287,8 +288,8 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
                     kind="auto"):
     """An upload -> a 3D model, routed by what it IS:
     - "machine": one view of a machine -> Muse Spark reads it like an engineer -> 3D mechanism (_blueprint_to_design);
-    - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/, OpenCascade B-rep) when the
-      CAD environment is installed; mode="hull" (or no CAD environment) -> the LEGACY visual-hull preview (not CAD);
+    - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/, OpenCascade B-rep); without
+      the CAD environment nothing is built (there is no mesh substitute);
     - "part": a phone photo of one part -> SAM 3.1 cut-out + measurements -> Muse Spark rebuilds it.
     kind "auto" measures the image (vision.upload_kind: edge density, views and their size agreement); the UI can
     also say it ("Machine drawing"). prompt is an optional hint (what the object is), not a router.
@@ -307,20 +308,14 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     def first(out):
         reply, trace, images, hist = out
         return reply, [route] + trace, images, hist
-    if kind == "three_view" and mode != "hull":
+    if kind == "three_view":
         import cad_client
         if cad_client.available():
             return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step))
-        route["result"]["cad"] = "CAD environment not installed (cad-worker/.venv): legacy visual-hull PREVIEW used, not CAD"
-    if kind == "three_view":
-        out = _sheet_to_design(state, history, data_url, (hints or ["object"])[0], size_mm, out_dir, step)
-        if out:
-            return first(out)
-        if route["result"]["by"] == "the user's choice":
-            return first(("This sheet does not hold three views of one object that agree in size (side, top and front). "
-                          "Choose 'Machine drawing' for one view of a machine.", [], {}, history))
-        route["result"]["fallback"] = "the views did not agree in size: read as one machine view instead"
-        kind = "machine"
+        return first(("The three-view CAD pipeline needs the CAD environment (aether-lab/cad-worker/.venv: Python 3.12 + "
+                      "CadQuery). Create it with cad-worker/setup, or set AETHER_CAD_PYTHON. Nothing was built: I will not "
+                      "silently substitute the visual-hull preview for CAD.",
+                      [route], {}, history))
     if kind == "machine":
         prompts = (hints + [h for h in MACHINE_HINTS if h not in hints])[:6]
         return first(_blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, step, mode))
@@ -404,7 +399,7 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
     step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
     try:
-        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out))
+        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), defer_detail=True)
     except Exception as e:
         step({"stage": "done", "tool": "cad_pipeline", "error": str(e)[:300]})
         return (f"The CAD reconstruction failed: {e}", [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e)}}], {}, history)
@@ -414,6 +409,8 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     imp = lab.import_cad(state, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
                          provenance={"maturity": doc["maturity"]})
     imp["display_fit"] = _fit_to_desk(state, imp["id"])     # display scale only; the CAD document stays in real mm
+    if ON_CAD_DETAIL:                                        # progressive build: pockets / imprints arrive afterwards
+        ON_CAD_DETAIL(f"{prompt[:40]} (CAD from three views)")
     rep = r.get("report") or {}
     LAST_REPORT.clear()
     LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,
@@ -429,97 +426,6 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
                                                             "document": {k: doc[k] for k in ("title", "maturity", "status")}}}]
     return text, trace, {}, history
-
-
-def _sheet_to_design(state, history, data_url, prompt, size_mm, out_dir, step):
-    """A sheet with three or more orthographic views of one object (a car blueprint: side, front, rear, top) ->
-    one solid that matches every view (engine/sheet.py, visual hull). Returns None when the sheet is not a
-    multi-view drawing of one object, so the single-view paths run instead."""
-    import io
-    from concurrent.futures import ThreadPoolExecutor
-    from engine import sheet
-    step({"stage": "tool", "tool": "read_views"})
-    name = (prompt or "").split(",")[0].strip() or "object"
-    import time
-    tl, t0 = {}, time.time()
-    im = vision.load_image(data_url, 1600)
-    try:
-        front = _spark_which_front(sheet.front_rear_candidates(im), name)
-        tl["front_rear_s"] = round(time.time() - t0, 1)
-        shown = sheet.naming_views(im, 1600, front)["shown"]          # light, here: views and numbered regions
-        tl["local_views_s"] = round(time.time() - t0 - tl["front_rear_s"], 1)
-    except ValueError:
-        step({"stage": "done", "tool": "read_views", "error": True})
-        return None
-    # Muse Spark names the regions HERE (the Meta key stays on this computer) while Modal builds the solid at the
-    # drawing's own resolution (1 px per voxel, decimated to ~40k triangles); the names are applied after
-    pool = ThreadPoolExecutor(1)
-    naming = pool.submit(_spark_name_regions(name), shown)
-    pool.shutdown(wait=False)
-    buf = io.BytesIO()
-    im.save(buf, "PNG")
-    t1 = time.time()
-    res = compute.run(state, "import_sheet", {
-        "image": "data:image/png;base64," + __import__("base64").b64encode(buf.getvalue()).decode(),
-        "length_mm": max(float(size_mm), 120.0), "name": f"{name[:40]} (from three views)", "front_panel": front,
-        "px_per_voxel": 1.0, "decimate_to": 40000, "measure": False})
-    tl["modal_build_s"] = round(time.time() - t1, 1)
-    if res.get("error"):
-        step({"stage": "done", "tool": "read_views", "error": res["error"][:200]})
-        if "ValueError" in res["error"]:                  # not one object's views after all: try the one-view paths
-            return None
-        return (f"The three-view build failed: {res['error']}", [{"tool": "read_views", "args": {}, "result": res}], {}, history)
-    t2 = time.time()
-    try:
-        names, naming_error = naming.result(), None
-    except Exception as e:                                # parts keep their position names; the report says why
-        names, naming_error = {}, f"{type(e).__name__}: {str(e)[:200]}"
-    tl["wait_for_names_s"] = round(time.time() - t2, 1)
-    t3 = time.time()
-    res.update(lab.apply_sheet_names(state, res["id"], names, res.pop("_frame")))
-    tl["names_and_measure_s"] = round(time.time() - t3, 1)
-    res["timing_local"] = tl
-    if naming_error:
-        res["naming_error"] = naming_error
-    chk = res.pop("_check")
-    fit = _fit_to_desk(state, res["id"])
-    step({"stage": "done", "tool": "read_views"})
-    iou = res["view_match_iou_pct"]
-    check = {"mode": "three-view", "views_found": res["views_found"], "view_match_iou_pct": iou,
-             "view_match_voxel_pct": res.get("view_match_voxel_pct"), "view_match_note": res.get("view_match_note"),
-             "delivered_triangles": res.get("delivered_triangles"), "mesh": res.get("mesh"),
-             "timing_modal": res.get("timing"), "timing_local": res.get("timing_local"),
-             "size_disagreement_pct": res["size_disagreement_pct"],
-             "note": "Blue: the 3D model seen from that view. Red: drawn but not built (the views disagree there)."}
-    info = {"mode": "three-view", "read_by": "AETHER three-view reader (views found and matched by size, no AI guess)"
-                                     + ("; Muse Spark told front from rear" if front is not None else ""),
-            "size_mm": res["size_mm"], "check": check, "note": res["note"], "precision": res["precision"],
-            "parts_built": res["parts_built"], "part_names": res["part_names"], "detail": res.get("detail")}
-    sam = {"tool": "read_views", "args": {"prompt": prompt, "length_mm": res["size_mm"][0]}, "result": info}
-    LAST_REPORT.clear()
-    LAST_REPORT.update({"kind": "three-view sheet", "view_match_iou_pct": iou, "image_data_url": data_url, "fit": fit,
-                        "scale_known": False, "scale_source": f"assumed: length {res['size_mm'][0]:g} mm (no scale on the sheet)"})
-    images = {"sam_check": chk}
-    step({"stage": "tool", "tool": "desk_score"})
-    score = compute.run(state, "desk_score", {})
-    step({"stage": "done", "tool": "desk_score"})
-    trace = [sam, {"tool": "desk_score", "args": {}, "result": lab.for_agent(score)}]
-    text = (f"LEGACY PREVIEW, NOT CAD: I rebuilt the sheet from its side, top and front views as a visual hull, split into {res['parts_built']} separate "
-            "parts the way a modeller builds it (every closed region the drawing's lines make is its own part, with its "
-            f"own panel lines; wheels are tyre + rim): {json.dumps({k: v for k, v in res.items() if k not in ('note',)}, default=str)}. "
-            f"It is shown on the desk at {fit['scale']}x so it fits the sharp zone {fit['sharp_zone_mm']} mm. "
-            f"desk_score: pass={score.get('pass')}, worst {score.get('min_sharpness_pct')}%. Do not rebuild or change it. "
-            "Tell the user in 3-4 short sentences: which views were found and used, how well the 3D model matches each "
-            f"view (side {iou.get('side')}%, top {iou.get('top')}%, front {iou.get('front')}% overlap; outline error in mm: "
-            f"{json.dumps(res['precision']['outline_error_mm'])}), that it is built from {res['parts_built']} separate parts "
-            "(select, hide or explode any of them in the Scene panel; names and recess depths: "
-            f"{json.dumps(res.get('detail'))}), and honestly what "
-            "a three-view rebuild cannot recover (concave detail such as the cabin glass, intakes and wheel spokes; "
-            "it is the outer shape only). No tool calls.")
-    reply, more_trace, more, hist = chat(state, history, text, out_dir, step,
-                                         tools=[d for d in TOOL_DEFS if d["function"]["name"] == "desk_score"])
-    images.update(more)
-    return reply, trace + more_trace, images, hist
 
 
 READ_DRAWING = """You are a senior mechanical engineer reading a mechanical drawing ({w} x {h} px){where}. Read it the way
@@ -901,6 +807,7 @@ def _blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, st
     # vectorised frame outlines are from their trace (engine/quality.py)
     from engine import quality
     flat = lab.default_state()
+    flat["parts"] = []                               # only the rebuilt parts (the default scene holds a demo gear)
     lab.build_assembly(flat, "edge check", specs, position=[0, 0, 0], rotation=[0, 0, 0])
     st_len = st_steps = 0.0
     for p_, V_, F_ in geometry.scene_meshes(flat["parts"]):

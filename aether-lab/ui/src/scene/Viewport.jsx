@@ -49,11 +49,32 @@ function EdgeLines({ geom, lines, color, opacity, clip }) {
   }, [geom, lines]);
   useEffect(() => () => edges.dispose(), [edges]);
   return (
-    <lineSegments geometry={edges} raycast={() => null}>
+    <lineSegments geometry={edges} raycast={() => null} userData={{ edge: true }}>
       <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} clippingPlanes={clip} />
     </lineSegments>
   );
 }
+
+// Hatched cut face (CAD section convention): the cap is the B-rep face the Boolean section left on the plane.
+const hatchMaterial = (fill) => new THREE.ShaderMaterial({
+  uniforms: { uFill: { value: new THREE.Color(fill) }, uLine: { value: new THREE.Color("#0b1220") } },
+  vertexShader: "void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "uniform vec3 uFill; uniform vec3 uLine; void main(){ float d = mod(gl_FragCoord.x + gl_FragCoord.y, 10.0); gl_FragColor = vec4(d < 1.8 ? uLine : uFill, 1.0); }",
+  side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+});
+
+function Cap({ cap, color }) {
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(cap.cap, 3));
+    return g;
+  }, [cap]);
+  const mat = useMemo(() => hatchMaterial(new THREE.Color(color || "#cfd8e4").lerp(new THREE.Color("#ff4fd8"), 0.35)), [color]);
+  useEffect(() => () => { geom.dispose(); mat.dispose(); }, [geom, mat]);
+  return <mesh geometry={geom} material={mat} raycast={() => null} renderOrder={2} />;
+}
+
+const REGION_DEFAULT = { glass: "#1d2b3a", light: "#dfe7ef" };      // as the CAD document's materials
 
 function PartNode({ part, childrenOf }) {
   const ref = useRef();
@@ -66,7 +87,24 @@ function PartNode({ part, childrenOf }) {
   const isolate = useStore((s) => s.view.isolate);
   const explode = useStore((s) => s.view.explode);
   const off = useStore((s) => s.offsets[part.id]);
+  const cap = useStore((s) => (s.view.section ? s.caps[part.id] : null));
   const geom = useGeometry(mesh);
+  // named regions of a CAD body (glass = windows, light = lamps): their own colour per triangle, the rest the part's
+  const regionKey = mesh?.r ? JSON.stringify([part.color, part.region_colors, part.params?.region_names]) : null;
+  useEffect(() => {
+    if (!geom || !mesh?.r) return;
+    const names = part.params?.region_names || [];
+    const base = new THREE.Color(part.color || "#cfd8e4");
+    const cols = names.map((n) => new THREE.Color(part.region_colors?.[n] || REGION_DEFAULT[n] || part.color || "#cfd8e4"));
+    const F = mesh.f, n = geom.attributes.position.count, c = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) base.toArray(c, i * 3);
+    for (let t = 0; t < mesh.r.length; t++) {
+      const k = mesh.r[t];
+      if (!k || !cols[k - 1]) continue;
+      for (let j = 0; j < 3; j++) cols[k - 1].toArray(c, F[t * 3 + j] * 3);
+    }
+    geom.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
+  }, [geom, regionKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     objects.set(part.id, ref.current);
@@ -82,10 +120,10 @@ function PartNode({ part, childrenOf }) {
   useEffect(() => {
     if (first.current) { ref.current.position.copy(target); first.current = false; }
   }, [target]);
-  useFrame(() => {
+  useFrame((st) => {
     const o = ref.current;
     if (!o || useStore.getState().modal || o.userData.dragging) return;
-    if (o.position.distanceToSquared(target) > 1e-4) o.position.lerp(target, 0.18);
+    if (o.position.distanceToSquared(target) > 1e-4) { o.position.lerp(target, 0.18); st.invalidate(); }   // keep animating
     else o.position.copy(target);
   });
 
@@ -110,7 +148,7 @@ function PartNode({ part, childrenOf }) {
   else if (holo)
     material = <primitive object={holo} attach="material" />;
   else
-    material = <meshStandardMaterial color={part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")}
+    material = <meshStandardMaterial vertexColors={!!mesh?.r} color={mesh?.r ? "#ffffff" : part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")}
       metalness={part.material === "glass" ? 0.9 : 0.62} roughness={part.material === "glass" ? 0.06 : 0.34} envMapIntensity={part.material === "glass" ? 1.1 : 0.55}
       emissive={sel || "#000000"} emissiveIntensity={sel ? 0.22 : 0} transparent={ghost} opacity={ghost ? 0.06 : 1}
       depthWrite={!ghost} clippingPlanes={clip} polygonOffset={!!mesh?.l} polygonOffsetFactor={1.5} polygonOffsetUnits={2} />;
@@ -130,7 +168,8 @@ function PartNode({ part, childrenOf }) {
           <mesh geometry={geom} userData={{ part: part.id }}>
             {material}
           </mesh>
-          {section && shading !== "wire" && (
+          {cap && shading !== "wire" && <Cap cap={cap} color={part.color} />}
+          {section && !mesh.brep && shading !== "wire" && (
             <mesh geometry={geom} raycast={() => null}>
               <meshBasicMaterial color="#ff4fd8" side={THREE.BackSide} clippingPlanes={clip} transparent opacity={shading === "holo" ? 0.12 : ghost ? 0.2 : 0.6} depthWrite={shading !== "holo"} />
             </mesh>
@@ -202,13 +241,62 @@ function SectionPlane() {
         <meshBasicMaterial color="#ff4fd8" transparent opacity={0.05} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <Line points={edge} color="#ff4fd8" lineWidth={1.2} transparent opacity={0.8} />
-      <Html position={[w / 2, h / 2, 0]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
+      <Html wrapperClass="r3f-label" position={[w / 2, h / 2, 0]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
         <div className="whitespace-nowrap rounded-md border border-fuchsia-400/40 bg-black/60 px-2 py-0.5 font-mono text-[10.5px] text-fuchsia-200">
           SECTION {v.section.toUpperCase()} = {v.section_mm.toFixed(1)} mm
         </div>
       </Html>
     </group>
   );
+}
+
+// Leader-line labels for the parts the B-rep section cuts (largest cut faces first), above and below the model.
+function SectionLabels() {
+  const caps = useStore((s) => s.caps);
+  const v = useStore((s) => s.view);
+  const names = useStore((s) => s.state?.parts);
+  const version = useStore((s) => s.meshVersion);
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    if (!v.section || !Object.keys(caps).length) return setItems([]);
+    const t = setTimeout(() => {
+      const box = sceneBox();
+      if (box.isEmpty()) return setItems([]);
+      const by = Object.fromEntries((names || []).map((p) => [p.id, p.name]));
+      const list = Object.entries(caps).sort((a, b) => b[1].area_mm2 - a[1].area_mm2).slice(0, 12).map(([id, c]) => {
+        const o = objects.get(id);
+        if (!o) return null;
+        o.updateWorldMatrix(true, false);
+        const P = c.cap, n = P.length / 3, cen = new THREE.Vector3();
+        for (let i = 0; i < P.length; i += 3) cen.x += P[i] / n, cen.y += P[i + 1] / n, cen.z += P[i + 2] / n;
+        return { id, name: by[id] || id, area: c.area_mm2, at: cen.applyMatrix4(o.matrixWorld) };
+      }).filter(Boolean);
+      // callouts as in an illustrated cutaway: upper half of the cut above the model, lower half below, each row
+      // spread evenly across the model's width in the order of the parts, so leader lines fan out and never cross
+      const k = AXI[v.section] === 0 ? 1 : 0;
+      const span = box.max.z - box.min.z, midZ = (box.min.z + box.max.z) / 2;
+      const lo = box.min.getComponent(k), hi = box.max.getComponent(k), w = hi - lo;
+      const rows = [list.filter((it) => it.at.z >= midZ), list.filter((it) => it.at.z < midZ)];
+      if (!rows[0].length || !rows[1].length) { const all = [...rows[0], ...rows[1]]; rows[0] = all.filter((_, i) => i % 2 === 0); rows[1] = all.filter((_, i) => i % 2); }
+      setItems(rows.flatMap((row, r) => row.sort((a, b) => a.at.getComponent(k) - b.at.getComponent(k)).map((it, i) => {
+        const tip = it.at.clone();
+        tip.setComponent(k, lo - 0.1 * w + ((i + 0.5) / row.length) * 1.2 * w);
+        tip.z = r === 0 ? box.max.z + 0.35 * span + (i % 2) * 0.16 * span : box.min.z - 0.35 * span - (i % 2) * 0.16 * span;
+        return { ...it, tip, up: r === 0 };
+      })));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [caps, v.section, v.section_mm, v.explode, version, names]);
+  return items.map((it) => (
+    <group key={it.id}>
+      <Line points={[it.at.toArray(), it.tip.toArray()]} color="#e8eef6" lineWidth={1} transparent opacity={0.85} depthTest={false} />
+      <mesh position={it.at} raycast={() => null}><sphereGeometry args={[0.9, 10, 10]} /><meshBasicMaterial color="#ffffff" depthTest={false} /></mesh>
+      <Html wrapperClass="r3f-label" position={it.tip} center zIndexRange={[14, 0]} style={{ pointerEvents: "none" }}>
+        <div className={`whitespace-nowrap rounded border border-white/25 bg-black/70 px-1.5 py-0.5 font-display text-[11px] font-semibold uppercase tracking-wide text-white ${it.up ? "-translate-y-2" : "translate-y-2"}`}>
+          {it.name}<span className="ml-1 font-mono text-[9.5px] font-normal normal-case text-fuchsia-200">{it.area.toFixed(0)} mm²</span></div>
+      </Html>
+    </group>
+  ));
 }
 
 // The AETHER Desk panel: a lit glass slab with corner brackets and the light volume it projects into (the sharp zone above the panel).
@@ -250,10 +338,10 @@ function Panel() {
         <Line points={corners.map(([x, y]) => [x * 0.995, y * 0.995, 0])} color="#5fe1ff" lineWidth={1} transparent opacity={0.35} />
       </group>
       <Line points={corners.map(([x, y]) => [x, y, Z])} color="#5fe1ff" lineWidth={0.7} dashed dashSize={8} gapSize={7} transparent opacity={0.28} />
-      <Html position={[w / 2, h / 2, Z]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
+      <Html wrapperClass="r3f-label" position={[w / 2, h / 2, Z]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
         <div className="hud-tag">SHARP ZONE · ≈ +87 mm (seated eye, 80 %)</div>
       </Html>
-      <Html position={[-w / 2, -h / 2, 0]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
+      <Html wrapperClass="r3f-label" position={[-w / 2, -h / 2, 0]} zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
         <div className="hud-tag -translate-x-full">AETHER DESK · 27″ · 598 × 336</div>
       </Html>
     </group>
@@ -313,7 +401,7 @@ function Callout() {
   if (!part || !box || box.isEmpty() || modal) return null;
   const s = box.getSize(new THREE.Vector3());
   return (
-    <Html position={[(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.max.z]} zIndexRange={[16, 0]} style={{ pointerEvents: "none" }}>
+    <Html wrapperClass="r3f-label" position={[(box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2, box.max.z]} zIndexRange={[16, 0]} style={{ pointerEvents: "none" }}>
       <div className="callout">
         <svg width="64" height="44" className="absolute bottom-0 left-0 overflow-visible"><path d="M0 44 L26 4 L64 4" fill="none" stroke="#8ff3ff" strokeWidth="1.2" /><circle cx="0" cy="44" r="3" fill="#8ff3ff" /></svg>
         <div className="callout-card">
@@ -362,7 +450,7 @@ function Measure() {
       {m.b && <>
         <mesh position={m.b}><sphereGeometry args={[1.6, 12, 12]} /><meshBasicMaterial color="#fde68a" depthTest={false} /></mesh>
         <Line points={[m.a, m.b]} color="#fde68a" lineWidth={1.6} depthTest={false} />
-        <Html position={mid} center zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
+        <Html wrapperClass="r3f-label" position={mid} center zIndexRange={[15, 0]} style={{ pointerEvents: "none" }}>
           <div className="whitespace-nowrap rounded-md border border-amber-200/40 bg-black/70 px-2 py-0.5 font-mono text-[11px] text-amber-100">{d.toFixed(2)} mm</div>
         </Html>
       </>}
@@ -412,16 +500,24 @@ function Gizmo() {
 function AutoFrame() {
   const roots = useStore((s) => (s.state?.parts || []).filter((p) => !p.parent).map((p) => p.id).join());
   const ready = useStore((s) => s.meshVersion >= 0);
+  const framed = useRef("");
   useEffect(() => {
-    if (!ready || !roots) return;
-    const t = setTimeout(() => view.nav?.frame(sceneBox()), 250);
-    return () => clearTimeout(t);
+    if (!ready || !roots || framed.current === roots) return;
+    // the parts' geometry is built a moment after the meshes arrive (a big model takes longer): try every 100 ms
+    // until there is something to frame (one try at 250 ms framed an empty box after a reload and gave up)
+    let tries = 0;
+    const t = setInterval(() => {
+      const b = sceneBox();
+      if (view.nav && !b.isEmpty()) { clearInterval(t); view.nav.frame(b); framed.current = roots; }
+      else if (++tries > 40) clearInterval(t);
+    }, 100);
+    return () => clearInterval(t);
   }, [roots, ready]);
   return null;
 }
 
 function Rig() {
-  const { gl, set, size, scene } = useThree();
+  const { gl, set, size, scene, get } = useThree();
   const cams = useMemo(() => {
     const p = new THREE.PerspectiveCamera(35, 1, 1, 8000);
     const o = new THREE.OrthographicCamera(-1, 1, 1, -1, -5000, 5000);
@@ -431,8 +527,25 @@ function Rig() {
     const nav = new Nav(cams.p, cams.o, gl.domElement, (cam) => { set({ camera: cam }); view.camera = cam; });
     set({ camera: cams.p });
     Object.assign(view, { camera: cams.p, dom: gl.domElement, nav, scene });
-    return () => nav.dispose();
-  }, [gl, cams, set, scene]);
+    // While the camera moves, what costs most on an integrated GPU is not the model but what the browser redraws
+    // around it: edge outlines, floating labels, CSS animations and the vignette are left out for the move and come
+    // back 300 ms after it stops (orbiting the 122-part machine on Intel UHD: 49 -> 65 fps, worst frame 35 ms).
+    // Not done, measured: a lower render resolution (no gain, canvas resizes), dropping the panels' blur (+7 fps but
+    // a 55-76 ms stall at every start of a move).
+    // edge outlines are hidden while the camera moves and drawn again 300 ms after it stops (+15 % frame rate
+    // orbiting the 122-part machine on an integrated GPU), as CAD viewers do
+    let moving = false, settle = 0;
+    const edges = (on) => {
+      scene.traverse((o) => { if (o.userData.edge) o.visible = on; });
+      document.documentElement.classList.toggle("view-moving", !on);      // labels, animations, vignette (index.css)
+    };
+    const off = nav.onChange(() => {
+      if (!moving) { moving = true; edges(false); }
+      clearTimeout(settle);
+      settle = setTimeout(() => { moving = false; edges(true); get().invalidate(); }, 300);
+    });
+    return () => { off(); nav.dispose(); };
+  }, [gl, cams, set, scene, get]);
   useEffect(() => {
     cams.p.aspect = size.width / size.height; cams.p.updateProjectionMatrix();
     Object.assign(cams.o, { left: -size.width / 2, right: size.width / 2, top: size.height / 2, bottom: -size.height / 2 });
@@ -473,11 +586,35 @@ function Rig() {
 function Glow() {
   const shading = useStore((s) => s.shading);
   return shading === "holo"
-    ? <Bloom mipmapBlur intensity={0.7} luminanceThreshold={0.3} luminanceSmoothing={0.25} radius={0.6} />
+    ? <Bloom mipmapBlur levels={5} resolutionScale={0.5} intensity={0.7} luminanceThreshold={0.3} luminanceSmoothing={0.25} radius={0.6} />
     : <Bloom mipmapBlur intensity={0.5} luminanceThreshold={0.85} luminanceSmoothing={0.1} radius={0.6} />;
 }
 
+// Render on demand (outside the animated hologram look): a frame is drawn when something changes, not 60 times a
+// second while nothing does. Anything can ask: a store change, pointer / wheel / key input (G/R/S moves and hand mode
+// move objects outside React), a camera change.
+function Invalidator() {
+  const invalidate = useThree((s) => s.invalidate);
+  const holo = useStore((s) => s.shading === "holo");
+  useEffect(() => {                                  // the hologram look animates (scan band): 30 frames a second is
+    if (!holo) return;                               // enough for it, and leaves the GPU to the rest of the page
+    const t = setInterval(() => invalidate(), 1000 / 30);
+    return () => clearInterval(t);
+  }, [holo, invalidate]);
+  useEffect(() => {
+    const unsub = useStore.subscribe(() => invalidate());
+    const ev = ["pointermove", "pointerdown", "pointerup", "wheel", "keydown", "keyup", "resize"];
+    const f = () => invalidate();
+    ev.forEach((e) => addEventListener(e, f, { passive: true }));
+    let off = null;
+    const t = setInterval(() => { if (view.nav && !off) { off = view.nav.onChange(f); clearInterval(t); } }, 200);
+    return () => { unsub(); ev.forEach((e) => removeEventListener(e, f)); off?.(); clearInterval(t); };
+  }, [invalidate]);
+  return null;
+}
+
 export default function Viewport() {
+  const shading = useStore((s) => s.shading);
   // if the GPU still drops the context (driver reset, other tabs), rebuild the 3D view instead of staying black
   const [gen, setGen] = useState(0);
   const onCreated = ({ gl }) => {
@@ -485,9 +622,10 @@ export default function Viewport() {
     c.addEventListener("webglcontextlost", (e) => { e.preventDefault(); setTimeout(() => setGen((g) => g + 1), 300); }, { once: true });
   };
   return (<>
-    <Canvas key={gen} onCreated={onCreated} dpr={[1, 1.5]} gl={{ antialias: false, alpha: false, localClippingEnabled: true, powerPreference: "high-performance" }} raycaster={{ params: { Line: { threshold: 0 } } }}
+    <Canvas key={gen} onCreated={onCreated} frameloop="demand" dpr={[1, 1.25]} gl={{ antialias: true, alpha: false, localClippingEnabled: true, powerPreference: "high-performance" }} raycaster={{ params: { Line: { threshold: 0 } } }}
       onContextMenu={(e) => e.preventDefault()}>
       <Rig />
+      <Invalidator />
       <AutoFrame />
       <color attach="background" args={["#04060b"]} />
       <Env />
@@ -501,15 +639,17 @@ export default function Viewport() {
       <EyeAndWindow />
       <Parts />
       <SectionPlane />
+      <SectionLabels />
       <Cursor3D />
       <Measure />
       <HandJoints />
       <Gizmo />
       <Callout />
-      <EffectComposer multisampling={4} disableNormalPass>
-        <Glow />
-        <Vignette offset={0.28} darkness={0.75} />
-      </EffectComposer>
+      {shading === "holo" && (                            // the glow is the hologram look; solid / wire skip the passes
+        <EffectComposer multisampling={0} disableNormalPass>
+          <Glow />
+          <Vignette offset={0.28} darkness={0.75} />
+        </EffectComposer>)}
     </Canvas>
   </>);
 }

@@ -17,6 +17,10 @@ export class Nav {
     this.isOrtho = false; this.autoOrtho = false;
     this.anim = null; this.listeners = new Set();
     this.drag = null;
+    // the canvas height, cached: reading clientHeight on every camera step forced a layout per frame while orbiting
+    this._h = dom.clientHeight || 800;
+    this._ro = new ResizeObserver(() => { this._h = dom.clientHeight || 800; });
+    this._ro.observe(dom);
     this._bind();
     this.apply();
   }
@@ -30,7 +34,7 @@ export class Nav {
       cam.position.copy(this.target).add(off);
       cam.lookAt(this.target);
     }
-    const h = this.dom.clientHeight || 800;
+    const h = this._h;
     this.ortho.zoom = h / (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2)));
     this.ortho.near = -5000; this.ortho.far = 5000;
     this.ortho.updateProjectionMatrix();
@@ -70,7 +74,7 @@ export class Nav {
     this.apply();
   }
   pan(dxPx, dyPx) {
-    const h = this.dom.clientHeight || 800;
+    const h = this._h;
     const perPx = (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2))) / h;
     const cam = this.camera;
     const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
@@ -143,6 +147,7 @@ export class Nav {
   }
   dispose() {
     const d = this.dom;
+    this._ro?.disconnect();
     d.removeEventListener("pointerdown", this._down);
     removeEventListener("pointermove", this._move);
     removeEventListener("pointerup", this._up);

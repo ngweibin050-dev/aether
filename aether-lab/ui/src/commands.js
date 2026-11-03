@@ -65,17 +65,22 @@ export const importGLB = () => document.getElementById("glb-input")?.click();
 
 export const COMMANDS = [
   // File
-  { id: "file.new", menu: "File", label: "New scene", run: () => S().commitParts([], null) },
-  { id: "file.open", menu: "File", label: "Open scene…", keys: "Ctrl O", run: openScene },
-  { id: "file.save", menu: "File", label: "Save scene", keys: "Ctrl S", run: saveScene },
-  { id: "file.import", menu: "File", label: "Import glTF / GLB…", run: importGLB },
-  { id: "file.glb", menu: "File", label: "Export GLB (metres, part records inside)", run: () => download("/api/export.glb", "aether-model.glb") },
-  { id: "file.step", menu: "File", label: "Export STEP (CAD B-rep, from the CAD document)", run: () => download("/api/cad/export.step", "aether-model.step") },
-  { id: "file.aethercad", menu: "File", label: "Export .aethercad (editable CAD document)", run: () => download("/api/cad/export.aethercad", "aether-model.aethercad") },
-  { id: "view.cad", menu: "View", label: "CAD document panel", run: () => S().setPanel("cad") },
-  { id: "file.stl", menu: "File", label: "Export STL (millimetres)", run: () => download("/api/export.stl", "aether-model.stl") },
-  { id: "file.report", menu: "File", label: "Build report (one page)", run: () => window.open("/api/report.html", "_blank") },
-  { id: "file.film", menu: "File", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
+  { id: "file.new", menu: "File", group: "Project", label: "New empty scene", run: () => S().commitParts([], null) },
+  { id: "file.open", menu: "File", group: "Project", label: "Open scene…", keys: "Ctrl O", run: openScene },
+  { id: "file.save", menu: "File", group: "Project", label: "Save scene", keys: "Ctrl S", run: saveScene },
+  { id: "file.import", menu: "File", group: "Import", label: "Import glTF / GLB…", run: importGLB },
+  { id: "file.glb", menu: "File", group: "Export", label: "Export GLB (metres, part records inside)", run: () => download("/api/export.glb", "aether-model.glb") },
+  { id: "file.step", menu: "File", group: "Export", label: "Export STEP (CAD B-rep, from the CAD document)", run: () => download("/api/cad/export.step", "aether-model.step") },
+  { id: "file.aethercad", menu: "File", group: "Export", label: "Export .aethercad (editable CAD document)", run: () => download("/api/cad/export.aethercad", "aether-model.aethercad") },
+  { id: "view.cad", menu: "View", group: "Panels", label: "CAD document panel", run: () => S().setPanel("cad") },
+  { id: "view.asm", menu: "View", group: "Panels", label: "B-rep assembly panel (tree, mates, checks, properties)", run: () => S().setPanel("asm") },
+  { id: "view.drawing", menu: "View", group: "Panels", label: "Drawing reading panel (balloons)", run: () => S().setPanel("drawing") },
+  { id: "view.optics", menu: "View", group: "Panels", label: "Optics figure (desk simulation results)", run: () => S().setPanel("optics") },
+  { id: "cad.asm", menu: "Inspect", group: "Engineering", label: "Build B-rep assembly (exact solids, validation, mates)", run: () => { S().setPanel("asm", true); S().buildAsm(); } },
+  { id: "file.asmstep", menu: "File", group: "Export", label: "Export STEP of the machine (B-rep assembly, validated)", run: () => { S().setPanel("asm", true); S().exportStep(); } },
+  { id: "file.stl", menu: "File", group: "Export", label: "Export STL (millimetres)", run: () => download("/api/export.stl", "aether-model.stl") },
+  { id: "file.report", menu: "File", group: "Export", label: "Build report (one page)", run: () => window.open("/api/report.html", "_blank") },
+  { id: "file.film", menu: "File", group: "Export", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
   // Edit
   { id: "edit.undo", menu: "Edit", label: "Undo", keys: "Ctrl Z", run: () => S().undoOnce() },
   { id: "edit.redo", menu: "Edit", label: "Redo", keys: "Ctrl ⇧ Z", run: () => S().redoOnce() },
@@ -115,43 +120,38 @@ export const COMMANDS = [
     } },
   { id: "obj.cursorreset", menu: "Object", label: "Cursor to world origin", run: () => useStore.setState({ cursor3d: [0, 0, 60] }) },
   // View
-  { id: "view.frame", menu: "View", label: "Frame selected", keys: "Num .", run: frameSel },
-  { id: "view.all", menu: "View", label: "Frame all", keys: "Home", run: () => view.nav?.frame(sceneBox()) },
-  { id: "view.front", menu: "View", label: "Front", keys: "Num 1", run: () => view.nav?.view("front") },
-  { id: "view.back", menu: "View", label: "Back", keys: "Ctrl Num 1", run: () => view.nav?.view("back") },
-  { id: "view.right", menu: "View", label: "Right", keys: "Num 3", run: () => view.nav?.view("right") },
-  { id: "view.left", menu: "View", label: "Left", keys: "Ctrl Num 3", run: () => view.nav?.view("left") },
-  { id: "view.top", menu: "View", label: "Top", keys: "Num 7", run: () => view.nav?.view("top") },
-  { id: "view.bottom", menu: "View", label: "Bottom", keys: "Ctrl Num 7", run: () => view.nav?.view("bottom") },
-  { id: "view.eye", menu: "View", label: "Viewer's eye (camera)", keys: "Num 0", run: eyeView },
-  { id: "view.ortho", menu: "View", label: "Perspective / Orthographic", keys: "Num 5", run: () => { view.nav.autoOrtho = false; view.nav?.setOrtho(!view.nav.isOrtho); } },
-  { id: "view.wire", menu: "View", label: "Shading: Wireframe", keys: "Z", run: () => S().setShading("wire") },
-  { id: "view.solid", menu: "View", label: "Shading: Solid", keys: "Z", run: () => S().setShading("solid") },
-  { id: "view.holo", menu: "View", label: "Shading: Hologram", keys: "Z", run: () => S().setShading("holo") },
-  { id: "view.toolbar", menu: "View", label: "Toolbar", keys: "T", run: () => S().setPanel("toolbar") },
-  { id: "view.sidebar", menu: "View", label: "Sidebar (Item)", keys: "N", run: () => { S().setPanel("outliner", true); useStore.setState({ outlinerTab: "item" }); } },
-  { id: "view.panels", menu: "View", label: "Toggle all panels", run: () => { const on = !Object.values(S().panels).some(Boolean); for (const k of ["orchestrator", "outliner", "physics", "toolbar"]) S().setPanel(k, on); } },
-  { id: "view.minall", menu: "View", label: "Minimise all panels (more room)", keys: "Shift Tab", run: () => { for (const k of ["orchestrator", "outliner", "physics"]) S().setWin(k, "min"); } },
-  { id: "view.restore", menu: "View", label: "Restore all panels", keys: "Shift Tab", run: () => { for (const k of ["orchestrator", "outliner", "physics"]) { S().setPanel(k, true); S().setWin(k, "normal"); } } },
-  { id: "view.mode", menu: "View", label: "Switch Laptop / Hand mode", keys: "Tab", run: () => S().setMode(S().mode === "laptop" ? "hand" : "laptop") },
+  { id: "view.frame", menu: "View", group: "Camera", label: "Frame selected", keys: "Num .", run: frameSel },
+  { id: "view.all", menu: "View", group: "Camera", label: "Frame all", keys: "Home", run: () => view.nav?.frame(sceneBox()) },
+  { id: "view.front", menu: "View", group: "Camera", label: "Front", keys: "Num 1", run: () => view.nav?.view("front") },
+  { id: "view.back", menu: "View", group: "Camera", label: "Back", keys: "Ctrl Num 1", run: () => view.nav?.view("back") },
+  { id: "view.right", menu: "View", group: "Camera", label: "Right", keys: "Num 3", run: () => view.nav?.view("right") },
+  { id: "view.left", menu: "View", group: "Camera", label: "Left", keys: "Ctrl Num 3", run: () => view.nav?.view("left") },
+  { id: "view.top", menu: "View", group: "Camera", label: "Top", keys: "Num 7", run: () => view.nav?.view("top") },
+  { id: "view.bottom", menu: "View", group: "Camera", label: "Bottom", keys: "Ctrl Num 7", run: () => view.nav?.view("bottom") },
+  { id: "view.eye", menu: "View", group: "Camera", label: "Viewer's eye (camera)", keys: "Num 0", run: eyeView },
+  { id: "view.ortho", menu: "View", group: "Camera", label: "Perspective / Orthographic", keys: "Num 5", run: () => { view.nav.autoOrtho = false; view.nav?.setOrtho(!view.nav.isOrtho); } },
+  { id: "view.wire", menu: "View", group: "Shading", label: "Shading: Wireframe", keys: "Z", run: () => S().setShading("wire") },
+  { id: "view.solid", menu: "View", group: "Shading", label: "Shading: Solid", keys: "Z", run: () => S().setShading("solid") },
+  { id: "view.holo", menu: "View", group: "Shading", label: "Shading: Hologram", keys: "Z", run: () => S().setShading("holo") },
+  { id: "view.toolbar", menu: "View", group: "Panels", label: "Toolbar", keys: "T", run: () => S().setPanel("toolbar") },
+  { id: "view.sidebar", menu: "View", group: "Panels", label: "Sidebar (Item)", keys: "N", run: () => { S().setPanel("outliner", true); useStore.setState({ outlinerTab: "item" }); } },
+  { id: "view.mode", menu: "View", group: "Mode", label: "Switch Laptop / Hand mode", keys: "Tab", run: () => S().setMode(S().mode === "laptop" ? "hand" : "laptop") },
   // Inspect (see inside)
-  { id: "in.xray", menu: "Inspect", label: "X-ray", keys: "Alt Z", run: () => S().setView({ xray: !S().view.xray }, { now: true }) },
-  { id: "in.secx", menu: "Inspect", label: "Section cut X", keys: "Alt X", run: () => sectionOn("x") },
-  { id: "in.secy", menu: "Inspect", label: "Section cut Y", keys: "Alt Y", run: () => sectionOn("y") },
-  { id: "in.secz", menu: "Inspect", label: "Section cut Z", run: () => sectionOn("z") },
-  { id: "in.flip", menu: "Inspect", label: "Flip section side", when: () => !!S().view.section, run: () => S().setView({ section_flip: !S().view.section_flip }, { now: true }) },
-  { id: "in.explode", menu: "Inspect", label: "Explode / assemble", keys: "E", run: () => { S().setView({ explode: S().view.explode > 0.5 ? 0 : 1 }, { now: true }); setTimeout(() => view.nav?.frame(sceneBox()), 700); } },
-  { id: "in.isolate", menu: "Inspect", label: "Isolate selected (local view)", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
+  { id: "in.xray", menu: "Inspect", group: "Look inside", label: "X-ray", keys: "Alt Z", run: () => S().setView({ xray: !S().view.xray }, { now: true }) },
+  { id: "in.secx", menu: "Inspect", group: "Look inside", label: "Section cut X", keys: "Alt X", run: () => sectionOn("x") },
+  { id: "in.secy", menu: "Inspect", group: "Look inside", label: "Section cut Y", keys: "Alt Y", run: () => sectionOn("y") },
+  { id: "in.secz", menu: "Inspect", group: "Look inside", label: "Section cut Z", run: () => sectionOn("z") },
+  { id: "in.flip", menu: "Inspect", group: "Look inside", label: "Flip section side", when: () => !!S().view.section, run: () => S().setView({ section_flip: !S().view.section_flip }, { now: true }) },
+  { id: "in.explode", menu: "Inspect", group: "Look inside", label: "Explode / assemble", keys: "E", run: () => { S().setView({ explode: S().view.explode > 0.5 ? 0 : 1 }, { now: true }); setTimeout(() => view.nav?.frame(sceneBox()), 700); } },
+  { id: "in.isolate", menu: "Inspect", group: "Look inside", label: "Isolate selected (local view)", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
   { id: "demo.warm", menu: "Demo", label: "Warm up the GPU (before a demo)", run: () => fetch("/api/warm", { method: "POST", body: "{}" }).then(() => S().notify("Modal GPU warming up (20-60 s)")) },
   { id: "demo.D", menu: "Demo", group: "Live", label: "D · Metal drawing press (US 929,594) → 3D → Explain", run: () => S().runDemo("D") },
   { id: "demo.C", menu: "Demo", group: "Live", label: "C · Speed-reduction gearbox (US 1,770,035) → 3D → Explain", run: () => S().runDemo("C") },
-  { id: "demo.G", menu: "Demo", group: "Live", label: "G · NASA X-3 three-view → 3D", run: () => S().runDemo("G") },
   { id: "demo.recD", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: D", run: () => S().playRecorded("D") },
   { id: "demo.recC", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: C", run: () => S().playRecorded("C") },
-  { id: "demo.recG", menu: "Demo", group: "Recorded (fallback, labelled)", label: "Show recorded run: G", run: () => S().playRecorded("G") },
-  { id: "in.explainMachine", menu: "Inspect", label: "Explain this machine", run: () => S().runExplain() },
+  { id: "in.explainMachine", menu: "Inspect", group: "Engineering", label: "Explain this machine", run: () => S().runExplain() },
   { id: "obj.placeOnBase", menu: "Object", label: "Place on base", keys: "Shift B", run: () => S().tool("place_on_base", { id: S().state.selected }) },
-  { id: "in.reset", menu: "Inspect", label: "Reset inspection", run: () => S().setView({ xray: false, section: null, explode: 0, isolate: [] }, { now: true }) },
+  { id: "in.reset", menu: "Inspect", group: "Look inside", label: "Reset inspection", run: () => S().setView({ xray: false, section: null, explode: 0, isolate: [] }, { now: true }) },
   // Hologram
   { id: "holo.calc", menu: "Hologram", label: "Calculate hologram", keys: "F12", run: () => S().hologram() },
   { id: "holo.prop", menu: "Hologram", label: "Eye focus sweep (what the viewer sees)", keys: "Ctrl F12", run: () => S().tool("focus_sweep", { steps: 7, ...S().eyeArgs() }) },
@@ -168,15 +168,27 @@ export const cmd = (id) => COMMANDS.find((c) => c.id === id);
 export const run = (id) => { const c = cmd(id); if (c && (!c.when || c.when())) c.run(); };
 // Tools: the actions that used to sit in the bottom dock, in one menu (and optionally pinned as a bar)
 COMMANDS.push(
-  { id: "tools.holo", menu: "Tools", group: "Hologram", label: "Calculate hologram", keys: "F12", run: () => S().hologram() },
-  { id: "tools.sweep", menu: "Tools", group: "Hologram", label: "Wave propagation (eye focus sweep)", keys: "Ctrl F12", run: () => S().tool("focus_sweep", { steps: 7, ...S().eyeArgs() }) },
-  { id: "tools.eye", menu: "Tools", group: "Hologram", label: "Eye view through a 4 mm pupil", run: () => S().eyeView() },
-  { id: "tools.section", menu: "Tools", group: "Inspect", label: "Section cut…", run: () => S().setDock("section") },
-  { id: "tools.explode", menu: "Tools", group: "Inspect", label: "Exploded view…", run: () => S().setDock("explode") },
-  { id: "tools.xray", menu: "Tools", group: "Inspect", label: "X-ray", keys: "Alt Z", run: () => S().setView({ xray: !S().view.xray }, { now: true }) },
-  { id: "tools.isolate", menu: "Tools", group: "Inspect", label: "Isolate selected", keys: "/", when: () => hasSel() || S().view.isolate.length, run: isolate },
-  { id: "tools.film", menu: "Tools", group: "Output", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
-  { id: "tools.bar", menu: "Tools", group: "Show", label: "Show tool bar under the menu", run: () => S().setDockBar() },
+  { id: "tools.bar", menu: "View", group: "Panels", label: "Show tool bar under the menu", run: () => S().setDockBar() },
 );
 
-export const MENUS = ["File", "Edit", "Select", "Add", "Object", "View", "Inspect", "Hologram", "Tools", "Demo"];
+COMMANDS.push(
+  { id: "view.panelsToggle", menu: "View", group: "Panels", label: "Minimise / restore all panels", keys: "Shift Tab", run: () => {
+    const st = S(), ids = ["orchestrator", "outliner", "physics", "cad", "asm", "drawing", "optics"].filter((k) => st.panels[k]);
+    const anyOpen = ids.some((k) => st.win[k] !== "min");
+    for (const k of ids) st.setWin(k, anyOpen ? "min" : "normal");
+  } },
+  { id: "ws.build", menu: "View", group: "Workspace", label: "Workspace: Build (chat, scene, physics)", run: () => S().workspace("build") },
+  { id: "ws.inspect", menu: "View", group: "Workspace", label: "Workspace: Inspect (scene, B-rep assembly)", run: () => S().workspace("inspect") },
+  { id: "ws.present", menu: "View", group: "Workspace", label: "Workspace: Present (3D only)", run: () => S().workspace("present") },
+  { id: "ws.reset", menu: "View", group: "Workspace", label: "Reset layout (dock every panel)", run: () => S().resetLayout() },
+);
+// each menu shows its groups together, in the order the groups first appear
+{
+  const order = new Map();
+  COMMANDS.forEach((cmd, i) => { const k = cmd.menu + "|" + (cmd.group || ""); if (!order.has(k)) order.set(k, i); });
+  const idx = new Map(COMMANDS.map((cmd, i) => [cmd, i]));
+  const key = (cmd) => [order.get(cmd.menu + "|" + (cmd.group || "")), idx.get(cmd)];
+  COMMANDS.sort((a, b) => { const ka = key(a), kb = key(b); return ka[0] - kb[0] || ka[1] - kb[1]; });
+}
+
+export const MENUS = ["File", "Edit", "Select", "Add", "Object", "View", "Inspect", "Hologram", "Demo"];

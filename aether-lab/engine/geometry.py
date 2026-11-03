@@ -295,15 +295,67 @@ def outline(polygons, thickness=5.0):
     return np.vstack(Vs), np.vstack(Fs)
 
 
+def _voxel_surface(occ, step, origin=None, smooth=6):
+    """Boundary faces of the voxel solid -> watertight triangle mesh (mm, centred), then Taubin smoothing so the
+    voxel staircase does not read as detail."""
+    o = np.pad(occ, 1)
+    quads = []
+    # (axis, direction): face between voxel i (filled) and i+dir (empty)
+    for ax in range(3):
+        for sgn in (1, -1):
+            nb = np.roll(o, -sgn, axis=ax)
+            idx = np.argwhere(o & ~nb)
+            if not len(idx):
+                continue
+            base = idx.astype(float)
+            base[:, ax] += 0.5 + 0.5 * sgn          # the face plane
+            u, v = [a for a in range(3) if a != ax]
+            c = []
+            for du, dv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                p = base.copy()
+                p[:, u] += du
+                p[:, v] += dv
+                c.append(p)
+            q = np.stack(c, 1)                       # (n, 4, 3)
+            # outward winding: (u, v, ax) right-handed when sgn > 0
+            right = (u, v, ax) in ((0, 1, 2), (1, 2, 0), (2, 0, 1))
+            if right != (sgn > 0):
+                q = q[:, ::-1]
+            quads.append(q)
+    q = np.concatenate(quads)
+    pts = q.reshape(-1, 3)
+    uniq, inv = np.unique(np.round(pts * 2).astype(np.int64), axis=0, return_inverse=True)
+    V = uniq / 2.0
+    Q = inv.reshape(-1, 4)
+    F = np.concatenate([Q[:, [0, 1, 2]], Q[:, [0, 2, 3]]])
+    # Taubin (lambda/mu) smoothing keeps volume better than plain Laplacian
+    nbrs = [[] for _ in range(len(V))]
+    for a, b in np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]):
+        nbrs[a].append(b)
+    ii = np.repeat(np.arange(len(V)), [len(n) for n in nbrs])
+    jj = np.concatenate([np.asarray(n, int) for n in nbrs])
+    deg = np.bincount(ii, minlength=len(V)).astype(float)
+    for _ in range(smooth):
+        for lam in (0.5, -0.53):
+            avg = np.zeros_like(V)
+            np.add.at(avg, ii, V[jj])
+            V = V + lam * (avg / deg[:, None] - V)
+    V = (V - 1) * step                             # undo the pad, to mm
+    if origin is None:
+        V -= (V.min(0) + V.max(0)) / 2
+    else:
+        V += np.asarray(origin, float)
+    return V, F
+
+
 def inflate(polygons, thickness=10.0, round=1.0, cells=140, faces=3000):
     """A traced outline made solid with a rounded cross-section (sketch inflation), instead of a flat extrusion.
 
     Every point of the outline gets a half-thickness h(r) = t/2 * sqrt(1 - (1 - min(r/R, 1))^2), r = distance to
     the nearest edge, R = round * t/2: edges are rounded like a cast or forged part, the middle is flat at t, and
     narrow features (a thin arm) get thinner than wide ones, the way real castings are. Holes stay holes.
-    Voxelised, closed and smoothed by hull.surface, then decimated. Centred on z = 0."""
+    Voxelised, closed and smoothed by _voxel_surface, then decimated. Centred on z = 0."""
     from PIL import Image, ImageDraw
-    from . import hull
     pts = np.array([p for poly in polygons for p in poly["outer"]], float)
     if not len(pts):
         return box(1, 1, thickness)
@@ -341,7 +393,7 @@ def inflate(polygons, thickness=10.0, round=1.0, cells=140, faces=3000):
     occ = m[:, :, None] & (np.abs(zc)[None, None, :] <= h[:, :, None])
     if not occ.any():
         return box(1, 1, thickness)
-    V, F = hull.surface(occ, cell, origin=(lo[0] - 1.5 * cell, lo[1] - 1.5 * cell, zc[0] - cell / 2), smooth=4)
+    V, F = _voxel_surface(occ, cell, origin=(lo[0] - 1.5 * cell, lo[1] - 1.5 * cell, zc[0] - cell / 2), smooth=4)
     return decimate(V, F, int(faces))
 
 

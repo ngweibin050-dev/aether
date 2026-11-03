@@ -28,6 +28,7 @@ print(f"Voice ({time.time() - t:.1f} s): {agent.transcribe(wav)!r}")
 
 # 3. Muse Spark closed loop on a design that is too tall for the desk
 st = lab.default_state()
+lab.clear_scene(st)                   # a scene with only this design
 lab.build_assembly(st, "Tall motor", [
     {"name": "Housing", "type": "tube", "params": {"outer": 40, "inner": 36, "height": 90}},
     {"name": "Shaft", "type": "cylinder", "params": {"radius": 4, "height": 150}}], position=[0, 0, 110])

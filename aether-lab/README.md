@@ -24,15 +24,12 @@ Built during the Meta AI Builders Hackathon 2026 (Oct 26 – Nov 4) by Ng Wei Bi
 | B — motor reduction gearing, US Patent 1,699,653 Fig. 1 | drawing lines on built parts (recall) / built outline on the ink (parts precision), saved readings replayed through the current rebuild | 76.3 % / 62.9 % |
 | D, same measure | | 72.3 % / 77.8 % |
 | C, same measure | | 73.6 % / 80.4 % |
-| G — NASA X-3 three-view sheet | view match of the delivered 40,000-triangle mesh (side / top / front) | 100.0 / 99.5 / 98.9 %, 50.6–53.1 s |
-| NASA X-2 three-view (**held out**, first untouched run) | view match | 92.6 / 65.8 / 95.1 % |
-| NASA X-2 after the fix it revealed (no longer held out) | view match | 99.7 / 95.5 / 99.6 % |
 | All built parts | pixel staircase on part outlines | 0.00 % |
-| Test suite | `python tests/test_physics.py` | 36 / 36 pass |
+| Test suite | `python tests/test_physics.py` | 32 tests |
 
 **Honest misses:** parts precision on B (62.9 %) is below our 70 % target (dense section drawing); C's recall
 (73.6 %) is below 75 % (a tighter silhouette covers fewer lines by accident); a full run takes 100–160 s against a
-90 s target; X-2's tail tips are still carved from the top view; patent drawings have no scale, so every size is
+90 s target; patent drawings have no scale, so every size is
 **model scale, real size unknown** unless a dimension is read on the drawing (Explain and the build report say so).
 Muse Wonder as the *reader* was measured too: higher recall, lower precision on D and C (F1 B 68.9 → 70.6,
 D 75.0 → 72.8, C 76.9 → 78.0), so Muse Spark reads and Muse Wonder completes.
@@ -54,14 +51,14 @@ Every step in the UI shows which model (or engine) did it and in how many second
 
 - **Drawing → 3D assembly**, **three-view sheet → parametric CAD** (OpenCascade B-rep with a feature history, STEP;
   [cad/README.md](cad/README.md)), **photo of a part → model**, or **text → parametric assembly** (Muse Spark designs
-  from primitives). The old three-view visual hull remains only as a labelled legacy preview.
+  from primitives). There is no mesh fallback: a sheet that cannot be built as CAD is reported, not approximated.
 - **Explain this machine**: a step player (Back / Next / Play) highlights each step's parts, moves the camera,
   explodes or cuts the model.
 - **Check it on the desk**: sharp zone (−108 … +87 mm around the surface for a seated viewer), Window Law, speckle;
   an AI design loop moves the model until every part is ≥ 80 % as sharp as a full 2D hologram. **Simulation.**
 - **Export**: STEP + `.aethercad` (CAD models), GLB (metres, every part's sizes and their source inside), STL (mm),
   one-page build report.
-- **Demo menu**: D, C and G live, each with a recorded fallback that is always labelled "RECORDED · not live".
+- **Demo menu**: D and C live, each with a recorded fallback that is always labelled "RECORDED · not live".
 
 ## Run locally (Windows)
 
