@@ -306,6 +306,10 @@ export const useStore = create((set, get) => ({
     if (!j) return;
     const prev = get().jobs || {};
     set({ jobs: j.jobs || {} });
+    // the Modal engine upload finishing, and the project's name, show without reloading the page
+    if (j.gpu && (j.gpu.stale !== get().modalStale)) set({ modalStale: !!j.gpu.stale });
+    const pr = get().project;
+    if (pr && j.project_name && j.project === pr.slug && j.project_name !== pr.name) set({ project: { ...pr, name: j.project_name } });
     // a background job that just finished (a CAD model built while the user kept working): its message into the chat,
     // and the new model framed
     for (const [id, job] of Object.entries(j.jobs || {})) {
@@ -336,7 +340,10 @@ export const useStore = create((set, get) => ({
   },
   async newProject(name) { const j = await api("/api/projects/new", { name }); get()._enter(j); get().notify(`New project: ${j.name}`); },
   async openProject(slug) { const j = await api("/api/projects/open", { slug }); get()._enter(j); get().notify(`Opened ${j.name}`); },
-  async renameProject(name) { await api("/api/projects/rename", { name }); get().loadProject(); },
+  async renameProject(name) {
+    const j = await api("/api/projects/rename", { name });
+    set((s) => ({ project: s.project ? { ...s.project, name: j.name } : s.project }));
+  },
   async restoreVersion(n) {
     const j = await api("/api/projects/restore", { n });
     get().applyState(j.state);

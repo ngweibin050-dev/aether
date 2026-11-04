@@ -94,7 +94,7 @@ export default function FloatPanel({ id, title, icon, open = true, onClose, clas
             </div>
           </header>
           <div className="flex min-h-0 flex-1 flex-col">{children}</div>
-          {floating && <div onPointerDown={resize} title="Drag to resize"
+          {!max && <div onPointerDown={resize} title="Drag to resize"
             className="absolute bottom-0 right-0 z-10 h-3.5 w-3.5 cursor-nwse-resize rounded-tl bg-white/10 hover:bg-cyan-glow/50" />}
         </motion.section>
       )}

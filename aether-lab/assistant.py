@@ -399,13 +399,31 @@ def _program_job(ctx, cmd, **args):
     import cad_remote
     step = ctx.get("on_step") or (lambda e: None)
     where = "Modal CPU (cloud)" if cad_remote.available() else "local CAD worker"
-    step({"stage": "tool", "tool": f"CAD job on {where}"})
+    eta = ("about 30 s" if cmd == "program_rerun" else
+           f"usually {'10-20' if args.get('sheet') else '6-12'} min for {args.get('rounds', 3)} rounds")
+    label = f"CAD job on {where}, {eta}"
+    step({"stage": "tool", "tool": label})
+
+    def progress(m):
+        """The job's own progress lines as steps: each runs until the next one starts (so its time is that stage's),
+        named by who does it: Muse Wonder plans and writes, the AETHER engine builds and checks, Muse Spark critiques."""
+        m = str(m)
+        if "Muse Wonder" in m or m.startswith("plan:"):
+            who = "Muse Wonder"
+        elif "critic" in m and "rendering" not in m:
+            who = "Muse Spark (critic)"
+        else:
+            who = "AETHER engine · " + ("Modal CPU" if where.startswith("Modal") else "this computer")
+        m = m.replace("Muse Wonder ", "").replace("Muse Wonder: ", "")
+        step({"stage": "tool", "tool": m, "who": who})
+    import contextlib
     try:
-        return cad_remote.program_job(cmd, stopped=ctx.get("stopped") or (lambda: False), **args)
+        with (ctx.get("unlocked") or contextlib.nullcontext)():     # the app stays editable while the job runs
+            return cad_remote.program_job(cmd, stopped=ctx.get("stopped") or (lambda: False), on_progress=progress, **args)
     except cad_remote.Stopped:
         raise Stopped()
     finally:
-        step({"stage": "done", "tool": f"CAD job on {where}"})
+        step({"stage": "done", "tool": label})
 
 
 def _cad_call(ctx, cmd, wait_s=480, **args):

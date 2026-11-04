@@ -18,9 +18,29 @@ from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS
 
 
-def mesh(shape, linear=0.15, angular=0.25, relative=False):
-    """Returns (V (n,3) float32, F (m,3) int32, N (n,3) float32, face_id per triangle)."""
-    BRepMesh_IncrementalMesh(shape, linear, relative, angular, True)
+def mesh(shape, linear=0.15, angular=0.25, relative=False, fast=False):
+    """Returns (V (n,3) float32, F (m,3) int32, N (n,3) float32, face_id per triangle).
+    fast: for display, silhouettes and review renders. The chord error grows with the part (a 20 m model is not meshed
+    to 1 mm), any triangulation already stored in the shape is dropped, and the surface-deflection check is off: on a
+    smooth loft that check alone multiplied the triangles ~30x (one 3-face fin: 72k triangles -> 2k)."""
+    if not fast:
+        BRepMesh_IncrementalMesh(shape, linear, relative, angular, True)
+    else:
+        from OCP.BRepTools import BRepTools
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRepBndLib import BRepBndLib
+        from OCP.IMeshTools import IMeshTools_Parameters
+        b = Bnd_Box()
+        BRepBndLib.Add_s(shape, b)
+        d = 1.0 if b.IsVoid() else float(np.linalg.norm(np.subtract(b.Get()[3:], b.Get()[:3])))
+        BRepTools.Clean_s(shape)
+        p = IMeshTools_Parameters()
+        p.Deflection = max(linear, d / 2000)
+        p.Angle = angular
+        p.MinSize = d / 1000
+        p.ControlSurfaceDeflection = False
+        p.InParallel = True
+        BRepMesh_IncrementalMesh(shape, p)
     Vs, Fs, Ns, fid = [], [], [], []
     off = 0
     ex = TopExp_Explorer(shape, TopAbs_FACE)

@@ -16,6 +16,7 @@ const PROV = {
   assumed: ["assumed", "text-orange-400", "Not in the drawing: a stated default"],
   unresolved: ["unresolved", "text-rose-400", "Not determined: needs your decision"],
   user_confirmed: ["user", "text-violet-300", "Entered or confirmed by you"],
+  read: ["read", "text-sky-300", "Read from a dimension or note on the drawing"],
   external_reference: ["external", "text-slate-300", "From outside the drawing, with its source"],
 };
 const ST = { ok: "text-emerald-300", failed: "text-rose-400", failed_optional: "text-amber-300", blocked: "text-slate-500", stale: "text-amber-300" };
@@ -37,21 +38,26 @@ export default function CadPanel() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const hasCad = useStore((s) => (s.state?.parts || []).some((p) => p.type === "cad"));
+  const sel = useStore((s) => s.selection[0] || "");
+  const ver = useStore((s) => s.state?.version);
 
   const load = useCallback(() => {
-    fetch("/api/cad/document").then((r) => r.json()).then((j) => { if (j.error) { setErr(j.error); setDoc(null); } else { setErr(null); setDoc(j); } })
+    fetch(`/api/cad/document?sel=${encodeURIComponent(sel)}`).then((r) => r.json()).then((j) => { if (j.error) { setErr(j.error); setDoc(null); } else { setErr(null); setDoc(j); } })
       .catch((e) => setErr(String(e)));
-  }, []);
-  useEffect(() => { if (open || hasCad) load(); }, [open, hasCad, load]);
+  }, [sel]);
+  useEffect(() => { if (open || hasCad) load(); }, [open, hasCad, load, ver]);
   useEffect(() => { if (hasCad && !useStore.getState().panels.cad) useStore.getState().setPanel("cad", true); }, [hasCad]);
 
   const edit = async (id, value, clear) => {
     setBusy(true);
     try {
-      const j = await api("/api/cad/param", clear ? { id, clear_override: true } : { id, value });
+      const prog = doc?.kind === "program" ? { program: doc.program_model } : {};
+      if (prog.program) st.notify(`${id} = ${value} · re-running the CAD program (about 30 s)…`, "info");
+      const j = await api("/api/cad/param", clear ? { id, clear_override: true, ...prog } : { id, value, ...prog });
       useStore.getState().applyState(j.state);
       const ok = j.edit.status.state === "ok";
-      st.notify(ok ? `${id} = ${value} · recomputed ${j.edit.status.rebuilt_features} feature(s) in ${j.edit.seconds} s`
+      st.notify(ok ? (prog.program ? `${id} = ${value} · the program re-ran, every solid valid`
+        : `${id} = ${value} · recomputed ${j.edit.status.rebuilt_features} feature(s) in ${j.edit.seconds} s`)
         : `Recompute failed at ${j.edit.status.failed}: ${j.edit.status.error} - edit rolled back`, ok ? "info" : "error");
     } catch (e) { st.notify(e.message, "error"); }
     setBusy(false);
@@ -68,7 +74,7 @@ export default function CadPanel() {
     <PanelIcon id="cad" title="CAD document" icon="holo" style={{ right: L.right + 2 * L.gap, top: L.top + 112 }} busy={busy} />
     <FloatPanel id="cad" title="CAD document" icon="holo" open={open} busy={busy} onClose={() => st.setPanel("cad", false)} style={style}>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3.5 pb-3 text-[12px]">
-        {!doc && <div className="py-4 text-slate-400">{err ? `No CAD document yet (${err}). Upload a three-view sheet: it is rebuilt as parametric CAD.` : "Loading…"}</div>}
+        {!doc && <div className="py-4 text-slate-400">{err ? "No CAD model yet. Ask Muse Spark to build one (from a description or a drawing): its program, parameters and checks appear here." : "Loading…"}</div>}
         {doc && <>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
             <div className="truncate font-display text-[13px] font-bold text-white">{doc.title}</div>
@@ -83,8 +89,8 @@ export default function CadPanel() {
               {Object.entries(counts).map(([k, n]) => <span key={k} title={PROV[k]?.[2]} className={PROV[k]?.[1]}>{PROV[k]?.[0] || k} {n}</span>)}
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {[["STEP", "/api/cad/export.step", "model.step"], ["GLB", "/api/cad/export.glb", "model.glb"],
-                [".aethercad", "/api/cad/export.aethercad", "model.aethercad"], ["Report", "/api/cad/report.json", "report.json"]].map(([t, u, f]) =>
+              {(doc.exports || [["STEP", "/api/cad/export.step", "model.step"], ["GLB", "/api/cad/export.glb", "model.glb"],
+                [".aethercad", "/api/cad/export.aethercad", "model.aethercad"], ["Report", "/api/cad/report.json", "report.json"]]).map(([t, u, f]) =>
                 <a key={t} className="btn !py-0.5 text-[11px]" href={u} download={f} title={`Download ${f} (from the validated B-rep)`}>{t}</a>)}
             </div>
           </div>
@@ -103,7 +109,8 @@ export default function CadPanel() {
                       <span className="text-slate-500"> · {p.kind}{p.unit ? ` · ${p.unit}` : ""}</span></div>
                   </div>
                   {p.kind === "override" && <button className="text-[10px] text-slate-400 hover:text-white" title="Remove your value: back to the drawing-derived one" onClick={() => edit(p.id, null, true)}>reset</button>}
-                  <Num p={p} busy={busy} onCommit={(n) => edit(p.id, n)} />
+                  {p.locked ? <span className="w-24 text-right font-mono text-[11px] text-slate-500" title="Declared, but the geometry does not read it: changing it would change nothing">{+Number(p.value).toFixed(3)}</span>
+                    : <Num p={p} busy={busy} onCommit={(n) => edit(p.id, n)} />}
                 </div>))}
               {params.length > 160 && <div className="py-1 text-slate-500">… {params.length - 160} more: filter to find them</div>}
             </div>
@@ -126,7 +133,13 @@ export default function CadPanel() {
             {Object.entries(doc.decisions || {}).map(([k, d]) => d && typeof d === "object" && (
               <div key={k} className="font-mono text-[10px] text-slate-400">{k}: <span className="text-slate-200">{String(d.value)}</span> <span className={PROV[d.provenance]?.[1]}>{d.provenance}</span></div>))}
           </div>}
-          {tab === "checks" && <div className="mt-2 space-y-2">
+          {tab === "checks" && doc.kind === "program" && <div className="mt-2 space-y-1.5 font-mono text-[10.5px] text-slate-300">
+            <div>quality gates: <span className="text-slate-200">{doc.checks.gates || "-"}</span></div>
+            <div>Muse Spark critic: <span className="text-cyan-glow">{doc.checks.critic ?? "-"}</span> / 10</div>
+            {doc.checks.iou && Object.keys(doc.checks.iou).length > 0 && <div>silhouette IoU (one scale): {Object.entries(doc.checks.iou).map(([k, v]) => `${k} ${v}`).join(" · ")}</div>}
+            {doc.checks.constraints?.length > 0 && <div className="pt-1 text-slate-400">planned constraints: {doc.checks.constraints.map((c) => `${c.a} ${c.type} ${c.b}`).join(" · ")}</div>}
+          </div>}
+          {tab === "checks" && doc.kind !== "program" && <div className="mt-2 space-y-2">
             {doc.validation?.summary && <div className="font-mono text-[10.5px] text-slate-300">
               all solids valid: {String(doc.validation.summary.all_valid)} · STEP round trip: {String(doc.validation.summary.step_roundtrip_pass)}
               <div>reprojection IoU: {Object.entries(doc.validation.summary.reprojection_iou || {}).map(([k, v]) => `${k} ${v}`).join(" · ")}</div>

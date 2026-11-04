@@ -46,7 +46,20 @@ def exports_dir():
 
 def _read(sl):
     f = ROOT / sl / "project.json"
-    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    doc = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    if doc is not None:
+        META[sl] = {"name": doc.get("name", sl), "created": doc.get("created"), "saved": doc.get("saved")}
+    return doc
+
+
+META = {}                    # slug -> {name, created, saved}: so a save or the project bar never re-reads the whole file
+
+
+def meta(sl=None):
+    sl = sl or CURRENT["slug"]
+    if sl not in META:
+        _read(sl)
+    return META.get(sl) or {"name": sl}
 
 
 def listing():
@@ -57,14 +70,29 @@ def listing():
         if d.name.startswith("_"):                       # scratch projects of tests: never listed, never opened at start
             continue
         if d.is_dir() and meta.exists():
+            side = d / "meta.json"                       # written with every save: the list never parses a big project
             try:
-                j = json.loads(meta.read_text(encoding="utf-8"))
-            except ValueError:
+                if side.exists() and side.stat().st_mtime >= meta.stat().st_mtime - 5:
+                    j = json.loads(side.read_text(encoding="utf-8"))
+                else:
+                    j = json.loads(meta.read_text(encoding="utf-8"))
+                    j["models"] = len([p for p in j.get("state", {}).get("parts", []) if not p.get("parent")])
+                    _write_meta(d, j)
+            except (ValueError, OSError):
                 continue
+            if d.name in META:                            # the open project: its name as it is now (a rename is saved 2 s later)
+                j = {**j, "name": META[d.name].get("name") or j.get("name")}
             out.append({"slug": d.name, "name": j.get("name", d.name), "saved": j.get("saved"), "created": j.get("created"),
-                        "models": len([p for p in j.get("state", {}).get("parts", []) if not p.get("parent")]),
+                        "models": j.get("models", 0),
                         "versions": len(list((d / "versions").glob("*.json"))) if (d / "versions").exists() else 0})
     return sorted(out, key=lambda x: x.get("saved") or "", reverse=True)
+
+
+def _write_meta(d, doc):
+    try:
+        (d / "meta.json").write_text(json.dumps({k: doc.get(k) for k in ("name", "created", "saved", "models")}), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def create(name, state):
@@ -98,16 +126,18 @@ def save(state, history=None, chat=None):
         return None
     with _lock:
         f = path() / "project.json"
-        doc = _read(CURRENT["slug"]) or {"name": CURRENT["slug"], "created": time.strftime("%Y-%m-%d %H:%M:%S")}
-        doc["state"] = state
-        if history is not None:
-            doc["history"] = history
-        if chat is not None:
-            doc["chat"] = chat
-        doc["saved"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        m = meta()
+        if history is None or chat is None:          # keep what is not given (rare: every caller passes both)
+            old = _read(CURRENT["slug"]) or {}
+            history = old.get("history", []) if history is None else history
+            chat = old.get("chat", []) if chat is None else chat
+        doc = {"name": m.get("name") or CURRENT["slug"], "created": m.get("created") or time.strftime("%Y-%m-%d %H:%M:%S"),
+               "state": state, "history": history, "chat": chat, "saved": time.strftime("%Y-%m-%d %H:%M:%S")}
+        m["saved"] = doc["saved"]
         tmp = f.with_suffix(".tmp")
         tmp.write_text(json.dumps(doc, default=str), encoding="utf-8")
         tmp.replace(f)                                   # atomic: a crash never leaves half a project
+        _write_meta(f.parent, {**doc, "models": len([p for p in state.get("parts", []) if not p.get("parent")])})
         return doc["saved"]
 
 
@@ -142,9 +172,10 @@ def version_state(n):
 
 
 def rename(name):
-    doc = _read(CURRENT["slug"])
-    doc["name"] = name
-    (path() / "project.json").write_text(json.dumps(doc, default=str), encoding="utf-8")
+    """The name is kept in memory and written by the next save (the server saves right after this), so a save that
+    was already running can no longer write the old name back."""
+    with _lock:
+        meta()["name"] = name
     return {"slug": CURRENT["slug"], "name": name}
 
 

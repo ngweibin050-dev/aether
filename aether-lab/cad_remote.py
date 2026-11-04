@@ -40,19 +40,33 @@ class Stopped(RuntimeError):
     pass
 
 
-def _run(name, job, stopped=None, on_wait=None):
-    """Spawn the job and wait for it; Stop cancels the cloud job at once."""
-    call = _fn[name].spawn(job)
-    t0 = time.time()
-    while True:
-        try:
-            return call.get(timeout=2)
-        except TimeoutError:
-            if stopped and stopped():
-                call.cancel()
-                raise Stopped("stopped by the user: the cloud CAD job was cancelled")
-            if on_wait:
-                on_wait(time.time() - t0)
+def _run(name, job, stopped=None, on_wait=None, on_progress=None):
+    """Spawn the job and wait for it; its progress lines come back live (a Modal queue); Stop cancels it at once."""
+    import modal
+    with modal.Queue.ephemeral() as q:
+        job = {**job, "progress": q}
+        call = _fn[name].spawn(job)
+        t0 = time.time()
+
+        def drain():
+            try:
+                for m in q.get_many(50, block=False) or []:
+                    if on_progress:
+                        on_progress(m)
+            except Exception:
+                pass
+        while True:
+            try:
+                res = call.get(timeout=2)
+                drain()
+                return res
+            except TimeoutError:
+                drain()
+                if stopped and stopped():
+                    call.cancel()
+                    raise Stopped("stopped by the user: the cloud CAD job was cancelled")
+                if on_wait:
+                    on_wait(time.time() - t0)
 
 
 def _unpack(res, out_dir):
@@ -80,12 +94,12 @@ def _unpack(res, out_dir):
 
 
 def build(out_dir, sheet=None, request="", rounds=3, base_program=None, base_length_mm=None, base_plan=None,
-          stopped=None, on_wait=None):
+          stopped=None, on_wait=None, on_progress=None):
     """Same arguments and result as the local worker's program_build."""
     job = {"sheet_png": Path(sheet).read_bytes() if sheet else None, "request": request, "rounds": rounds,
            "base_program": base_program, "base_length_mm": base_length_mm,
            "base_plan": json.loads(Path(base_plan).read_text(encoding="utf-8")) if base_plan and Path(base_plan).exists() else None}
-    return _unpack(_run("build", job, stopped, on_wait), out_dir)
+    return _unpack(_run("build", job, stopped, on_wait, on_progress), out_dir)
 
 
 def rerun(program_dir, out_dir, overrides, sheet=None, length_mm=None, stopped=None, on_wait=None):
@@ -97,7 +111,7 @@ def rerun(program_dir, out_dir, overrides, sheet=None, length_mm=None, stopped=N
     return _unpack(_run("rerun", job, stopped, on_wait), out_dir)
 
 
-def program_job(cmd, stopped=None, on_wait=None, **args):
+def program_job(cmd, stopped=None, on_wait=None, on_progress=None, **args):
     """A CAD-program job wherever it can run best: Modal CPU when deployed (parallel, cancellable), else the local
     worker. Stop works in both: the cloud job is cancelled, or the local worker is ended (it restarts on the next call).
     cmd: "program_build" or "program_rerun"; args as for the local worker."""
@@ -106,7 +120,7 @@ def program_job(cmd, stopped=None, on_wait=None, **args):
             return build(args["out_dir"], sheet=args.get("sheet"), request=args.get("request") or "",
                          rounds=args.get("rounds", 3), base_program=args.get("base_program"),
                          base_length_mm=args.get("base_length_mm"), base_plan=args.get("base_plan"),
-                         stopped=stopped, on_wait=on_wait)
+                         stopped=stopped, on_wait=on_wait, on_progress=on_progress)
         return rerun(args["program_dir"], args["out_dir"], args.get("overrides") or {}, sheet=args.get("sheet"),
                      length_mm=args.get("length_mm"), stopped=stopped, on_wait=on_wait)
     import threading

@@ -1,4 +1,5 @@
 import { useStore } from "../store";
+import { run } from "../commands";
 import FloatPanel, { PanelIcon } from "./FloatPanel";
 import { LineChart } from "./Charts";
 import { L, useLayout } from "./layout";
@@ -47,7 +48,10 @@ export default function OpticsFigure() {
     <PanelIcon id="optics" title="Optics figure" icon="wave" style={{ left: lay.toolLeft + 56, top: L.top + 112 }} />
     <FloatPanel id="optics" title="Computational optics · AETHER Desk (simulated, not built)" icon="wave" open={open} onClose={() => st.setPanel("optics", false)} style={style}>
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        {!sw && !sc ? <div className="py-4 text-slate-400">No optics results yet: run "Is it sharp on the desk?" or the focus sweep on the current model.</div> :
+        {!sw && !sc ? <div className="py-4 text-slate-400">No optics results yet. They show how sharply the AETHER Desk (simulated) would display
+          the model on the desk: run one on the current model.
+          <div className="mt-2 flex gap-2"><button className="btn text-[11.5px]" onClick={() => run("holo.desk")}>Desk sharpness check</button>
+            <button className="btn text-[11.5px]" onClick={() => run("holo.prop")}>Focus sweep</button></div></div> :
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
             {sw && <P k="a" title={`What the eye sees at each focus height · ${sw.display} · ${sw.lasers?.join(", ")} nm`} wide>
               <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${sw.imgs.length}, minmax(0, 1fr))` }}>

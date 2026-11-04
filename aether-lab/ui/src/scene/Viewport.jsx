@@ -151,7 +151,7 @@ function PartNode({ part, childrenOf }) {
   else
     material = <meshStandardMaterial vertexColors={!!mesh?.r} color={mesh?.r ? "#ffffff" : part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")}
       metalness={part.material === "glass" ? 0.9 : 0.62} roughness={part.material === "glass" ? 0.06 : 0.34} envMapIntensity={part.material === "glass" ? 1.1 : 0.55}
-      emissive={sel || "#000000"} emissiveIntensity={sel ? 0.22 : 0} transparent={ghost} opacity={ghost ? 0.06 : 1}
+      emissive={sel || "#000000"} emissiveIntensity={sel ? 0.22 : 0} transparent={ghost} opacity={ghost ? 0.22 : 1}
       depthWrite={!ghost} clippingPlanes={clip} polygonOffset={!!mesh?.l} polygonOffsetFactor={1.5} polygonOffsetUnits={2} />;
 
   return (
@@ -606,10 +606,14 @@ function Invalidator() {
     const unsub = useStore.subscribe(() => invalidate());
     const ev = ["pointermove", "pointerdown", "pointerup", "wheel", "keydown", "keyup", "resize"];
     const f = () => invalidate();
-    ev.forEach((e) => addEventListener(e, f, { passive: true }));
+    // a mouse move over a panel does not redraw the 3D view (with bloom, a full frame): only over the canvas, while a
+    // button is held (drag, gizmo) or while a G/R/S move follows the mouse
+    const move = (e) => { if (e.buttons || e.target?.tagName === "CANVAS" || useStore.getState().modal) invalidate(); };
+    const g = (e) => (e === "pointermove" ? move : f);
+    ev.forEach((e) => addEventListener(e, g(e), { passive: true }));
     let off = null;
     const t = setInterval(() => { if (view.nav && !off) { off = view.nav.onChange(f); clearInterval(t); } }, 200);
-    return () => { unsub(); ev.forEach((e) => removeEventListener(e, f)); off?.(); clearInterval(t); };
+    return () => { unsub(); ev.forEach((e) => removeEventListener(e, g(e))); off?.(); clearInterval(t); };
   }, [invalidate]);
   return null;
 }

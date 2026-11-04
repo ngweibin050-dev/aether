@@ -264,7 +264,7 @@ def load_parts(r):
 
 def _meshes(parts):
     from . import tessellate as T
-    return [T.mesh(p["shape"], 2.0, 0.5)[:2] for p in parts]
+    return [T.mesh(p["shape"], 2.0, 0.5, fast=True)[:2] for p in parts]
 
 
 AXES2 = {"side": (0, 2), "top": (0, 1), "end_a": (1, 2), "end_b": (1, 2)}
@@ -479,7 +479,7 @@ def render(parts, path, size=(960, 540), view="iso"):
     light /= np.linalg.norm(light)
     tris, cols, depth = [], [], []
     for p in parts:
-        V, F, N = T.mesh(p["shape"], 3.0, 0.4)[:3]
+        V, F, N = T.mesh(p["shape"], 3.0, 0.4, fast=True)[:3]
         if not len(F):
             continue
         h = (p.get("colour") or "#b9c3cf").lstrip("#")
@@ -615,6 +615,7 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
     rep = {"sheet": sheet, "measured": measured, "not_measured_why": why_not, "request": request,
            "edit": bool(base_program), "rounds": []}
     try:
+        log("Muse Wonder planning every component (parents, joints, evidence, unknowns)")
         plan = make_plan(ai, model, sheet, meas, measured, why_not, request, base_plan, log)
     except AI.ModelUnavailable as e:
         rep.update(error=f"plan: {e}"[:400], seconds=round(time.time() - t0, 1), hypotheses=ai.store)
@@ -639,6 +640,7 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
     for k in range(1, rounds + 1):
         msg = content if k == 1 else content + history
         t = time.time()
+        log(f"round {k}/{rounds}: Muse Wonder writing the CAD program")
         try:
             ans, rec = ai.ask_json("C1_cad_program", f"round{k}", model, msg, CODE_SCHEMA, seed=k, timeout=500,
                                    effort="medium")
@@ -674,6 +676,7 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
                 gate["hard_fail"] = True
                 gate["summary"] += f"; INVALID solids left out: {len(bad)}"
             iou, imgs, extra = score(parts, meas, out_dir, f"r{k}") if measured else ({}, {}, {})
+            log(f"round {k}/{rounds}: {len(parts)} parts built; {gate['summary']}; rendering for the Muse Spark critic")
             pics = review_renders(parts, rdir, f"r{k}", log)
             crit = critique(ai, k, sheet, plan, pics, gate, iou, log)
             entry.update(iou=iou, mean_iou=round(float(np.mean(list(iou.values()))), 4) if iou else None, invalid=bad, **extra,

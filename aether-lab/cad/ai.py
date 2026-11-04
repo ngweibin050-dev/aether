@@ -161,7 +161,14 @@ class AI:
             body = {"model": model, "messages": msgs, "response_format": fmt, "temperature": 0, "seed": seed,
                     **({"reasoning_effort": effort} if effort else {})}
             try:
-                r = _post("/chat/completions", body, timeout)
+                for wait in (5, 20, None):           # Meta's API sometimes answers 404 model_not_found / 429 / 5xx for
+                    try:                             # minutes (seen 4 Nov 2026): wait and ask again before giving up
+                        r = _post("/chat/completions", body, timeout)
+                        break
+                    except urllib.error.HTTPError as e:
+                        if wait is None or e.code not in (404, 429, 500, 502, 503, 504):
+                            raise
+                        time.sleep(wait)
             except urllib.error.HTTPError as e:
                 raise ModelUnavailable(f"{NAMES.get(model, model)} HTTP {e.code}: {e.read().decode(errors='ignore')[:200]}")
             except ModelUnavailable:

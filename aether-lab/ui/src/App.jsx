@@ -36,7 +36,7 @@ export default function App() {
       if (!editable && !selected) e.preventDefault();
     };
     addEventListener("contextmenu", block);
-    const sync = setInterval(() => useStore.getState().pollJobs(), 3000);   // background jobs + other tabs
+    const sync = setInterval(() => useStore.getState().pollJobs(), 2000);   // background jobs + other tabs
     return () => { removeEventListener("contextmenu", block); clearInterval(sync); };
   }, []);
   return (

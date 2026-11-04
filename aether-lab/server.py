@@ -147,6 +147,16 @@ def _fresh_ids(parts, taken):
 # the open CAD document's folder (model.aethercad, brep/, sheet.png); a test server sets AETHER_CAD_DIR to its own
 CAD_DIR = Path(os.environ.get("AETHER_CAD_DIR") or OUT / "cad" / "current")
 LOCK = threading.Lock()
+
+
+class _unlocked:
+    """Inside a chat turn (which holds LOCK): let go of the scene while a long job runs elsewhere (a CAD build on Modal
+    takes 10-20 min), so hide / move / delete / undo in the app are not stuck behind it; the turn takes it back after."""
+    def __enter__(self):
+        LOCK.release()
+
+    def __exit__(self, *exc):
+        LOCK.acquire()
 DIRTY = threading.Event()
 STOP = threading.Event()                          # set by /api/chat/stop, cleared when a turn starts
 
@@ -306,11 +316,30 @@ class Handler(BaseHTTPRequestHandler):
             body, ctype = _scene_export(path)
             return self._send(200, body, ctype)
         if path == "/api/cad/document":
+            sel = (self.path.split("sel=")[1].split("&")[0] if "sel=" in self.path else "")
+            g = _program_model(sel) if sel else None
+            if g:                                          # the selected model is an AI-written CAD program
+                return self._send(200, _program_doc(g))
             import cad_client
             try:
                 return self._send(200, cad_client.call("document", timeout=5))
             except Exception as e:
+                g = _program_model()
+                if g:                                      # no feature-tree document: the newest CAD program
+                    return self._send(200, _program_doc(g))
                 return self._send(409, {"error": str(e)})
+        if path == "/api/cad/program_file":
+            q = dict(x.split("=", 1) for x in self.path.split("?", 1)[-1].split("&") if "=" in x)
+            g = _program_model(q.get("id", ""))
+            name = q.get("f", "")
+            if g and name in ("model.step", "model.glb", "report.json", "program.py", "params.json", "plan.json", "sheet.png"):
+                f = Path(g["eng"]["program"]).parent / name
+                if name == "sheet.png" and not f.is_file() and g["eng"].get("sheet"):
+                    f = Path(g["eng"]["sheet"])          # a local build keeps the drawing where it was uploaded
+                if f.is_file():
+                    ctype = {"step": "model/step", "glb": "model/gltf-binary", "json": "application/json"}.get(f.suffix[1:], "text/plain")
+                    return self._send(200, f.read_bytes(), ctype)
+            return self._send(404, {"error": "not found"})
         if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.aethercad", "/api/cad/report.json"):
             import cad_client
             kind = path.rsplit(".", 1)[-1]
@@ -332,8 +361,11 @@ class Handler(BaseHTTPRequestHandler):
             asm_overlay(meshes, offsets)
             return self._send(200, {"version": STATE["version"], "meshes": meshes, "offsets": offsets,
                                     "brep": sorted(k for k, m in meshes.items() if m.get("brep"))})
-        if path == "/api/jobs":                    # cheap: polled by the app (background jobs, scene version)
-            return self._send(200, {"version": STATE.get("version"), "jobs": JOBS, "project": projects.CURRENT["slug"]})
+        if path == "/api/jobs":                    # cheap: polled by the app (background jobs, scene version, project, Modal)
+            return self._send(200, {"version": STATE.get("version"), "jobs": JOBS, "project": projects.CURRENT["slug"],
+                                    "project_name": projects.meta().get("name"),
+                                    "gpu": {"stale": bool(compute.status.get("stale")), "deploying": bool(compute.status.get("deploying")),
+                                            "backend": compute.status.get("backend")}})
         if path == "/api/files":
             return self._send(200, {"files": list_files()})
         if path == "/api/projects":
@@ -341,7 +373,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/chats":
             return self._send(200, projects.chat_list(CHAT))
         if path == "/api/project":
-            doc = projects._read(projects.CURRENT["slug"]) or {}
+            doc = projects.meta()
             return self._send(200, {"slug": projects.CURRENT["slug"], "name": doc.get("name"), "saved": doc.get("saved"),
                                     "chat": CHAT, "versions": projects.versions()})
         if path.startswith("/api/files/"):
@@ -479,8 +511,9 @@ class Handler(BaseHTTPRequestHandler):
                         if self.path == "/api/chat":
                             STOP.clear()
                             att = body.get("attachments") or []
-                            reply, trace, images, HISTORY, extras = assistant.turn(
-                                STATE, HISTORY, body.get("text") or "", chat_ctx(att))
+                            ctx = chat_ctx(att)
+                            ctx["unlocked"] = _unlocked        # a long CAD job lets the app keep editing meanwhile
+                            reply, trace, images, HISTORY, extras = assistant.turn(STATE, HISTORY, body.get("text") or "", ctx)
                             CHAT.append({"role": "user", "text": body.get("text") or "",
                                          "files": [{"name": n, "kind": _kind(n), "url": f"/api/files/files/{n}"} for n in att]})
                             if trace:
@@ -610,6 +643,20 @@ def cad_route(path, body):
         imp, doc = cad_import_current(body.get("name") or "CAD model (three-view)")
         start_cad_detail(body.get("name") or "CAD model (three-view)")
         return {"build": r, "import": imp, "document": _doc_brief(doc), "state": lean(STATE)}
+    if path == "/api/cad/param" and body.get("program"):     # an AI-written CAD program: the same program re-run
+        g = _program_model(body["program"])
+        if not g:
+            raise ValueError("that CAD-program model is no longer in the scene")
+        with LOCK:
+            before = history.snapshot(STATE)
+        r = assistant.set_cad_param(STATE, chat_ctx([]), g["name"], {body["id"]: float(body["value"])})
+        with LOCK:
+            if r.get("changed"):
+                _record(before, f"CAD parameter {body['id']} = {body['value']}", "edit")
+        DIRTY.set()
+        ok = bool(r.get("changed"))
+        return {"edit": {"status": {"state": "ok" if ok else "failed", "rebuilt_features": "all", "failed": body["id"],
+                                    "error": r.get("why")}, "seconds": None}, "state": lean(STATE)}
     if path == "/api/cad/param":
         r = cad_client.call("set_param", id=body["id"], value=body.get("value"), clear_override=bool(body.get("clear_override")))
         imp, doc = cad_import_current(body.get("name") or "CAD model (three-view)")
@@ -800,6 +847,43 @@ def _after_load():
         STATE["version"] = int(STATE.get("version", 0)) + 1
         DIRTY.set()
     _reopen_cad()
+    threading.Thread(target=_slim_meshes, daemon=True).start()
+
+
+SLIM_TRIS = 8000                                    # a saved display mesh above this is re-made from its B-rep
+
+
+def _slim_meshes():
+    """Projects saved before the display meshing was size-relative carry meshes up to 30x too fine (a 20 m jet: 1.3 M
+    triangles, a 100 MB project, a laggy view). Re-mesh those parts from their own .brep files once, in the background;
+    the B-rep is unchanged, only the display mesh is lighter."""
+    with LOCK:
+        heavy = [p for p in STATE["parts"] if p.get("type") == "cad"
+                 and (p.get("eng") or {}).get("brep") and len((p.get("params") or {}).get("faces") or []) > 3 * SLIM_TRIS]
+        heavy += history.heavy_cad_parts(3 * SLIM_TRIS)      # the undo steps hold the same parts' old meshes
+        items = {p["eng"]["brep"]: p["eng"]["brep"] for p in heavy}
+    if not items:
+        return
+    import cad_client
+    try:
+        t = time.time()
+        ms = cad_client.call("remesh_breps", items=items)["meshes"]
+    except Exception as e:                       # noqa: BLE001 - the old meshes still work, only heavier
+        print(f"display meshes not slimmed: {e}", flush=True)
+        return
+    with LOCK:
+        n = 0
+        for p in heavy:                              # the scene's parts and the undo steps' copies (same .brep, same solid)
+            m = ms.get(p["eng"]["brep"])
+            if m and m["f"]:
+                p["params"] = {**p["params"], "vertices": m["v"], "faces": m["f"], "normals": m["n"], "lines": m["l"]}
+                n += 1
+        if n:
+            STATE["version"] = int(STATE.get("version", 0)) + 1
+    if n:
+        DIRTY.set()
+        _save_undo()
+        print(f"display meshes: {n} CAD parts re-meshed lighter in {time.time() - t:.0f} s", flush=True)
 
 
 def _reopen_cad():
@@ -883,7 +967,9 @@ def project_route(path, body):
         _switch(doc)
         return {"slug": body["slug"], "name": doc.get("name"), "state": lean(STATE), "chat": CHAT}
     if path == "/api/projects/rename":
-        return projects.rename(body["name"])
+        r = projects.rename(body["name"])
+        DIRTY.set()                                      # written by the autosaver within 2 s
+        return r
     if path == "/api/projects/delete":
         return projects.delete(body["slug"])
     if path == "/api/projects/snapshot":
@@ -1043,6 +1129,57 @@ def start_cad_job(data_url, hint, decisions, source_file):
 assistant.START_CAD_JOB = start_cad_job
 
 
+def _program_model(sel=""):
+    """The AI-written CAD-program model for the CAD document panel: the selected part's model, else the newest one."""
+    progs = [p for p in STATE["parts"] if (p.get("eng") or {}).get("kind") == "cad program" and p["eng"].get("program")]
+    if sel:
+        p = next((x for x in STATE["parts"] if x["id"] == sel), None)
+        if p:
+            r = assistant.root_of(STATE, p) if p.get("type") != "group" else p
+            if r in progs:
+                return r
+        return None
+    return progs[-1] if progs else None
+
+
+def _program_doc(g):
+    """A CAD-program model in the CAD document panel's shape: its parameters with provenance (editable when the
+    geometry reads them), the plan's components as the feature tree, the unknowns, and the checks of the kept round."""
+    e = g["eng"]
+    d = Path(e["program"]).parent
+    rd = lambda f: (json.loads((d / f).read_text(encoding="utf-8")) if (d / f).exists() else {})
+    params, plan, rep = rd("params.json"), rd("plan.json"), rd("report.json")
+    best = rep.get("best") or {}
+    built = {p.get("name") for p in best.get("parts") or []}
+    prov = {"user": "user_confirmed"}
+    gates = best.get("gates")
+    return {
+        "kind": "program", "program_model": g["id"], "document_id": f"program:{e.get('program_id')}",
+        "title": f"{g['name']} · AI-written CAD program v{e.get('version', 1)}",
+        "maturity": "ai_written_program", "stale": False,
+        "status": {"state": "ok", "seconds": rep.get("seconds"), "param_hash": f"{e.get('program_id')}-{e.get('version')}"},
+        "parameters": [{"id": k, "value": v.get("value"), "unit": v.get("unit"), "provenance": prov.get(v.get("provenance"), v.get("provenance")),
+                        "kind": "parameter" if v.get("used", True) else "not read by the geometry", "locked": v.get("used") is False,
+                        "note": v.get("evidence")} for k, v in params.items() if isinstance(v, dict)],
+        "features": [{"id": c["name"], "label": c["name"], "op": c.get("method") or "",
+                      "inputs": [c["parent"]] if c.get("parent") not in (None, "-", "") else [],
+                      "params": [], "status": "ok" if c["name"] in built else "failed_optional", "evidence": c.get("evidence"),
+                      "material": c.get("material")} for c in plan.get("components") or []],
+        "assumptions": [{"id": f"U{i + 1}", "class": "unresolved" if u.get("critical") else "assumed",
+                         "text": f"{u.get('what')}: {u.get('why')}", "editable_via": [u["would_resolve"]] if u.get("would_resolve") else []}
+                        for i, u in enumerate(plan.get("unknowns") or [])],
+        "decisions": {},
+        "checks": {"gates": gates if isinstance(gates, str) else (gates or {}).get("summary"), "critic": best.get("critic"),
+                   "iou": best.get("iou"), "proportion_error": best.get("proportion_error"),
+                   "constraints": (plan.get("constraints") or [])[:40]},
+        "sheet_url": (f"/api/cad/program_file?id={g['id']}&f=sheet.png"
+                      if (d / "sheet.png").is_file() or (e.get("sheet") and Path(e["sheet"]).is_file()) else None),
+        "object": plan.get("object"),
+        "exports": [[t, f"/api/cad/program_file?id={g['id']}&f={f}", f] for t, f in
+                    (("STEP", "model.step"), ("GLB", "model.glb"), ("Program", "program.py"), ("Report", "report.json"))],
+    }
+
+
 def _doc_brief(doc):
     return {k: doc[k] for k in ("title", "document_id", "maturity", "status", "stale")}
 
@@ -1053,4 +1190,9 @@ if __name__ == "__main__":
     print("Meta key:", "found" if os.environ.get("META_API") else "MISSING (set META_API in .env)")
     compute.warm()
     _after_load()
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    if os.environ.get("AETHER_OPEN_BROWSER") == "1":   # start.bat: the page opens once the lab is ready to answer it
+        import webbrowser
+        threading.Timer(0.3, lambda: webbrowser.open(f"http://localhost:{port}")).start()
+    print(f"AETHER Lab ready: http://localhost:{port}", flush=True)
+    httpd.serve_forever()

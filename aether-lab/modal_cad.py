@@ -22,7 +22,7 @@ image = (modal.Image.debian_slim(python_version="3.12")
          .pip_install_from_requirements(os.path.join(LAB, "cad-worker", "requirements.txt")))   # the same pins as local
 if NO_SECRET:                                   # baked into the image, so the container decides the same way
     image = image.env({"AETHER_CAD_NO_SECRET": "1"})
-image = (image.add_local_python_source("cad")
+image = (image.add_local_python_source("cad", "engine")      # engine: circles / outline for measuring drawings
          .add_local_dir(os.path.join(LAB, "prompts"), "/root/prompts")
          .add_local_dir(os.path.join(LAB, "cad", "render"), "/root/cad/render")
          .add_local_dir(os.path.join(LAB, "ui", "node_modules", "three", "build"), "/root/ui/node_modules/three/build")
@@ -82,6 +82,33 @@ def key_check():
 
 
 @app.function(**OPTS)
+def model_check():
+    """Which Meta models the secret's key can use from the container (status codes only, never the key)."""
+    _clean_key()
+    import urllib.error
+    import urllib.request
+    import sys
+    sys.path.insert(0, "/root")
+    from cad import ai as AI
+    k, base = os.environ.get("META_API") or "", os.environ.get("META_BASE_URL", "https://api.meta.ai/v1")
+    out = {"wonder": AI.WONDER, "spark": AI.SPARK, "base": base}
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(base + "/models", headers={"Authorization": "Bearer " + k}), timeout=30)
+        out["models"] = [m.get("id") for m in json.loads(r.read()).get("data", [])]
+    except urllib.error.HTTPError as e:
+        out["models"] = f"HTTP {e.code}"
+    for m in (AI.WONDER, AI.SPARK):
+        body = json.dumps({"model": m, "messages": [{"role": "user", "content": "Reply with the word ok."}]}).encode()
+        try:
+            urllib.request.urlopen(urllib.request.Request(base + "/chat/completions", data=body, method="POST", headers={
+                "Authorization": "Bearer " + k, "Content-Type": "application/json"}), timeout=120)
+            out[m] = "ok"
+        except urllib.error.HTTPError as e:
+            out[m] = f"HTTP {e.code}"
+    return out
+
+
+@app.function(**OPTS)
 def build(job):
     """job: {sheet_png: bytes | None, request, rounds, base_program, base_length_mm, base_plan}"""
     _clean_key()
@@ -94,9 +121,18 @@ def build(job):
     if job.get("sheet_png"):
         sheet = os.path.join(out, "sheet.png")
         open(sheet, "wb").write(job["sheet_png"])
+    q = job.get("progress")
+
+    def log(m):                                   # progress lines go to the lab's chat as they happen
+        print(m)
+        if q is not None and not str(m).startswith(" "):
+            try:
+                q.put(str(m)[:240], block=False)
+            except Exception:
+                pass
     rep = G.build(sheet, out, request=job.get("request") or "", rounds=int(job.get("rounds", 3)),
                   base_program=job.get("base_program"), base_length_mm=job.get("base_length_mm"),
-                  base_plan=job.get("base_plan"), log=print)
+                  base_plan=job.get("base_plan"), log=log)
     res = _summary(rep)
     res["root"] = out
     if rep.get("best"):

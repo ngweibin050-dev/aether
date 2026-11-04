@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store";
 import FloatPanel, { PanelIcon } from "./FloatPanel";
 import { L, useLayout } from "./layout";
@@ -27,6 +27,15 @@ export default function DrawingPanel() {
   const [tab, setTab] = useState("parts");
   const [hover, setHover] = useState(null);
 
+  // an AI-written CAD program built from a drawing: its drawing and Muse Wonder's plan (what each part rests on)
+  const sel = useStore((s) => s.selection[0] || "");
+  const ver = useStore((s) => s.state?.version);
+  const [prog, setProg] = useState(null);
+  useEffect(() => {
+    if (!open || sam?.parts) return;
+    fetch(`/api/cad/document?sel=${encodeURIComponent(sel)}`).then((r) => r.json())
+      .then((j) => setProg(j.kind === "program" ? j : null)).catch(() => setProg(null));
+  }, [open, sam, sel, ver]);
   const src = recorded?.id ? `/demo/${recorded.id}.png` : "/api/drawing";
   const W = sam?.photo_px?.[0] || 1, H = sam?.photo_px?.[1] || 1, mm = sam?.mm_per_px || 1;
   const rows = useMemo(() => {
@@ -51,7 +60,9 @@ export default function DrawingPanel() {
   return (<>
     <PanelIcon id="drawing" title="Drawing reading" icon="search" style={{ left: lay.toolLeft + 56, top: L.top + 56 }} />
     <FloatPanel id="drawing" title="Drawing reading · Muse Spark" icon="search" open={open} onClose={() => st.setPanel("drawing", false)} style={style}>
-      {!sam?.parts ? <div className="px-4 py-4 text-slate-400">No drawing read yet: build a machine from a drawing (Demo menu or upload).</div> :
+      {!sam?.parts && prog ? <ProgramReading doc={prog} /> :
+       !sam?.parts ? <div className="px-4 py-4 text-slate-400">No drawing read yet. Upload a drawing in the chat and ask Muse Spark to build it:
+         the drawing and how Muse Wonder read it (every part with its evidence, and what the drawing cannot tell) appear here.</div> :
         <div className="flex min-h-0 flex-1 gap-3 px-3 pb-3">
           <div className="relative min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border border-white/10 bg-[#f4f1ea]">
             <div className="relative" style={{ aspectRatio: `${W} / ${H}` }}>
@@ -107,4 +118,31 @@ export default function DrawingPanel() {
         </div>}
     </FloatPanel>
   </>);
+}
+
+// How Muse Wonder read the drawing for an AI-written CAD program: the sheet, every planned part with the evidence it
+// rests on (a view, a dimension, or an inference), and what the drawing cannot tell.
+function ProgramReading({ doc }) {
+  const st = useStore();
+  const parts = useStore((s) => s.state?.parts || []);
+  const pick = (name) => { const p = parts.find((q) => q.eng?.cad_component?.endsWith("_" + name) || q.name === name); if (p) st.select(p.id); };
+  return (
+    <div className="flex min-h-0 flex-1 gap-3 px-3 pb-3">
+      {doc.sheet_url && <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-lg border border-white/10 bg-[#f4f1ea]">
+        <img src={doc.sheet_url} alt="the drawing the model was built from" className="w-full object-contain"
+          onDoubleClick={() => st.openLightbox({ src: doc.sheet_url, title: doc.object || "drawing" })} /></div>}
+      <div className="scroll-thin min-h-0 w-[42%] min-w-[260px] overflow-y-auto text-[11.5px]">
+        <div className="mb-1.5 font-display text-[12.5px] font-bold text-white">{doc.object || doc.title}</div>
+        <div className="mb-2 font-mono text-[10px] text-cyan-glow">Muse Wonder · {doc.features.length} parts planned · {doc.features.filter((f) => f.status === "ok").length} built</div>
+        {doc.assumptions?.length > 0 && <div className="mb-2 rounded-md border border-amber-300/20 bg-amber-300/[0.05] px-2 py-1.5">
+          <div className="mb-0.5 font-mono text-[10px] text-amber-300">what the drawing cannot tell ({doc.assumptions.length})</div>
+          {doc.assumptions.map((a) => <div key={a.id} className="py-0.5 text-slate-300" title={a.editable_via?.join("; ")}>{a.text}</div>)}
+        </div>}
+        {doc.features.map((f) => (
+          <button key={f.id} onClick={() => pick(f.id)} className="block w-full border-b border-white/[0.05] py-1 text-left hover:bg-white/[0.03]">
+            <span className={f.status === "ok" ? "text-slate-200" : "text-slate-500"}>{f.label}</span>
+            {f.evidence && <div className="text-[10.5px] text-slate-400">{f.evidence}</div>}
+          </button>))}
+      </div>
+    </div>);
 }

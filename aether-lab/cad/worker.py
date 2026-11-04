@@ -210,6 +210,12 @@ def cmd_program_rerun(a):
     return out
 
 
+def _num(a, nd):
+    """A float array as a short JSON list: float64 first, so 0.0064 is not written as 0.006399999838322401."""
+    import numpy as np
+    return np.asarray(a, dtype=np.float64).round(nd).ravel().tolist()
+
+
 def cmd_program_meshes(a):
     """Display meshes of a program model's kept parts (tessellated from their B-rep files)."""
     from OCP.BRep import BRep_Builder
@@ -221,12 +227,30 @@ def cmd_program_meshes(a):
     for p in rep["best"]["parts"]:
         sh = TopoDS_Shape()
         BRepTools.Read_s(sh, p["brep"], BRep_Builder())
-        V, F, N, fid = T.mesh(sh, 1.0, 0.25)
+        V, F, N, fid = T.mesh(sh, 0.2, 0.3, fast=True)
         E = T.edges(sh)
         out[p["id"]] = {"name": p["name"], "kind": "program_part", "parent": None, "colour": p["colour"],
-                        "material": p["material"], "v": V.round(3).ravel().tolist(), "f": F.ravel().tolist(),
-                        "n": N.round(4).ravel().tolist(), "l": E.round(3).ravel().tolist(), "brep": p["brep"],
+                        "material": p["material"], "v": _num(V, 2), "f": F.ravel().tolist(),
+                        "n": _num(N, 3), "l": _num(E, 2), "brep": p["brep"],
                         "assembly_parent": p.get("assembly_parent")}
+    return {"meshes": out}
+
+
+def cmd_remesh_breps(a):
+    """{items: {part id: .brep path}} -> {meshes: {part id: {v, f, n, l}}}: lighter display meshes for parts saved
+    with the old, far too fine ones (a project from before the display meshing was size-relative)."""
+    from OCP.BRep import BRep_Builder
+    from OCP.BRepTools import BRepTools
+    from OCP.TopoDS import TopoDS_Shape
+    from cad import tessellate as T
+    out = {}
+    for pid, f in a["items"].items():
+        if not os.path.exists(f):
+            continue
+        sh = TopoDS_Shape()
+        BRepTools.Read_s(sh, f, BRep_Builder())
+        V, F, N, _ = T.mesh(sh, 0.2, 0.3, fast=True)
+        out[pid] = {"v": _num(V, 2), "f": F.ravel().tolist(), "n": _num(N, 3), "l": _num(T.edges(sh), 2)}
     return {"meshes": out}
 
 
@@ -515,7 +539,7 @@ def cmd_import_step(a):
     for i, (nm, s) in enumerate(named.items()):
         bb = np.array(A_bbox(s))
         lin = float(np.clip(np.max(bb[3:] - bb[:3]) / 300, 0.02, 1.0))
-        V, F, N, _ = T.mesh(s, lin, 0.3)
+        V, F, N, _ = T.mesh(s, lin, 0.3, fast=True)
         if not len(F):
             continue
         meshes[f"s{i}"] = {"name": nm, "kind": "imported solid", "parent": None, "colour": None, "material": None,
@@ -685,7 +709,7 @@ def cmd_remove_features(a):
     return {"ok": st["state"] == "ok", "removed": [f["id"] for f in gone], "seconds": round(time.time() - t, 1)}
 
 
-CMDS = {"program_rerun": cmd_program_rerun, "program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
+CMDS = {"remesh_breps": cmd_remesh_breps, "program_rerun": cmd_program_rerun, "program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
         "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "asm_build": cmd_asm_build,
         "asm_step": cmd_asm_step, "asm_step_status": cmd_asm_step_status, "asm_section": cmd_asm_section}
 

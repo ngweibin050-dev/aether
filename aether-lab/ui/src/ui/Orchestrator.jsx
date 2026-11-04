@@ -67,6 +67,10 @@ export const STEP = {
   layers: ["Muse Spark", "stack the parts in depth"], "explain · Muse Spark": ["Muse Spark", "explanation"],
   "illustration · Muse Image": ["Muse Image", "illustration"], sam_3_1: ["SAM 3.1", "outline"],
   voice: ["Muse Voice Transcribe", "speech to text"],
+  check_drawing: ["Muse Spark", "check the drawing: what is missing for a reliable model"],
+  build_cad: ["Muse Wonder", "plan and write the CAD program"], edit_cad: ["Muse Wonder", "change the CAD program"],
+  set_cad_param: ["AETHER engine", "re-run the CAD program with the new value"],
+  build_from_drawing: ["Muse Wonder", "build CAD from the drawing"], explain_machine: ["Muse Spark", "explain the machine"],
   read_views: [GPU, "find the views and carve the 3D shape (Muse Spark names the regions)"],
   classify_upload: ["AETHER engine", "what the image is (drawing, photo, three views)"],
   measure_circles: ["AETHER engine", "measure every circle on the ink"], rebuild_3d: ["AETHER engine", "rebuild each part in 3D"],
@@ -326,7 +330,13 @@ export default function Orchestrator() {
   const log = useRef();
   const input = useRef();
 
-  useEffect(() => { log.current && (log.current.scrollTop = 1e9); }, [chat, busy]);
+  // the newest message is always in view: on a new message or step, and when the panel is opened or restored
+  const winState = useStore((s) => s.win.orchestrator);
+  const nSteps = useStore((s) => s.progress.length);
+  useEffect(() => {
+    const go = () => log.current && (log.current.scrollTop = 1e9);
+    go(); const r = requestAnimationFrame(go); return () => cancelAnimationFrame(r);
+  }, [chat, busy, open, winState, nSteps]);
   useEffect(() => {
     const f = (e) => { if (e.key === "/" && e.ctrlKey) { e.preventDefault(); input.current?.focus(); } };
     addEventListener("keydown", f); return () => removeEventListener("keydown", f);

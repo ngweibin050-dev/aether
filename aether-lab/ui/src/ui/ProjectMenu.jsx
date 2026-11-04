@@ -13,6 +13,7 @@ export default function ProjectMenu() {
   const [versions, setVersions] = useState([]);
   const [tab, setTab] = useState("projects");
   const [name, setName] = useState("");
+  const projectName = useStore((s) => s.project?.name);
   useEffect(() => {
     if (!open) return;
     fetch("/api/projects").then((r) => r.json()).then((j) => setList(j.projects || [])).catch(() => {});
@@ -20,7 +21,7 @@ export default function ProjectMenu() {
     const close = (e) => !e.target.closest?.("[data-projectmenu]") && setOpen(false);
     addEventListener("pointerdown", close);
     return () => removeEventListener("pointerdown", close);
-  }, [open]);
+  }, [open, projectName]);
   return (
     <div className="relative" data-projectmenu>
       <button onClick={() => setOpen(!open)} title="Project: switch, create, rename, versions"

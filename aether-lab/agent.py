@@ -909,10 +909,11 @@ Each round you get desk_score: every part's height range (mm), its worst and mea
 hologram, along the real line of sight), how much of it the eye sees through the panel, and sharp_zone_mm (the
 heights that stay sharp from this eye). Change the design so every part passes, with the smallest changes that keep
 what the object is:
-- prefer moving the root group in z into sharp_zone_mm,
+- the model STANDS ON THE DESK: its lowest point stays at z = 0 (the display surface). Never move it below the
+  surface, even though the sharp zone extends there: a model hanging through the desk is wrong (code puts it back),
+- prefer scaling the root group down UNIFORMLY (the same factor on x, y and z, at least 0.5) so its top comes into
+  sharp_zone_mm; never squash one axis, that turns a 3D object into a flat relief,
 - then rotating it (keep its real orientation if you can: a machine stands up),
-- then scaling the root group down UNIFORMLY (the same factor on x, y and z, at least 0.5); never squash one axis,
-  that turns a 3D object into a flat relief,
 - never delete parts or change their shapes.
 Call update_part one or more times (ids from the score), then stop. Do not write any text."""
 
@@ -922,6 +923,20 @@ UPDATE_DEF = [d for d in TOOL_DEFS if d["function"]["name"] == "update_part"]
 def _eye_shot(state, z):
     res = compute.run(state, "eye_view", {"focus_z_mm": z, "color": True})
     return res.get("_images", {}).get("eye"), res.get("sharpness_vs_full_2d_pct")
+
+
+def _stand_on_desk(state):
+    """Every model back on the desk surface (z = 0) if an edit sank it: returns the names that were lifted."""
+    lifted = []
+    for g in [p for p in state["parts"] if not p.get("parent")]:
+        sub = lab.subtree(state, g["id"])
+        lo, hi = geometry.bounds(sub)
+        if lo is not None and float(lo[2]) < -0.5:
+            g["position"] = [g["position"][0], g["position"][1], float(g["position"][2] - lo[2])]
+            lifted.append(g["name"])
+    if lifted:
+        lab._bump(state)
+    return lifted
 
 
 def optimize(state, target_pct=80, max_rounds=3, on_step=None):
@@ -961,6 +976,10 @@ def optimize(state, target_pct=80, max_rounds=3, on_step=None):
             r = lab.run(state, "update_part", args) if c["function"]["name"] == "update_part" else {"error": "only update_part"}
             edits.append({k: v for k, v in args.items() if v is not None})
             msgs.append({"role": "tool", "tool_call_id": c["id"], "content": json.dumps(lab.for_agent(r))})
+        lifted = _stand_on_desk(state)                         # the model stands ON the desk, never through it
+        if lifted:
+            msgs.append({"role": "user", "content": f"{lifted} went below the display surface and were put back on "
+                                                    "the desk (z = 0): scale or rotate instead."})
         step({"stage": "done", "tool": "update_part"})
         step({"stage": "tool", "tool": "desk_score"})
         score = compute.run(state, "desk_score", {"target_pct": target_pct})
@@ -979,10 +998,7 @@ def optimize(state, target_pct=80, max_rounds=3, on_step=None):
                       "design_z_mm": score["design_z_mm"], "eye_sharpness_at_top_pct": after_sharp},
             "parts": score["parts"], "target_pct": target_pct, "rows": score["rows"],
             "note": "Muse Spark changed the design; the wave-optics eye model scored each round. Simulation, not a measurement.",
-            **({"below_surface_note": f"The design now reaches {-score['design_z_mm'][0]:.0f} mm behind the display surface on "
-                                      "purpose: the desk's sharp zone extends behind it, and an AETHER Desk hologram may be "
-                                      "shown there (it is still seen through the panel)."}
-               if score["design_z_mm"][0] < -0.1 else {}),
+
             "_images": images}
 
 

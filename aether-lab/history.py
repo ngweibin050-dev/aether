@@ -203,6 +203,18 @@ def reset(done=(), undone=()):
     UNDONE[:] = list(undone)
 
 
+def heavy_cad_parts(min_faces):
+    """Every CAD-program part version in the history whose display mesh has more than min_faces face indices."""
+    out = []
+    for e in DONE + [x for g in UNDONE for x in g]:
+        for p in _parts_of(e):
+            prm = p.get("params")
+            if p.get("type") == "cad" and (p.get("eng") or {}).get("brep") and isinstance(prm, dict) \
+                    and len(prm.get("faces") or []) > min_faces:
+                out.append(p)
+    return out
+
+
 # ------------------------------------------------------------------------------------------------ saved with the project
 def _parts_of(e):
     for side in ("before", "after"):

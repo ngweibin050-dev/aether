@@ -67,7 +67,15 @@ const openScene = () => {
   };
   inp.click();
 };
-export const importGLB = () => document.getElementById("glb-input")?.click();
+// a menu item whose control lives in a panel (the chat box, a file picker): open that panel first, then use it once it
+// has rendered (the click still counts as the user's, so the browser lets the file picker open)
+const inPanel = (panel, id, fn) => {
+  S().setPanel(panel, true); S().setWin(panel, "normal");
+  let n = 0;
+  const go = () => { const el = document.getElementById(id); if (el) fn(el); else if (n++ < 20) setTimeout(go, 50); };
+  setTimeout(go, 0);
+};
+export const importGLB = () => inPanel("outliner", "glb-input", (el) => el.click());
 
 export const COMMANDS = [
   // File
@@ -78,9 +86,10 @@ export const COMMANDS = [
   { id: "file.glb", menu: "File", group: "Export", label: "Export GLB (metres, part records inside)", run: () => download("/api/export.glb", "aether-model.glb") },
   { id: "file.step", menu: "File", group: "Export", label: "Export STEP (CAD B-rep, from the CAD document)", run: () => download("/api/cad/export.step", "aether-model.step") },
   { id: "file.aethercad", menu: "File", group: "Export", label: "Export .aethercad (editable CAD document)", run: () => download("/api/cad/export.aethercad", "aether-model.aethercad") },
+  { id: "view.ai", menu: "View", group: "Panels", label: "AI orchestrator (Muse Spark chat)", run: () => { S().setPanel("orchestrator", true); S().setWin("orchestrator", "normal"); } },
   { id: "view.cad", menu: "View", group: "Panels", label: "CAD document panel", run: () => S().setPanel("cad") },
   { id: "view.asm", menu: "View", group: "Panels", label: "B-rep assembly panel (tree, mates, checks, properties)", run: () => S().setPanel("asm") },
-  { id: "view.drawing", menu: "View", group: "Panels", label: "Drawing reading panel (balloons)", run: () => S().setPanel("drawing") },
+  { id: "view.drawing", menu: "View", group: "Panels", label: "Drawing reading panel (the drawing and how Muse read it)", run: () => S().setPanel("drawing") },
   { id: "view.optics", menu: "View", group: "Panels", label: "Optics figure (desk simulation results)", run: () => S().setPanel("optics") },
   { id: "cad.asm", menu: "Inspect", group: "Engineering", label: "Build B-rep assembly (exact solids, validation, mates)", run: () => { S().setPanel("asm", true); S().buildAsm(); } },
   { id: "file.asmstep", menu: "File", group: "Export", label: "Export STEP of the machine (B-rep assembly, validated)", run: () => { S().setPanel("asm", true); S().exportStep(); } },
@@ -102,9 +111,9 @@ export const COMMANDS = [
   { id: "sel.children", menu: "Select", label: "Children", keys: "Shift ]", when: hasSel, run: () => S().selectMany(S().state.parts.filter((p) => S().selection.includes(p.parent)).map((p) => p.id)) },
   // Add
   ...PRIMS.map(([t]) => ({ id: "add." + t, menu: "Add", label: t.replace("_", " "), group: "Mesh", run: () => addPrim(t) })),
-  { id: "add.ai", menu: "Add", label: "Assembly from text (Muse Spark)…", group: "AI", run: () => document.getElementById("ai-input")?.focus() },
-  { id: "add.photo", menu: "Add", label: "Model from a photo (SAM 3.1)…", group: "AI", run: () => document.getElementById("photo-input")?.click() },
-  { id: "ai.fix", menu: "Add", label: "Fix design for the desk (AI loop)", group: "AI", run: () => S().optimize(80) },
+  { id: "add.ai", menu: "Add", label: "Assembly from text (Muse Spark)…", group: "AI", run: () => inPanel("orchestrator", "ai-input", (el) => el.focus()) },
+  { id: "add.photo", menu: "Add", label: "Model from a photo (SAM 3.1)…", group: "AI", run: () => inPanel("orchestrator", "photo-input", (el) => el.click()) },
+  { id: "ai.fix", menu: "Add", label: "Fix design for the desk (AI loop)", group: "AI", run: () => { S().setPanel("orchestrator", true); S().setWin("orchestrator", "normal"); S().optimize(80); } },
   { id: "add.glb", menu: "Add", label: "Import GLB model…", group: "AI", run: importGLB },
   // Object · tools (they were a toolbar under the menu bar; W cycles them)
   { id: "tool.select", menu: "Object", group: "Tools", label: "Tool: Select / box select", keys: "B", run: () => S().setTool("select") },
@@ -185,10 +194,6 @@ export const COMMANDS = [
 
 export const cmd = (id) => COMMANDS.find((c) => c.id === id);
 export const run = (id) => { const c = cmd(id); if (c && (!c.when || c.when())) c.run(); };
-// Tools: the actions that used to sit in the bottom dock, in one menu (and optionally pinned as a bar)
-COMMANDS.push(
-  { id: "tools.bar", menu: "View", group: "Panels", label: "Show tool bar under the menu", run: () => S().setDockBar() },
-);
 
 COMMANDS.push(
   { id: "view.panelsToggle", menu: "View", group: "Panels", label: "Minimise / restore all panels", keys: "Shift Tab", run: () => {

@@ -18,7 +18,7 @@ export default function Hud() {
   ];
   return (
     <>
-      <div className="pointer-events-none absolute left-1/2 top-[72px] z-20 flex -translate-x-1/2 items-center gap-5 rounded-2xl border border-line bg-black/35 px-5 py-2 backdrop-blur-xl">
+      <div className="pointer-events-none absolute left-1/2 top-[72px] z-20 flex -translate-x-1/2 items-center gap-5 rounded-2xl border border-line bg-[#070b14]/85 px-5 py-2">
         {items.map(([k, v]) => (
           <div key={k} className="leading-tight"><div className="label">{k}</div>
             <div className={`readout ${k === "sharp zone" && inZone === false ? "text-warn" : k === "sharp zone" && inZone ? "text-ok" : ""}`}>{v}</div></div>

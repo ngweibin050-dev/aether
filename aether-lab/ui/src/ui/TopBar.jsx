@@ -21,7 +21,7 @@ export default function TopBar() {
         </div>
       </div>
 
-      <div className="mx-auto flex items-center gap-1 rounded-2xl border border-line bg-black/30 p-1 backdrop-blur-xl">
+      <div className="mx-auto flex items-center gap-1 rounded-2xl border border-line bg-[#070b14]/90 p-1">
         {[["laptop", "laptop", "Laptop mode"], ["hand", "hand", "Hand mode"]].map(([m, ic, label]) => (
           <button key={m} onClick={() => setMode(m)}
             className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-[12.5px] font-medium transition ${mode === m ? "bg-gradient-to-r from-cyan-glow/25 to-violet-glow/25 text-white shadow-glow" : "text-slate-400 hover:text-slate-200"}`}>

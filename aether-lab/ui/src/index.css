@@ -14,8 +14,9 @@
   /* visionOS-style frosted glass: 5-10% white, heavy blur, hairline border, soft depth */
   /* glass: a gradient pane, lit from the top edge, darker toward the bottom (visionOS: no heavy opaque windows) */
   /* same card language as the public site: deep navy glass, hairline lit cyan at the top-left and violet at the bottom-right */
-  .glass { @apply relative rounded-[18px] backdrop-blur-md;
-    background: linear-gradient(180deg, rgba(17,24,39,.80), rgba(8,11,20,.80));
+  /* no backdrop blur: over the live 3D canvas the browser re-blurs every panel on every frame (the lab's main lag) */
+  .glass { @apply relative rounded-[18px];
+    background: linear-gradient(180deg, rgba(17,24,39,.93), rgba(8,11,20,.93));
     box-shadow: 0 30px 60px -30px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.05); }
   .glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
     background: linear-gradient(150deg, rgba(95,225,255,.38), rgba(148,163,184,.14) 28%, rgba(148,163,184,.10) 70%, rgba(168,85,247,.32));
@@ -54,8 +55,8 @@
   padding: 4px 7px; border-left: 2px solid #5fe1ff; background: linear-gradient(90deg, rgba(95,225,255,.16), transparent); text-shadow: 0 0 8px rgba(95,225,255,.6); }
 .callout { position: relative; width: 0; height: 0; }
 .callout-card { position: absolute; left: 64px; bottom: 28px; white-space: nowrap; padding: 6px 10px 7px; border-radius: 8px;
-  background: linear-gradient(180deg, rgba(10,30,44,.82), rgba(4,10,18,.82)); border: 1px solid rgba(143,243,255,.35);
-  box-shadow: 0 0 24px rgba(95,225,255,.18), inset 0 1px 0 rgba(255,255,255,.08); backdrop-filter: blur(8px); }
+  background: linear-gradient(180deg, rgba(10,30,44,.92), rgba(4,10,18,.92)); border: 1px solid rgba(143,243,255,.35);
+  box-shadow: 0 0 24px rgba(95,225,255,.18), inset 0 1px 0 rgba(255,255,255,.08); }
 .hud-frame { position: relative; }
 .hud-frame::before, .hud-frame::after { content: ""; position: absolute; width: 18px; height: 18px; pointer-events: none; z-index: 2; }
 .hud-frame::before { top: -1px; left: -1px; border-top: 2px solid #8ff3ff; border-left: 2px solid #8ff3ff; border-top-left-radius: 10px; }
