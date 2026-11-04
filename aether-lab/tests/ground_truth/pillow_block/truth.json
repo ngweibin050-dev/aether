@@ -1,0 +1,42 @@
+{
+ "title": "Pillow block bearing housing",
+ "dims_mm": {
+  "overall_length": 140.0,
+  "overall_width": 40.0,
+  "overall_height": 70.0,
+  "base_thickness": 14.0,
+  "mounting_hole_diameter": 12.0,
+  "mounting_hole_spacing": 110.0,
+  "shaft_centre_height": 42.0,
+  "housing_outer_diameter": 56.0,
+  "bore_diameter": 30.0
+ },
+ "features": {
+  "diameters": [
+   30.0,
+   12.0,
+   12.0,
+   56.0
+  ]
+ },
+ "volume_mm3": 174619.11353116133,
+ "drawing_views_mm": {
+  "front": [
+   140.0,
+   69.9
+  ],
+  "top": [
+   140.0,
+   40.0
+  ],
+  "right": [
+   40.0,
+   70.0
+  ]
+ },
+ "size_mm": [
+  140.0,
+  40.0,
+  70.0
+ ]
+}

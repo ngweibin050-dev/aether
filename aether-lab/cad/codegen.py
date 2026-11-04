@@ -210,11 +210,33 @@ json.dump(out, open(job["result"], "w", encoding="utf-8"))
 '''
 
 
+def own_P_removed(code):
+    """A program's own top-level `def P(...)` / `P = ...` removed (lines blanked, comments kept). Models often write
+    their own P() that returns PARAMS[name]["value"]: it shadowed the lab's P(), so an engineer's correction was
+    silently ignored and no parameter was ever seen as read. With it removed the lab's P() (same value, plus overrides
+    and usage tracking) is the one called."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return code
+    lines = code.splitlines()
+    hit = False
+    for n in tree.body:
+        own = (isinstance(n, ast.FunctionDef) and n.name == "P") or (
+            isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "P" for t in n.targets))
+        if own:
+            hit = True
+            for i in range(n.lineno - 1, n.end_lineno):
+                lines[i] = ""
+            lines[n.lineno - 1] = "# (the program's own P() was removed: the lab's P() reads PARAMS and the engineer's corrections)"
+    return "\n".join(lines) + "\n" if hit else code
+
+
 def run_program(code, meas, length_mm, out_dir, timeout=420, overrides=None):
     """Run a checked program in a separate process. Returns {"parts": [...], "error": str|None, "seconds"}."""
     out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
-    code = strip_fence(code)
+    code = own_P_removed(strip_fence(code))
     try:
         check_program(code)
     except (ValueError, SyntaxError) as e:
@@ -420,7 +442,10 @@ PROGRAM_API = """THE PROGRAM (it is checked, then run in a sandbox):
   panel thicknesses, clearances, counts). measured = from the measured outline functions, read = a dimension written
   on the drawing, inferred = engineering reasoning from what is drawn, assumed = a default because nothing shows it.
   The geometry reads them with P("name") (never repeats the number), so an engineer can correct one value and the
-  whole model recomputes.
+  whole model recomputes. P() is PROVIDED by the lab: never define your own P. THIS IS CHECKED: every PARAMS entry must be read by P() in the geometry it sizes (a
+  parameter nothing reads is a defect: correcting it would change nothing), and positions / sizes derived from a
+  parameter are computed from P() (e.g. x = P("length") / 2), never typed again as a number. Declare the overall
+  length, width and height, and every bore, hole diameter, hole spacing and thickness the drawing shows.
 - Building blocks you can call (general CAD operations; read their behaviour here):
   smooth_loft(sections, axis="x"): sections [(t, [(a, b), ...]), ...] closed loops across the axis -> smooth solid.
   split_panels(body, lines, gap=3.5): lines [(view, [(a, b), ...]), ...] with view "side" (x, z) | "top" (x, y) |
@@ -753,7 +778,10 @@ def rerun(program_dir, out_dir, overrides, sheet=None, length_mm=None, log=print
     unknown = [k for k in overrides if k not in old]
     if unknown:
         return {"best": None, "error": f"no such parameter: {unknown}; the model has {sorted(old)}"}
-    unused = [k for k in overrides if not old[k].get("used", True)]
+    # a program saved with its own P() recorded every parameter as unused (the lab's P() never ran): its flags are
+    # stale, so it is re-run and the new run says what is read
+    stale = own_P_removed(code) != code
+    unused = [] if stale else [k for k in overrides if not old[k].get("used", True)]
     if unused:
         return {"best": None, "error": f"the geometry does not read {unused} (declared but unused), so changing it would "
                                        f"change nothing; parameters that drive the geometry: "
@@ -797,10 +825,45 @@ def rerun(program_dir, out_dir, overrides, sheet=None, length_mm=None, log=print
     return rep
 
 
+def one_shot(sheet, out_dir, request="", model=None, log=print):
+    """BASELINE for the benchmark: the same engineer instructions, drawing and sandbox, but no plan, no quality gates,
+    no critic and no second round: Muse Wonder writes the program once and that is the result. The difference to
+    build() is what the loop adds (tests/ground_truth). Returns {"program", "parts" [{name, brep, valid, ...}], "error",
+    "params", "seconds"}."""
+    out_dir = os.path.abspath(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    t0 = time.time()
+    ai = AI.AI([], "live", log=lambda e: None)
+    text = (_prompt("cad_engineer.md") + "\n\n" + PROGRAM_API
+            + "\nWrite the program that builds this object." + (f"\nThe user asked: {request}" if request else "")
+            + ("\n\nA drawing is attached: read sizes from it." if sheet else "")
+            + "\n\nAnswer with `object`, a short `plan` (what you build / how), `length_mm` and `code`.")
+    content = [{"type": "text", "text": text}] + ([_image(Image.open(sheet))] if sheet else [])
+    try:
+        ans, _ = ai.ask_json("C1_cad_program", "one_shot", model or AI.WONDER, content, CODE_SCHEMA, seed=1, timeout=500,
+                             effort="medium", fallback=False)
+    except AI.ModelUnavailable as e:
+        return {"error": f"model: {e}", "parts": [], "seconds": round(time.time() - t0, 1)}
+    meas = {"profiles": {}, "dims": {"length": 1.0, "height": 0.0, "width": 0.0}, "masks": {}}
+    r = run_program(ans["code"], meas, float(ans["length_mm"]), out_dir)
+    log(f"one-shot: {len(r['parts'])} parts, error {r['error'] and r['error'][:120]}")
+    return {"program": os.path.join(out_dir, "program.py"), "parts": r["parts"], "error": r["error"],
+            "params": r.get("params"), "object": ans["object"], "seconds": round(time.time() - t0, 1)}
+
+
+def _used_frac(entry):
+    ps = [v for v in (entry.get("params") or {}).values() if isinstance(v, dict)]
+    return sum(1 for v in ps if v.get("used")) / len(ps) if ps else 0.0
+
+
 def _pick(valid):
     """Which valid round to keep: clean hard gates first; among those, mean IoU within 0.03 of the best checked IoU
     (with a drawing); then the best critic score (IoU as the tie-break). The model's own confidence never counts."""
     clean = [v for v in valid if not v["entry"]["gates"]["hard_fail"]] or valid
+    # a model whose parameters drive its geometry (at least half of them read by P()) beats one whose numbers are
+    # frozen in the code: only the first can be corrected by an engineer
+    driven = [v for v in clean if _used_frac(v["entry"]) >= 0.5]
+    clean = driven or clean
     ious = [v["entry"]["mean_iou"] for v in clean if v["entry"].get("mean_iou") is not None]
     if ious:
         clean = [v for v in clean if v["entry"].get("mean_iou") is None or v["entry"]["mean_iou"] >= max(ious) - 0.03]

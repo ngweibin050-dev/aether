@@ -1,0 +1,113 @@
+{
+ "components": [
+  {
+   "colour": "medium_g\u7070",
+   "evidence": "TOP VIEW, FRONT VIEW, RIGHT VIEW",
+   "joint": "root",
+   "material": "metal",
+   "method": "Extrude measured rectangle 140.0 x 40.0 in plan, thickness estimated 12 mm from FRONT/RIGHT bottom band proportion; two vertical bolt-hole cuts estimated \u00d814, centres estimated 28 mm from each end on ",
+   "name": "base_flange",
+   "parent": "-"
+  },
+  {
+   "colour": "medium_g\u7070",
+   "evidence": "FRONT VIEW, TOP VIEW, RIGHT VIEW",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Extrude FRONT stepped outline, estimated width 88 mm in X, from top of base to estimated cap-split height 38 mm, full 40 mm depth Y; smooth fillet_safe small 2 mm at base junction (estimate, no radius",
+   "name": "pedestal_block",
+   "parent": "base_flange"
+  },
+  {
+   "colour": "medium_g\u7070",
+   "evidence": "FRONT VIEW, TOP VIEW, RIGHT VIEW",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Extrude FRONT outline estimated width 68 mm in X from pedestal step to bore-centre/split height, depth estimated 28 mm in Y flush with rear face (single face line in TOP/RIGHT); lower half of bearing",
+   "name": "lower_bearing_housing",
+   "parent": "pedestal_block"
+  },
+  {
+   "colour": "medium_g\u7070",
+   "evidence": "FRONT VIEW, TOP VIEW, RIGHT VIEW",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Extrude/smooth_loft FRONT semicircular arch outline, outer radius estimated 34 mm about bore centre, same estimated 28 mm Y depth and rear-flush position as lower housing; upper half of bearing bore",
+   "name": "bearing_cap",
+   "parent": "lower_bearing_housing"
+  }
+ ],
+ "constraints": [
+  {
+   "a": "lower_bearing_housing",
+   "b": "bearing_cap",
+   "type": "coaxial",
+   "value": 0
+  },
+  {
+   "a": "bearing_cap",
+   "b": "lower_bearing_housing",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "pedestal_block",
+   "b": "base_flange",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "lower_bearing_housing",
+   "b": "pedestal_block",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "bearing_cap",
+   "b": "base_flange",
+   "type": "clearance",
+   "value": 26
+  }
+ ],
+ "faces": "Coordinate system: X = 140 mm length left-right, Y = 40 mm depth, Z = 70 mm height up. FRONT VIEW: front face (+Y) faces viewer, X horizontal, Z vertical. TOP VIEW: top (+Z) faces viewer, X horizontal, front (+Y) edge at bottom of view. RIGHT VIEW: right end (+X) faces viewer, front (+Y) at left of view, Z vertical. Third-angle projection as noted on drawing.",
+ "length_mm": 140.0,
+ "object": "Pillow block bearing housing",
+ "unknowns": [
+  {
+   "critical": true,
+   "what": "Bearing bore diameter and centre height",
+   "why": "No dimension leader for the FRONT circle; estimated \u00d834-36 mm, centre Z\u224838 mm from image proportions only",
+   "would_resolve": "A diameter and centre-height dimension on FRONT VIEW, or a section view"
+  },
+  {
+   "critical": true,
+   "what": "Base thickness, pedestal widths/heights, arch outer radius and cap-split height",
+   "why": "Only overall 140.0 x 40.0 x 69.9/70.0 dimensions are given; all internal steps estimated by scaling view proportions (base \u224812 mm, pedestal \u224888 mm wide, housing \u224868 mm wide, split \u224838 mm)",
+   "would_resolve": "Step/height dimensions on FRONT and RIGHT views"
+  },
+  {
+   "critical": true,
+   "what": "Bolt-hole diameter and centre positions in base flange",
+   "why": "Circles shown in TOP and dashed in FRONT/RIGHT with no size/location dimensions; estimated \u00d814 mm at X\u2248\u00b142 mm from centre, Y centred",
+   "would_resolve": "Hole diameter and pitch/edge-distance dimensions on TOP VIEW"
+  },
+  {
+   "critical": false,
+   "what": "Bearing housing thickness in Y and whether it is centred or rear-flush",
+   "why": "TOP shows one horizontal face line and RIGHT one vertical face line in the arch zone, suggesting \u224828 mm thickness flush with rear, but the second face may coincide with an outline; ambiguous",
+   "would_resolve": "A Y-dimension or clearer TOP/RIGHT face lines"
+  },
+  {
+   "critical": false,
+   "what": "Whether bearing_cap is a separate removable cap or the housing is one casting, and any cap bolts",
+   "why": "Step/split lines suggest a cap joint at bore centre, but no cap fasteners are drawn",
+   "would_resolve": "Section view, parts list, or photo of the real housing"
+  },
+  {
+   "critical": false,
+   "what": "Fillet radii, chamfers, material and finish/colour",
+   "why": "No radii, material or colour notes on drawing; title block only states mm, third angle, exact B-rep source",
+   "would_resolve": "General notes, material specification or photo"
+  }
+ ]
+}

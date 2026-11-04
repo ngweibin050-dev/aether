@@ -1,0 +1,62 @@
+{
+ "pillow_block": {
+  "overrides": {
+   "base_thickness": 14.0,
+   "bolt_hole_diameter": 12.0,
+   "bolt_hole_end_offset": 15.0,
+   "bore_diameter": 30.0,
+   "bore_centre_height": 42.0,
+   "cap_outer_radius": 28.0,
+   "housing_depth": 40.0,
+   "pedestal_width": 70.0
+  },
+  "was": {
+   "base_thickness": 12.0,
+   "bolt_hole_diameter": 14.0,
+   "bolt_hole_end_offset": 28.0,
+   "bore_diameter": 34.0,
+   "bore_centre_height": 40.0,
+   "cap_outer_radius": 30.0,
+   "housing_depth": 28.0,
+   "pedestal_width": 88.0
+  },
+  "error": null,
+  "seconds": 10.2
+ },
+ "flanged_hub": {
+  "overrides": {
+   "flange_thickness": 12.0,
+   "hub_diameter": 60.0,
+   "hub_protrusion": 50.0,
+   "central_bore_diameter": 25.0,
+   "bolt_hole_diameter": 10.0,
+   "bolt_pcd": 90.0
+  },
+  "was": {
+   "flange_thickness": 15.0,
+   "hub_diameter": 65.0,
+   "hub_protrusion": 47.0,
+   "central_bore_diameter": 30.0,
+   "bolt_hole_diameter": 11.0,
+   "bolt_pcd": 94.0
+  },
+  "error": null,
+  "seconds": 10.7
+ },
+ "gusset_bracket": {
+  "overrides": {
+   "plate_thickness": 8.0,
+   "hole_diameter": 9.0,
+   "hole_spacing": 60.0,
+   "hole_offset_x": 20.0
+  },
+  "was": {
+   "plate_thickness": 10.0,
+   "hole_diameter": 12.0,
+   "hole_spacing": 50.0,
+   "hole_offset_x": 25.0
+  },
+  "error": null,
+  "seconds": 9.3
+ }
+}

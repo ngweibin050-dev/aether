@@ -1149,6 +1149,13 @@ def _program_doc(g):
     d = Path(e["program"]).parent
     rd = lambda f: (json.loads((d / f).read_text(encoding="utf-8")) if (d / f).exists() else {})
     params, plan, rep = rd("params.json"), rd("plan.json"), rd("report.json")
+    stale = False                                  # saved with its own P(): the "unused" flags were wrong, not real
+    try:
+        import ast
+        stale = any(isinstance(n, ast.FunctionDef) and n.name == "P"
+                    for n in ast.parse((d / "program.py").read_text(encoding="utf-8")).body)
+    except (OSError, SyntaxError):
+        pass
     best = rep.get("best") or {}
     built = {p.get("name") for p in best.get("parts") or []}
     prov = {"user": "user_confirmed"}
@@ -1159,7 +1166,8 @@ def _program_doc(g):
         "maturity": "ai_written_program", "stale": False,
         "status": {"state": "ok", "seconds": rep.get("seconds"), "param_hash": f"{e.get('program_id')}-{e.get('version')}"},
         "parameters": [{"id": k, "value": v.get("value"), "unit": v.get("unit"), "provenance": prov.get(v.get("provenance"), v.get("provenance")),
-                        "kind": "parameter" if v.get("used", True) else "not read by the geometry", "locked": v.get("used") is False,
+                        "kind": "parameter" if (v.get("used", True) or stale) else "not read by the geometry",
+                        "locked": v.get("used") is False and not stale,
                         "note": v.get("evidence")} for k, v in params.items() if isinstance(v, dict)],
         "features": [{"id": c["name"], "label": c["name"], "op": c.get("method") or "",
                       "inputs": [c["parent"]] if c.get("parent") not in (None, "-", "") else [],

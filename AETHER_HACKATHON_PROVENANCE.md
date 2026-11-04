@@ -61,7 +61,7 @@ The current repository snapshot referenced at the top of this document is dated 
 
 ## 4. Meta AI tooling and external components
 
-AETHER Lab uses Meta models as runtime components in a multi-stage application workflow. The repository documentation identifies the roles and source files for Muse Spark, Muse Wonder, Muse Image, Muse Voice Transcribe and SAM 3.1. The application also uses non-Meta infrastructure and software, including Modal for hosted compute and third-party libraries/frameworks such as React, Vite and Three.js.
+AETHER Lab uses Meta models as runtime components in a multi-stage application workflow. The repository documentation identifies the roles and source files for Muse Spark, Muse Wonder, Muse Voice Transcribe and SAM 3.1 (Muse Image was used for concept illustrations until 4 November and then removed: Explain shows renders of the built model only). The application also uses non-Meta infrastructure and software, including Modal for hosted compute and third-party libraries/frameworks such as React, Vite and Three.js.
 
 These services, models, frameworks, model weights and third-party libraries are not claimed as code written by the builder. The `.agents/skills/` directory contains imported third-party agent/design skill material; it should not be presented as original AETHER source code. The public-domain patent and NASA drawing inputs are separately attributed in `aether-lab/docs/INPUTS.md`. NASA is not a project sponsor and does not endorse AETHER.
 

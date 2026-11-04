@@ -7,6 +7,7 @@ import functools
 import os
 import shutil
 import subprocess
+import tempfile
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -54,16 +55,21 @@ def render(glb, out_dir, views=VIEWS, size=(1280, 720), timeout=60):
 
     def one(v):
         f = Path(out_dir).resolve() / f"view_{v}.png"
+        # Chrome's profile in a temporary folder, deleted after the shot (left in the job folder it was ~4 MB of GPU
+        # cache per view and round: 130-220 MB per build, zipped back from the cloud and kept in every project)
+        prof = tempfile.mkdtemp(prefix="aether_chrome_")
         url = f"http://127.0.0.1:{srv.server_address[1]}/cad/render/render.html?glb={rel}&view={v}&lib={lib}"
         cmd = [exe, "--headless=new", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist",
                f"--window-size={size[0]},{size[1]}", "--virtual-time-budget=25000", "--hide-scrollbars",
-               f"--user-data-dir={Path(out_dir).resolve() / ('_chrome_' + v)}", f"--screenshot={f}", url]
+               f"--user-data-dir={prof}", f"--screenshot={f}", url]
         if root:
             cmd.insert(1, "--no-sandbox")
         try:
             subprocess.run(cmd, timeout=timeout, capture_output=True)
         except subprocess.TimeoutExpired:
             return v, None
+        finally:
+            shutil.rmtree(prof, ignore_errors=True)
         return v, (str(f) if f.exists() and f.stat().st_size > 5000 else None)
     try:
         import concurrent.futures as cf

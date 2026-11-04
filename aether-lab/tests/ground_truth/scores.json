@@ -1,0 +1,477 @@
+{
+ "pillow_block/baseline": {
+  "no_solid": true,
+  "error": "    exec(compile(open(job[\"program\"], encoding=\"utf-8\").read(), \"program.py\", \"exec\"), g)\n  File \"program.py\", line 35, in <module>\n  File \"program.py\", line 4, in box_solid\nOCP.OCP.Standard.Standard_DomainError",
+  "seconds": 134.2
+ },
+ "pillow_block/aether": {
+  "size_truth_mm": [
+   140.0,
+   40.0,
+   69.9000015258789
+  ],
+  "size_found_mm": [
+   140.0,
+   40.0,
+   70.0
+  ],
+  "size_error_mm": [
+   0.0,
+   0.0,
+   0.1
+  ],
+  "max_size_error_mm": 0.1,
+  "iou_front_top_side": [
+   0.852,
+   0.949,
+   0.787
+  ],
+  "iou_mean": 0.862,
+  "volume_error_pct": -20.2,
+  "features": [
+   {
+    "diameter_mm": 56.0,
+    "found_mm": 60.0,
+    "error_mm": 4.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 30.0,
+    "found_mm": 34.0,
+    "error_mm": 4.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 12.0,
+    "found_mm": 14.0,
+    "error_mm": 2.0,
+    "count_truth": 2,
+    "count_found": 0
+   }
+  ],
+  "params_total": 13,
+  "params_read": 13,
+  "round": 1,
+  "critic": 4,
+  "gates": "4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 5",
+  "seconds": 460.8,
+  "rounds": [
+   {
+    "round": 1,
+    "error": null,
+    "critic": 4,
+    "gates": "4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 5"
+   },
+   {
+    "round": 2,
+    "error": "    exec(compile(open(job[\"program\"], encoding=\"utf-8\").read(), \"program.py\", \"e",
+    "critic": null,
+    "gates": null
+   },
+   {
+    "round": 3,
+    "error": null,
+    "critic": 3,
+    "gates": "4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 5"
+   }
+  ]
+ },
+ "pillow_block/corrected": {
+  "size_truth_mm": [
+   140.0,
+   40.0,
+   69.9000015258789
+  ],
+  "size_found_mm": [
+   140.0,
+   40.0,
+   70.0
+  ],
+  "size_error_mm": [
+   0.0,
+   0.0,
+   0.1
+  ],
+  "max_size_error_mm": 0.1,
+  "iou_front_top_side": [
+   0.947,
+   1.0,
+   0.993
+  ],
+  "iou_mean": 0.98,
+  "volume_error_pct": -5.0,
+  "features": [
+   {
+    "diameter_mm": 56.0,
+    "found_mm": 56.0,
+    "error_mm": 0.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 30.0,
+    "found_mm": 30.0,
+    "error_mm": 0.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 12.0,
+    "found_mm": 12.0,
+    "error_mm": 0.0,
+    "count_truth": 2,
+    "count_found": 2
+   }
+  ],
+  "params_total": 13,
+  "params_read": 13,
+  "round": 0,
+  "critic": null,
+  "gates": "4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0",
+  "seconds": null,
+  "rounds": []
+ },
+ "flanged_hub/baseline": {
+  "size_truth_mm": [
+   119.9000015258789,
+   119.9000015258789,
+   62.0
+  ],
+  "size_found_mm": [
+   119.9,
+   119.9,
+   62.0
+  ],
+  "size_error_mm": [
+   -0.0,
+   0.0,
+   0.0
+  ],
+  "max_size_error_mm": 0.0,
+  "iou_front_top_side": [
+   0.907,
+   0.96,
+   0.906
+  ],
+  "iou_mean": 0.924,
+  "volume_error_pct": 17.6,
+  "features": [
+   {
+    "diameter_mm": 120.0,
+    "found_mm": 120.0,
+    "error_mm": 0.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 60.0,
+    "found_mm": 66.0,
+    "error_mm": 6.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 25.0,
+    "found_mm": 28.0,
+    "error_mm": 3.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 10.0,
+    "found_mm": 11.0,
+    "error_mm": 1.0,
+    "count_truth": 6,
+    "count_found": 6
+   }
+  ],
+  "params_total": 10,
+  "params_read": 10,
+  "error": null,
+  "seconds": 45.4
+ },
+ "flanged_hub/aether": {
+  "size_truth_mm": [
+   119.9000015258789,
+   119.9000015258789,
+   62.0
+  ],
+  "size_found_mm": [
+   119.9,
+   119.9,
+   62.0
+  ],
+  "size_error_mm": [
+   -0.0,
+   0.0,
+   0.0
+  ],
+  "max_size_error_mm": 0.0,
+  "iou_front_top_side": [
+   0.917,
+   0.975,
+   0.916
+  ],
+  "iou_mean": 0.936,
+  "volume_error_pct": 19.3,
+  "features": [
+   {
+    "diameter_mm": 120.0,
+    "found_mm": 120.0,
+    "error_mm": 0.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 60.0,
+    "found_mm": 65.0,
+    "error_mm": 5.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 25.0,
+    "found_mm": 26.0,
+    "error_mm": 1.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 10.0,
+    "found_mm": 8.0,
+    "error_mm": -2.0,
+    "count_truth": 6,
+    "count_found": 0
+   }
+  ],
+  "params_total": 13,
+  "params_read": 13,
+  "round": 3,
+  "critic": 8,
+  "gates": "9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 10",
+  "seconds": 304.0,
+  "rounds": [
+   {
+    "round": 1,
+    "error": null,
+    "critic": 7,
+    "gates": "2 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 7, constraints failed 8 of 10"
+   },
+   {
+    "round": 2,
+    "error": null,
+    "critic": 8,
+    "gates": "9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 10"
+   },
+   {
+    "round": 3,
+    "error": null,
+    "critic": 8,
+    "gates": "9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 10"
+   }
+  ]
+ },
+ "flanged_hub/corrected": {
+  "size_truth_mm": [
+   119.9000015258789,
+   119.9000015258789,
+   62.0
+  ],
+  "size_found_mm": [
+   119.9,
+   119.9,
+   62.0
+  ],
+  "size_error_mm": [
+   -0.0,
+   0.0,
+   0.0
+  ],
+  "max_size_error_mm": 0.0,
+  "iou_front_top_side": [
+   0.999,
+   0.967,
+   0.999
+  ],
+  "iou_mean": 0.988,
+  "volume_error_pct": 4.7,
+  "features": [
+   {
+    "diameter_mm": 120.0,
+    "found_mm": 120.0,
+    "error_mm": 0.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 60.0,
+    "found_mm": 60.0,
+    "error_mm": 0.0,
+    "count_truth": 1,
+    "count_found": 1
+   },
+   {
+    "diameter_mm": 25.0,
+    "found_mm": 21.0,
+    "error_mm": -4.0,
+    "count_truth": 1,
+    "count_found": 0
+   },
+   {
+    "diameter_mm": 10.0,
+    "found_mm": 7.0,
+    "error_mm": -3.0,
+    "count_truth": 6,
+    "count_found": 0
+   }
+  ],
+  "params_total": 13,
+  "params_read": 13,
+  "round": 0,
+  "critic": null,
+  "gates": "9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0",
+  "seconds": null,
+  "rounds": []
+ },
+ "gusset_bracket/baseline": {
+  "size_truth_mm": [
+   100.0,
+   60.0,
+   70.0
+  ],
+  "size_found_mm": [
+   100.0,
+   60.0,
+   70.0
+  ],
+  "size_error_mm": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "max_size_error_mm": 0.0,
+  "iou_front_top_side": [
+   0.983,
+   0.981,
+   0.883
+  ],
+  "iou_mean": 0.949,
+  "volume_error_pct": -2.8,
+  "features": [
+   {
+    "diameter_mm": 9.0,
+    "found_mm": 12.0,
+    "error_mm": 3.0,
+    "count_truth": 4,
+    "count_found": 0
+   }
+  ],
+  "params_total": 9,
+  "params_read": 9,
+  "error": null,
+  "seconds": 65.6
+ },
+ "gusset_bracket/aether": {
+  "size_truth_mm": [
+   100.0,
+   60.0,
+   70.0
+  ],
+  "size_found_mm": [
+   100.0,
+   60.0,
+   70.0
+  ],
+  "size_error_mm": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "max_size_error_mm": 0.0,
+  "iou_front_top_side": [
+   0.957,
+   0.95,
+   0.92
+  ],
+  "iou_mean": 0.942,
+  "volume_error_pct": 20.7,
+  "features": [
+   {
+    "diameter_mm": 9.0,
+    "found_mm": 12.0,
+    "error_mm": 3.0,
+    "count_truth": 4,
+    "count_found": 0
+   }
+  ],
+  "params_total": 13,
+  "params_read": 13,
+  "round": 3,
+  "critic": 5,
+  "gates": "5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 of 6",
+  "seconds": 444.7,
+  "rounds": [
+   {
+    "round": 1,
+    "error": null,
+    "critic": 5,
+    "gates": "5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 of 6"
+   },
+   {
+    "round": 2,
+    "error": null,
+    "critic": 5,
+    "gates": "6 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 1, constraints failed 3 of 6"
+   },
+   {
+    "round": 3,
+    "error": null,
+    "critic": 5,
+    "gates": "5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 of 6"
+   }
+  ]
+ },
+ "gusset_bracket/corrected": {
+  "size_truth_mm": [
+   100.0,
+   60.0,
+   70.0
+  ],
+  "size_found_mm": [
+   100.0,
+   60.0,
+   70.0
+  ],
+  "size_error_mm": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "max_size_error_mm": 0.0,
+  "iou_front_top_side": [
+   0.969,
+   0.965,
+   0.967
+  ],
+  "iou_mean": 0.967,
+  "volume_error_pct": 2.7,
+  "features": [
+   {
+    "diameter_mm": 9.0,
+    "found_mm": 9.0,
+    "error_mm": 0.0,
+    "count_truth": 4,
+    "count_found": 4
+   }
+  ],
+  "params_total": 13,
+  "params_read": 13,
+  "round": 0,
+  "critic": null,
+  "gates": "5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0",
+  "seconds": null,
+  "rounds": []
+ }
+}

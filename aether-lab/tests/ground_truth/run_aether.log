@@ -1,0 +1,30 @@
+[gusset_bracket    11s] views not measured automatically (ValueError: need 4 views (side, plan, two end views); found 13); the model reads the drawing from the image
+[gusset_bracket    11s] Muse Wonder planning every component (parents, joints, evidence, unknowns)
+[pillow_block    15s] views not measured automatically (ValueError: need 4 views (side, plan, two end views); found 20); the model reads the drawing from the image
+[pillow_block    15s] Muse Wonder planning every component (parents, joints, evidence, unknowns)
+[flanged_hub    15s] views not measured automatically (ValueError: need 4 views (side, plan, two end views); found 22); the model reads the drawing from the image
+[flanged_hub    15s] Muse Wonder planning every component (parents, joints, evidence, unknowns)
+[gusset_bracket    84s] plan: Gusseted angle bracket - an L-shaped bracket comprising a horizontal base plate, a vertical upright plate along the back edge, and a central tri
+[gusset_bracket    84s] round 1/3: Muse Wonder writing the CAD program
+[pillow_block   113s] plan: Pillow block bearing housing, 4 components
+[pillow_block   116s] round 1/3: Muse Wonder writing the CAD program
+[gusset_bracket   142s] round 1/3: 5 parts built; 5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 of 
+[gusset_bracket   206s] round 1: 5 parts, invalid 0, 5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 
+[gusset_bracket   206s] round 2/3: Muse Wonder writing the CAD program
+[pillow_block   207s] round 1/3: 4 parts built; 4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of
+[gusset_bracket   270s] round 2/3: 6 parts built; 6 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 1, constraints failed 3 of 
+[pillow_block   295s] round 1: 4 parts, invalid 0, 4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0
+[pillow_block   295s] round 2/3: Muse Wonder writing the CAD program
+[gusset_bracket   331s] round 2: 6 parts, invalid 0, 6 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 1, constraints failed 3 
+[gusset_bracket   331s] round 3/3: Muse Wonder writing the CAD program
+[pillow_block   363s] round 2: error:     exec(compile(open(job["program"], encoding="utf-8").read(), "program.py", "exec"), g)
+  File "program.py", line 40, in <module>
+Va
+[pillow_block   363s] round 3/3: Muse Wonder writing the CAD program
+[gusset_bracket   377s] round 3/3: 5 parts built; 5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 of 
+[pillow_block   381s] round 3/3: 4 parts built; 4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of
+[gusset_bracket   455s] round 3: 5 parts, invalid 0, 5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 
+[pillow_block   471s] round 3: 4 parts, invalid 0, 4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0
+DONE pillow_block {"seconds": 486, "error": null, "rounds": [{"round": 1, "error": null, "iou": {}, "mean_iou": null, "invalid": [], "object": "Pillow block bearing housing", "model_s": 86.7, "run_s": 3.7, "parts": 4, "gates": "4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 5", "critic": 4, "critic_defects": ["pedestal_block: Built as thin flat slab ~10mm tall instead of tall stepped pedestal reaching bore split line; no stepped sides seen in FRONT VIEW.", "lower_bearing_housing: Straight-sided narrow rectangle, too narrow along 140mm
+DONE flanged_hub {"seconds": 73, "error": "plan: Muse Spark HTTP 404: {\"error\":{\"code\":\"model_not_found\",\"message\":\"The requested model was not found.\",\"param\":null,\"type\":\"invalid_request_error\"}}", "rounds": []}
+DONE gusset_bracket {"seconds": 471, "error": null, "rounds": [{"round": 1, "error": null, "iou": {}, "mean_iou": null, "invalid": [], "object": "Gusseted angle bracket", "model_s": 54.0, "run_s": 4.4, "parts": 5, "gates": "5 parts; floating 0, stickers/slivers 2, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 1 of 6", "critic": 5, "critic_defects": ["weld_gusset: Built as tiny transverse bars/caps at ends of rib instead of longitudinal fillets; flagged sliver and leaves white gap along rib-to-plate joints in side views.", "weld_base_upright: No volumetric corner fillet; hairline br

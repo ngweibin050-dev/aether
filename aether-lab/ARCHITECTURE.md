@@ -102,7 +102,6 @@ measured with them.
 | Muse Spark | `intake.py`, `cad/ai.py`, `assistant.py`, `agent.py`, `explain.py` | what a sheet shows and what is missing; labels and part names; every chat turn's tool calls; grounded explanations |
 | Muse Wonder | `cad/codegen.py`, `agent.py` | writes and revises the CAD program for any object; the engineer's completion of unseen views |
 | SAM 3.1 | `cad/ai.py`, `vision.py` | regions on the drawing (lights, glass, intakes); a part cut out of a photo |
-| Muse Image | `explain.py` | one concept illustration, always labelled as *not* the measured model |
 | Muse Voice Transcribe | `agent.py` | hold-to-talk commands |
 
 **Tests for Part A:**
@@ -392,9 +391,9 @@ The same rendered view is shrunk to the lab grid (1024², 8 µm), split into 8 d
   the ratio computed in code) plus the drawing, and answers 5–10 steps in a strict JSON schema. Code rejects a step
   with an unknown part id or a number that is not in the facts, retries once and drops steps still invalid. The step
   player selects each step's parts (x-ray for the rest), explodes or cuts, and moves the camera; it docks at the top,
-  so the viewport frames the model below it. **Muse Image** (`muse-image-1.0`, `POST /v1/images/generations`) draws
-  one concept illustration in parallel, labelled "AI illustration — concept, not the measured model", skipped after
-  30 s.
+  so the viewport frames the model below it. Every picture is a render of the built model itself (engine/snap.py);
+  the Muse Image concept illustration of 1 Nov was removed on 4 Nov, so no invented picture sits beside the measured
+  model.
 - **Muse Voice Transcribe** handles hold-to-talk voice input: the browser re-encodes the recording to
   16 kHz mono WAV and the server posts it to `POST /v1/asr/transcribe` (multipart `request` JSON + `audio`).
 

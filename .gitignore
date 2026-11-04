@@ -12,3 +12,10 @@ CLAUDE.md
 .codex
 example
 AETHER_demo_deck.pptx
+# headless Chrome profiles left by the review renderer (GPU cache, ~4 MB per view and round)
+_chrome_*/
+aether_chrome_*/
+# the CAD sandbox's own job files next to a program run
+aether-lab/tests/ground_truth/**/_child.py
+aether-lab/tests/ground_truth/**/_job.json
+aether-lab/tests/ground_truth/**/_result.json

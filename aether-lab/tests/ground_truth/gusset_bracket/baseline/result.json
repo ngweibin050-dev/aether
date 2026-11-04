@@ -1,0 +1,100 @@
+{
+ "program": "C:\\Users\\User\\Aether\\aether-lab\\tests\\ground_truth\\gusset_bracket\\baseline\\program.py",
+ "parts": [
+  {
+   "name": "base_plate",
+   "colour": "#8a9199",
+   "material": "metal",
+   "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/gusset_bracket/baseline/part_00.brep",
+   "valid": true,
+   "repaired": false,
+   "volume_mm3": 46499.95877373555
+  },
+  {
+   "name": "vertical_plate",
+   "colour": "#8a9199",
+   "material": "metal",
+   "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/gusset_bracket/baseline/part_01.brep",
+   "valid": true,
+   "repaired": false,
+   "volume_mm3": 48098.241959042745
+  },
+  {
+   "name": "gusset_rib",
+   "colour": "#7f878f",
+   "material": "metal",
+   "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/gusset_bracket/baseline/part_02.brep",
+   "valid": true,
+   "repaired": false,
+   "volume_mm3": 8344.230249476375
+  }
+ ],
+ "error": null,
+ "params": {
+  "length": {
+   "value": 100.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "100.0 dimension under TOP and FRONT views",
+   "used": true
+  },
+  "width": {
+   "value": 60.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "60.0 dimension on TOP view and under RIGHT view",
+   "used": true
+  },
+  "height": {
+   "value": 70.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "70.0 dimension on FRONT and RIGHT views",
+   "used": true
+  },
+  "plate_thickness": {
+   "value": 8.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "thickness of bottom strip in FRONT view and side strip in TOP/RIGHT views, proportioned to 70 mm height",
+   "used": true
+  },
+  "gusset_thickness": {
+   "value": 8.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "width of central rib strip in TOP and FRONT views, similar to plate thickness",
+   "used": true
+  },
+  "gusset_height": {
+   "value": 50.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "triangular rib in RIGHT view rises from base top to below top of vertical plate",
+   "used": true
+  },
+  "gusset_length": {
+   "value": 42.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "foot of triangular rib in RIGHT view measured proportionally along 60 mm base",
+   "used": true
+  },
+  "hole_diameter": {
+   "value": 12.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "diameter of circular holes in FRONT and TOP views proportioned to 100 mm length",
+   "used": true
+  },
+  "hole_end_offset": {
+   "value": 25.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "hole centres in FRONT/TOP views at approximately quarter and three-quarter length positions",
+   "used": true
+  }
+ },
+ "object": "Gusseted angle bracket",
+ "seconds": 65.6
+}

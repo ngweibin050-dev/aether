@@ -1,0 +1,93 @@
+{
+ "length": {
+  "value": 140.0,
+  "unit": "mm",
+  "provenance": "measured",
+  "evidence": "TOP VIEW and FRONT VIEW overall dimension 140.0",
+  "used": true
+ },
+ "width": {
+  "value": 40.0,
+  "unit": "mm",
+  "provenance": "measured",
+  "evidence": "TOP VIEW and RIGHT VIEW overall dimension 40.0",
+  "used": true
+ },
+ "height": {
+  "value": 70.0,
+  "unit": "mm",
+  "provenance": "measured",
+  "evidence": "RIGHT VIEW dimension 70.0, FRONT VIEW 69.9 nominal",
+  "used": true
+ },
+ "base_thickness": {
+  "value": 12.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT/RIGHT bottom band proportion, no step dimension on drawing",
+  "used": true
+ },
+ "bolt_hole_diameter": {
+  "value": 14.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "TOP circles and FRONT/RIGHT dashed lines, scaled to views",
+  "used": true
+ },
+ "bolt_hole_end_offset": {
+  "value": 28.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "TOP circle centres scaled from each end of 140 mm flange",
+  "used": true
+ },
+ "pedestal_width": {
+  "value": 88.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT stepped outline scaled against 140 mm overall length",
+  "used": true
+ },
+ "pedestal_step_height": {
+  "value": 20.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT step below bearing bore, scaled against 70 mm height",
+  "used": true
+ },
+ "housing_width": {
+  "value": 60.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT arch/housing outline scaled against 140 mm length",
+  "used": true
+ },
+ "housing_depth": {
+  "value": 28.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "TOP/RIGHT single housing face line, rear-flush housing",
+  "used": true
+ },
+ "bore_diameter": {
+  "value": 34.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT bore circle scaled against overall views",
+  "used": true
+ },
+ "bore_centre_height": {
+  "value": 40.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT bore circle centre scaled against 70 mm height",
+  "used": true
+ },
+ "cap_outer_radius": {
+  "value": 30.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "FRONT semicircular arch: bore centre plus radius reaches 70 mm top",
+  "used": true
+ }
+}

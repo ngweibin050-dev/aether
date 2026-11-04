@@ -1,0 +1,121 @@
+{
+ "program": "C:\\Users\\User\\Aether\\aether-lab\\tests\\ground_truth\\pillow_block\\baseline\\program.py",
+ "parts": [],
+ "error": "    exec(compile(open(job[\"program\"], encoding=\"utf-8\").read(), \"program.py\", \"exec\"), g)\n  File \"program.py\", line 35, in <module>\n  File \"program.py\", line 4, in box_solid\nOCP.OCP.Standard.Standard_DomainError",
+ "params": {
+  "length": {
+   "value": 140.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "140.0 dimension below TOP and FRONT views",
+   "used": true
+  },
+  "width": {
+   "value": 40.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "40.0 dimension on TOP and RIGHT views",
+   "used": true
+  },
+  "height": {
+   "value": 70.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "69.9/70.0 height dimension on FRONT/RIGHT views, rounded to 70",
+   "used": true
+  },
+  "base_thickness": {
+   "value": 14.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "bottom flange band proportion in FRONT view",
+   "used": true
+  },
+  "pedestal_width": {
+   "value": 72.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "stepped pedestal width proportion in FRONT view",
+   "used": true
+  },
+  "pedestal_top_height": {
+   "value": 36.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "shoulder/step height proportion in FRONT and RIGHT views",
+   "used": true
+  },
+  "arch_width": {
+   "value": 52.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "semicircular arch width proportion in FRONT view",
+   "used": true
+  },
+  "bore_diameter": {
+   "value": 30.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "central bore circle diameter relative to arch in FRONT view, dashed edges in TOP view",
+   "used": true
+  },
+  "bore_center_height": {
+   "value": 44.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "bore centre height in FRONT view, coincident with arch centre from height minus arch radius",
+   "used": true
+  },
+  "bolt_hole_diameter": {
+   "value": 11.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "circles in TOP view at base ends, dashed lines in FRONT view",
+   "used": true
+  },
+  "bolt_hole_end_offset": {
+   "value": 20.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "bolt hole centre distance from each end in TOP/FRONT views",
+   "used": true
+  },
+  "cap_depth": {
+   "value": 36.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "cap slightly narrower than 40mm base, lines in TOP/RIGHT views",
+   "used": true
+  },
+  "cap_flange_thickness": {
+   "value": 8.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "cap flange band above pedestal shoulder in FRONT view",
+   "used": true
+  },
+  "cap_bolt_diameter": {
+   "value": 6.0,
+   "unit": "mm",
+   "provenance": "assumed",
+   "evidence": "standard M6 cap bolt for a housing of this size, not dimensioned",
+   "used": true
+  },
+  "cap_bolt_head_diameter": {
+   "value": 10.0,
+   "unit": "mm",
+   "provenance": "assumed",
+   "evidence": "standard socket head for M6 bolt, not dimensioned",
+   "used": false
+  },
+  "cap_bolt_engagement": {
+   "value": 10.0,
+   "unit": "mm",
+   "provenance": "assumed",
+   "evidence": "thread engagement into lower housing, not shown",
+   "used": true
+  }
+ },
+ "object": "Pillow block bearing housing",
+ "seconds": 134.2
+}

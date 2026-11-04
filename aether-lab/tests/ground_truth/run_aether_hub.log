@@ -1,0 +1,13 @@
+[flanged_hub    10s] views not measured automatically (ValueError: need 4 views (side, plan, two end views); found 22); the model reads the drawing from the image
+[flanged_hub    10s] Muse Wonder planning every component (parents, joints, evidence, unknowns)
+[flanged_hub    53s] plan: Flanged hub - single machined rotational part comprising a circular base flange and a coaxial raised cylindrical hub boss, with a coaxial centra
+[flanged_hub    53s] round 1/3: Muse Wonder writing the CAD program
+[flanged_hub    93s] round 1/3: 2 parts built; 2 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 7, constraints failed 8 of 
+[flanged_hub   151s] round 1: 2 parts, invalid 0, 2 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 7, constraints failed 8 
+[flanged_hub   151s] round 2/3: Muse Wonder writing the CAD program
+[flanged_hub   185s] round 2/3: 9 parts built; 9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 
+[flanged_hub   231s] round 2: 9 parts, invalid 0, 9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 
+[flanged_hub   231s] round 3/3: Muse Wonder writing the CAD program
+[flanged_hub   258s] round 3/3: 9 parts built; 9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 of 
+[flanged_hub   311s] round 3: 9 parts, invalid 0, 9 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 0, constraints failed 0 
+DONE flanged_hub {"seconds": 332, "error": null, "rounds": [{"round": 1, "error": null, "iou": {}, "mean_iou": null, "invalid": [], "object": "Flanged hub", "model_s": 36.5, "run_s": 3.0, "parts": 2, "gates": "2 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 0, planned but missing 7, constraints failed 8 of 10", "critic": 7, "critic_defects": ["hub_boss: Cylindrical OD shows faceted triangulation and wavy shading in iso_rear/rear views, not smooth.", "flange_disc: Outer rim faceted and top face shows checker tessellation artifacts, not clean planar surface.", "central_bore: Through bor

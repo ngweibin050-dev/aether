@@ -64,6 +64,18 @@ sheet and checks every view, so the model reasons and the code verifies. Script:
 
 ## Measured results
 
+**Does the CAD match the real part?** ([GROUND_TRUTH.md](aether-lab/docs/GROUND_TRUTH.md)) Three parts with known
+dimensions were drawn as engineering drawings; AETHER got only the drawing. Its solids were measured against the
+known ones, next to a one-shot baseline (Muse Wonder writing the program once: no plan, gates or critic):
+
+| | pillow block | flanged hub | gusset bracket |
+|---|---|---|---|
+| one-shot baseline | **no solid** (the program crashed) | sizes exact; hub Ø +6, bore +3 mm | sizes exact; 0 of 4 holes |
+| AETHER loop | valid; sizes within 0.1 mm; bore +4, holes +2 mm (all marked *inferred*) | sizes exact; hub Ø +5 mm | sizes exact; holes +3 mm |
+| + engineer corrects the *inferred* values (same program re-run, ~10 s, no model call) | **every feature diameter exact**, IoU 0.95 / 1.00 / 0.99 | hub exact; bore / bolt holes still 4 / 3 mm under (modelled as liners: a limitation found) | **all 4 holes exact** |
+
+Sizes written on the drawing come out exact; sizes scaled off it are a few mm off, and AETHER says so for each one.
+
 **The loop, measured** ([CAD_QUALITY.md](aether-lab/docs/CAD_QUALITY.md); the same five objects after every change):
 
 | object | input | solids | gates on the kept round | IoU, one scale (side / top / ends) | critic (0-10) |
@@ -87,7 +99,10 @@ The press's plan lists what one view cannot fix, each with what would resolve it
 - the blade mechanism cut off the sheet (the uncropped sheet).
 
 Every key dimension carries its provenance (measured, read, inferred, assumed or user). An engineer can correct a value
-by chat, and the same program re-runs without being rewritten.
+by chat, and the same program re-runs without being rewritten. Only parameters the geometry reads can be corrected
+(the CAD document panel greys out the rest). Until 4 November the programs' own `P()` hid every read and blocked
+corrections; that is fixed, and new builds read 13 of 13 (ground-truth parts). The recorded 1909 press was built
+before the fix and reads 1 of its 9.
 
 **These are not finished designs yet.** The critic scores 2-5 out of 10, and the cars are the weakest. The targets
 (IoU >= 0.95 per view on four-view drawings, 0 floating or overlapping parts, critic >= 9) are goals, not results. The
@@ -138,7 +153,6 @@ sufficient: the cross-sections between the views are inferred.
 | **Muse Spark** (`muse-spark-1.3`) | reads a sheet like an engineer taking a job (what it shows, what is missing, the one question to ask); labels parts and regions; runs every chat turn as a tool loop; writes grounded explanations, where every part id and number is checked in code |
 | **Muse Wonder** (`muse-wonder-1.0`) | writes and revises the CAD program for any object, from a drawing or a description; plans every part and where its size comes from |
 | **SAM 3.1** (`sam-3.1`) | finds regions on the drawing (glass, lights, intakes) that become B-rep imprints and pockets; cuts a part out of a photo |
-| **Muse Image** (`muse-image-1.0`) | one concept illustration per explanation, always labelled "not the measured model" |
 | **Muse Voice Transcribe** | hold-to-talk commands |
 
 Models propose, code decides. No model output is ever executed, and no model sets a measured value.

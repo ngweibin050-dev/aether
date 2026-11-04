@@ -1,0 +1,7 @@
+flanged_hub one-shot: 1 parts, error None
+gusset_bracket one-shot: 3 parts, error None
+pillow_block one-shot: 0 parts, error     exec(compile(open(job["program"], encoding="utf-8").read(), "program.py", "exec"), g)
+  File "program.py", line 35, 
+DONE ('pillow_block', '    exec(compile(open(job["program"], encoding="utf-8").read(), "program.py", "exec"), g)\n  File "program.py", line 35, in <module>\n  File "program.py", line 4, in box_solid\nOCP.OCP.Standard.Standard_DomainError', 0, 134.2)
+DONE ('flanged_hub', None, 1, 45.4)
+DONE ('gusset_bracket', None, 3, 65.6)

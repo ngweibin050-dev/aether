@@ -1,0 +1,46 @@
+{
+ "title": "Flanged hub",
+ "dims_mm": {
+  "flange_diameter": 120.0,
+  "flange_thickness": 12.0,
+  "hub_diameter": 60.0,
+  "overall_height": 62.0,
+  "bore_diameter": 25.0,
+  "bolt_hole_count": 6,
+  "bolt_hole_diameter": 10.0,
+  "bolt_circle_diameter": 90.0
+ },
+ "features": {
+  "diameters": [
+   120.0,
+   60.0,
+   25.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0,
+   10.0
+  ]
+ },
+ "volume_mm3": 240999.426438507,
+ "drawing_views_mm": {
+  "front": [
+   120.0,
+   62.0
+  ],
+  "top": [
+   119.9,
+   120.0
+  ],
+  "right": [
+   120.0,
+   62.0
+  ]
+ },
+ "size_mm": [
+  120.0,
+  120.0,
+  62.0
+ ]
+}

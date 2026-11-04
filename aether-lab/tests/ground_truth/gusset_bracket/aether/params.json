@@ -1,0 +1,93 @@
+{
+ "length": {
+  "value": 100.0,
+  "unit": "mm",
+  "provenance": "measured",
+  "evidence": "FRONT VIEW 100.0 and TOP VIEW 100.0 dimension",
+  "used": true
+ },
+ "width": {
+  "value": 60.0,
+  "unit": "mm",
+  "provenance": "read",
+  "evidence": "TOP VIEW 60.0 and RIGHT VIEW 60.0 dimension",
+  "used": true
+ },
+ "height": {
+  "value": 70.0,
+  "unit": "mm",
+  "provenance": "read",
+  "evidence": "FRONT VIEW 70.0 and RIGHT VIEW 70.0 dimension",
+  "used": true
+ },
+ "plate_thickness": {
+  "value": 10.0,
+  "unit": "mm",
+  "provenance": "assumed",
+  "evidence": "Strip height in FRONT/RIGHT/TOP views, no thickness callout, estimated 8-12mm",
+  "used": true
+ },
+ "hole_diameter": {
+  "value": 12.0,
+  "unit": "mm",
+  "provenance": "assumed",
+  "evidence": "Circles drawn in FRONT/TOP views with no diameter note, estimated from size vs 100mm width",
+  "used": true
+ },
+ "hole_offset_x": {
+  "value": 25.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "Hole circles symmetric about centre X=50 in FRONT and TOP views",
+  "used": true
+ },
+ "hole_spacing": {
+  "value": 50.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "Two hole circles symmetric about centre, estimated centres at 25 and 75",
+  "used": true
+ },
+ "base_hole_y": {
+  "value": 32.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "Base hole position from back face estimated from TOP VIEW circle placement",
+  "used": true
+ },
+ "upright_hole_z": {
+  "value": 38.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "Upright hole height estimated from FRONT VIEW circle placement",
+  "used": true
+ },
+ "gusset_thickness": {
+  "value": 8.0,
+  "unit": "mm",
+  "provenance": "assumed",
+  "evidence": "Central rectangle width in FRONT/TOP views, no dimension annotated",
+  "used": true
+ },
+ "gusset_length_y": {
+  "value": 55.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "RIGHT VIEW triangle toe about 5mm from front edge of 60mm base, Y measured from back face",
+  "used": true
+ },
+ "gusset_height_z": {
+  "value": 65.0,
+  "unit": "mm",
+  "provenance": "inferred",
+  "evidence": "RIGHT VIEW triangle top about 5mm below top of 70mm upright",
+  "used": true
+ },
+ "weld_radius": {
+  "value": 4.0,
+  "unit": "mm",
+  "provenance": "assumed",
+  "evidence": "Small fabricated fillet weld leg estimate, no weld symbol visible",
+  "used": true
+ }
+}

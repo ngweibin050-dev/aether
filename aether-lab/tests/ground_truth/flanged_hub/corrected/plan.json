@@ -1,0 +1,188 @@
+{
+ "components": [
+  {
+   "colour": "steel_gre",
+   "evidence": "TOP_VIEW_outer_circle_120.0x119.9_FRONT_and_RIGHT_bottom_rectangle_120.0_wide",
+   "joint": "root",
+   "material": "metal",
+   "method": "cylinder_extruded_from_measured_circle_D120_thickness_estimated_from_FRONT_VIEW_proportion_approx_15mm_axis_Z_base_at_Z0",
+   "name": "flange_disc",
+   "parent": "-"
+  },
+  {
+   "colour": "steel_gre",
+   "evidence": "TOP_VIEW_middle_concentric_circle_FRONT_and_RIGHT_central_raised_rectangle_total_height_62.0",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "cylinder_coaxial_with_flange_disc_D_estimated_by_scaling_TOP_VIEW_approx_60_to_66mm_from_flange_top_face_to_Z62",
+   "name": "hub_boss",
+   "parent": "flange_disc"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_innermost_concentric_circle_FRONT_and_RIGHT_dashed_hidden_lines_through_boss_and_flange",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_coaxial_D_estimated_by_scaling_TOP_VIEW_approx_28_to_32mm_through_full_62mm_height",
+   "name": "central_bore",
+   "parent": "hub_boss"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_small_circle_at_0_degrees_FRONT_and_RIGHT_dashed_hidden_lines_through_flange_only",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_D_estimated_by_scaling_TOP_VIEW_approx_10_to_12mm_on_PCD_estimated_approx_92_to_96mm_angle_0deg",
+   "name": "bolt_hole_01",
+   "parent": "flange_disc"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_small_circle_at_60_degrees_FRONT_and_RIGHT_dashed_hidden_lines_through_flange_only",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_D_estimated_by_scaling_TOP_VIEW_approx_10_to_12mm_on_PCD_estimated_approx_92_to_96mm_angle_60deg",
+   "name": "bolt_hole_02",
+   "parent": "flange_disc"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_small_circle_at_120_degrees_FRONT_and_RIGHT_dashed_hidden_lines_through_flange_only",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_D_estimated_by_scaling_TOP_VIEW_approx_10_to_12mm_on_PCD_estimated_approx_92_to_96mm_angle_120deg",
+   "name": "bolt_hole_03",
+   "parent": "flange_disc"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_small_circle_at_180_degrees_FRONT_and_RIGHT_dashed_hidden_lines_through_flange_only",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_D_estimated_by_scaling_TOP_VIEW_approx_10_to_12mm_on_PCD_estimated_approx_92_to_96mm_angle_180deg",
+   "name": "bolt_hole_04",
+   "parent": "flange_disc"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_small_circle_at_240_degrees_FRONT_and_RIGHT_dashed_hidden_lines_through_flange_only",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_D_estimated_by_scaling_TOP_VIEW_approx_10_to_12mm_on_PCD_estimated_approx_92_to_96mm_angle_240deg",
+   "name": "bolt_hole_05",
+   "parent": "flange_disc"
+  },
+  {
+   "colour": "void_cut",
+   "evidence": "TOP_VIEW_small_circle_at_300_degrees_FRONT_and_RIGHT_dashed_hidden_lines_through_flange_only",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "through_cut_cylinder_D_estimated_by_scaling_TOP_VIEW_approx_10_to_12mm_on_PCD_estimated_approx_92_to_96mm_angle_300deg",
+   "name": "bolt_hole_06",
+   "parent": "flange_disc"
+  }
+ ],
+ "constraints": [
+  {
+   "a": "hub_boss",
+   "b": "flange_disc",
+   "type": "coaxial",
+   "value": 0
+  },
+  {
+   "a": "central_bore",
+   "b": "hub_boss",
+   "type": "coaxial",
+   "value": 0
+  },
+  {
+   "a": "central_bore",
+   "b": "flange_disc",
+   "type": "coaxial",
+   "value": 0
+  },
+  {
+   "a": "hub_boss",
+   "b": "flange_disc",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "bolt_hole_01",
+   "b": "hub_boss",
+   "type": "clearance",
+   "value": 9
+  },
+  {
+   "a": "bolt_hole_02",
+   "b": "hub_boss",
+   "type": "clearance",
+   "value": 9
+  },
+  {
+   "a": "bolt_hole_03",
+   "b": "hub_boss",
+   "type": "clearance",
+   "value": 9
+  },
+  {
+   "a": "bolt_hole_04",
+   "b": "hub_boss",
+   "type": "clearance",
+   "value": 9
+  },
+  {
+   "a": "bolt_hole_05",
+   "b": "hub_boss",
+   "type": "clearance",
+   "value": 9
+  },
+  {
+   "a": "bolt_hole_06",
+   "b": "hub_boss",
+   "type": "clearance",
+   "value": 9
+  }
+ ],
+ "faces": "third_angle_projection_axis_vertical_Z_TOP_VIEW_looks_down_negative_Z_onto_flange_and_boss_top_FRONT_VIEW_looks_along_plus_Y_showing_flange_width_and_boss_height_RIGHT_VIEW_looks_along_negative_X_showing_same_height_and_width_object_has_no_distinct_front_facing_feature_due_to_rotational_symmetry_except_bolt_hole_phase",
+ "length_mm": 120.0,
+ "object": "Flanged hub - single machined rotational part comprising a circular base flange and a coaxial raised cylindrical hub boss, with a coaxial central through bore, ",
+ "unknowns": [
+  {
+   "critical": true,
+   "what": "hub_boss_outside_diameter",
+   "why": "no_diameter_dimension_labelled_only_overall_120_and_62_given_must_be_scaled_from_TOP_FRONT_RIGHT_outlines_estimate_60_to_66mm",
+   "would_resolve": "a_diameter_dimension_on_TOP_VIEW_or_a_section_view"
+  },
+  {
+   "critical": true,
+   "what": "central_bore_diameter_and_whether_it_has_counterbore_keyway_or_thread",
+   "why": "innermost_circle_and_hidden_lines_show_a_through_hole_but_no_label_and_no_section_detail_estimate_28_to_32mm_through",
+   "would_resolve": "a_diameter_dimension_or_section_A-A"
+  },
+  {
+   "critical": true,
+   "what": "flange_disc_thickness_and_hub_boss_protrusion_height_individually",
+   "why": "only_total_height_62_labelled_split_estimated_from_FRONT_VIEW_proportions_flange_approx_15mm_boss_protrusion_approx_47mm",
+   "would_resolve": "a_side_dimension_for_flange_thickness"
+  },
+  {
+   "critical": true,
+   "what": "bolt_hole_diameter_PCD_and_exact_angular_phase",
+   "why": "six_equally_spaced_holes_visible_in_TOP_VIEW_at_approx_0_60_120_180_240_300_degrees_but_no_size_or_PCD_labels_estimates_D10_to_12_PCD92_to_96",
+   "would_resolve": "hole_callout_and_PCD_dimension_on_TOP_VIEW"
+  },
+  {
+   "critical": false,
+   "what": "fillets_chamfers_and_edge_breaks_at_boss_base_boss_top_bore_and_flange_edges",
+   "why": "drawn_outlines_appear_sharp_at_this_scale_no_edge_notes_given_assume_small_or_no_fillet_for_rebuild",
+   "would_resolve": "detail_section_or_edge_finish_note"
+  },
+  {
+   "critical": false,
+   "what": "material_grade_surface_finish_and_colour",
+   "why": "title_block_gives_no_material_assumed_machined_steel_metal_grey_from_part_type",
+   "would_resolve": "material_note_in_title_block"
+  }
+ ]
+}

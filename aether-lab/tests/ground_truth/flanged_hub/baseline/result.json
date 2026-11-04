@@ -1,0 +1,89 @@
+{
+ "program": "C:\\Users\\User\\Aether\\aether-lab\\tests\\ground_truth\\flanged_hub\\baseline\\program.py",
+ "parts": [
+  {
+   "name": "flanged_hub",
+   "colour": "#8a8f94",
+   "material": "metal",
+   "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/flanged_hub/baseline/part_00.brep",
+   "valid": true,
+   "repaired": false,
+   "volume_mm3": 283352.52272292087
+  }
+ ],
+ "error": null,
+ "params": {
+  "length": {
+   "value": 120.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "Front and right views dimension 120.0 across flange; top view 119.9/120.0",
+   "used": true
+  },
+  "width": {
+   "value": 120.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "Top view dimension 120.0 across circular flange",
+   "used": true
+  },
+  "height": {
+   "value": 62.0,
+   "unit": "mm",
+   "provenance": "read",
+   "evidence": "Front and right views dimension 62.0 total height",
+   "used": true
+  },
+  "flange_thickness": {
+   "value": 15.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "Flange band height proportioned from front/right views against 62.0 total height",
+   "used": true
+  },
+  "boss_diameter": {
+   "value": 66.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "Boss circle in top view and boss width in front view proportioned against 120.0 flange diameter",
+   "used": true
+  },
+  "bore_diameter": {
+   "value": 28.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "Central circle in top view proportioned against 120.0 flange diameter",
+   "used": true
+  },
+  "bolt_hole_diameter": {
+   "value": 11.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "Six small circles in top view proportioned against 120.0 flange diameter",
+   "used": true
+  },
+  "bolt_circle_diameter": {
+   "value": 95.0,
+   "unit": "mm",
+   "provenance": "inferred",
+   "evidence": "Centres of six holes in top view proportioned against 120.0 flange diameter",
+   "used": true
+  },
+  "bolt_count": {
+   "value": 6.0,
+   "unit": "count",
+   "provenance": "read",
+   "evidence": "Six bolt holes visible equally spaced in top view",
+   "used": true
+  },
+  "edge_fillet": {
+   "value": 1.5,
+   "unit": "mm",
+   "provenance": "assumed",
+   "evidence": "Small machined edge break; no radius dimensioned on drawing",
+   "used": true
+  }
+ },
+ "object": "Flanged hub",
+ "seconds": 45.4
+}

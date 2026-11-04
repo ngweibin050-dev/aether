@@ -1,0 +1,150 @@
+{
+ "overrides": {
+  "base_thickness": 14.0,
+  "bolt_hole_diameter": 12.0,
+  "bolt_hole_end_offset": 15.0,
+  "bore_diameter": 30.0,
+  "bore_centre_height": 42.0,
+  "cap_outer_radius": 28.0,
+  "housing_depth": 40.0,
+  "pedestal_width": 70.0
+ },
+ "error": null,
+ "best": {
+  "params": {
+   "length": {
+    "value": 140.0,
+    "unit": "mm",
+    "provenance": "measured",
+    "evidence": "TOP VIEW and FRONT VIEW overall dimension 140.0",
+    "used": true
+   },
+   "width": {
+    "value": 40.0,
+    "unit": "mm",
+    "provenance": "measured",
+    "evidence": "TOP VIEW and RIGHT VIEW overall dimension 40.0",
+    "used": true
+   },
+   "height": {
+    "value": 70.0,
+    "unit": "mm",
+    "provenance": "measured",
+    "evidence": "RIGHT VIEW dimension 70.0, FRONT VIEW 69.9 nominal",
+    "used": true
+   },
+   "base_thickness": {
+    "value": 14.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "FRONT/RIGHT bottom band proportion, no step dimension on drawing",
+    "used": true
+   },
+   "bolt_hole_diameter": {
+    "value": 12.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "TOP circles and FRONT/RIGHT dashed lines, scaled to views",
+    "used": true
+   },
+   "bolt_hole_end_offset": {
+    "value": 15.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "TOP circle centres scaled from each end of 140 mm flange",
+    "used": true
+   },
+   "pedestal_width": {
+    "value": 70.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "FRONT stepped outline scaled against 140 mm overall length",
+    "used": true
+   },
+   "pedestal_step_height": {
+    "value": 20.0,
+    "unit": "mm",
+    "provenance": "inferred",
+    "evidence": "FRONT step below bearing bore, scaled against 70 mm height",
+    "used": true
+   },
+   "housing_width": {
+    "value": 60.0,
+    "unit": "mm",
+    "provenance": "inferred",
+    "evidence": "FRONT arch/housing outline scaled against 140 mm length",
+    "used": true
+   },
+   "housing_depth": {
+    "value": 40.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "TOP/RIGHT single housing face line, rear-flush housing",
+    "used": true
+   },
+   "bore_diameter": {
+    "value": 30.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "FRONT bore circle scaled against overall views",
+    "used": true
+   },
+   "bore_centre_height": {
+    "value": 42.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "FRONT bore circle centre scaled against 70 mm height",
+    "used": true
+   },
+   "cap_outer_radius": {
+    "value": 28.0,
+    "unit": "mm",
+    "provenance": "user",
+    "evidence": "FRONT semicircular arch: bore centre plus radius reaches 70 mm top",
+    "used": true
+   }
+  },
+  "round": 0,
+  "iou": {},
+  "mean_iou": null,
+  "object": "",
+  "length_mm": null,
+  "gates": "4 parts; floating 0, stickers/slivers 0, box-like 1 (25 %), wrong overlaps 0, planned but missing 0",
+  "parts": [
+   {
+    "id": "p000_base_flange",
+    "name": "base_flange",
+    "colour": "#888c90",
+    "material": "metal",
+    "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/pillow_block/corrected/run/part_00.brep",
+    "assembly_parent": "-"
+   },
+   {
+    "id": "p001_pedestal_block",
+    "name": "pedestal_block",
+    "colour": "#888c90",
+    "material": "metal",
+    "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/pillow_block/corrected/run/part_01.brep",
+    "assembly_parent": "base_flange"
+   },
+   {
+    "id": "p002_lower_bearing_housing",
+    "name": "lower_bearing_housing",
+    "colour": "#888c90",
+    "material": "metal",
+    "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/pillow_block/corrected/run/part_02.brep",
+    "assembly_parent": "pedestal_block"
+   },
+   {
+    "id": "p003_bearing_cap",
+    "name": "bearing_cap",
+    "colour": "#888c90",
+    "material": "metal",
+    "brep": "C:/Users/User/Aether/aether-lab/tests/ground_truth/pillow_block/corrected/run/part_03.brep",
+    "assembly_parent": "lower_bearing_housing"
+   }
+  ],
+  "program": "C:\\Users\\User\\Aether\\aether-lab\\tests\\ground_truth\\pillow_block\\corrected\\program.py",
+  "plan": "C:\\Users\\User\\Aether\\aether-lab\\tests\\ground_truth\\pillow_block\\corrected\\plan.json"
+ }
+}

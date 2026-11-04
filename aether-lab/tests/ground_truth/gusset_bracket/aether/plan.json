@@ -1,0 +1,134 @@
+{
+ "components": [
+  {
+   "colour": "#9aa3a8",
+   "evidence": "FRONT VIEW bottom horizontal strip 100.0 wide; TOP VIEW main rectangle 100.0 x 60.0; RIGHT VIEW bottom horizontal leg 60",
+   "joint": "root",
+   "material": "metal",
+   "method": "Flat plate: extruded rectangle profile, X=0..100, Y=0..60, Z=0..t, t estimated 10mm from strip height in FRONT/RIGHT views. Two vertical through-holes cut with cylinders, dia estimated 12mm, at X=25/ ",
+   "name": "base_plate",
+   "parent": "-"
+  },
+  {
+   "colour": "#9aa3a8",
+   "evidence": "FRONT VIEW main rectangle 100.0 x 70.0 with two visible circles; TOP VIEW strip along one 100mm edge; RIGHT VIEW left",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Flat plate: extruded rectangle profile, X=0..100, Y=0..t at back of base, Z=0..70, t estimated 10mm, overlapping base_plate over full footprint of its thickness for a welded/formed L joint. Two horizo",
+   "name": "upright_plate",
+   "parent": "base_plate"
+  },
+  {
+   "colour": "#8f979d",
+   "evidence": "RIGHT VIEW solid triangle on inner side of L; FRONT VIEW central dashed rectangle; TOP VIEW central solid rectangle ",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Triangular flat rib: extruded triangle profile in Y-Z plane, thickness estimated 8mm in X, centred X=50 (X=46..54). Profile estimated: (Y=10,Z=10) inner corner, (Y=48,Z=10) along top of base_plate,",
+   "name": "gusset_rib",
+   "parent": "base_plate"
+  },
+  {
+   "colour": "#7d858b",
+   "evidence": "estimate - fabricated/welded angle bracket construction implied by separate plates and gusset; no weld symbol visible in",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Small fillet/weld bead along X at inner junction Y=t, Z=t of base_plate and upright_plate, radius estimated 3mm, modelled as a long triangular-prism/fillet solid merged at the junction. Omit if fo",
+   "name": "weld_base_upright",
+   "parent": "upright_plate"
+  },
+  {
+   "colour": "#7d858b",
+   "evidence": "estimate - fabricated/welded construction; no weld symbol visible in drawing",
+   "joint": "fixed",
+   "material": "metal",
+   "method": "Two small fillet beads, one on each X face of gusset_rib, along its bottom edge on base_plate and its back edge on upright_plate, radius estimated 3mm, triangular-prism solids. Omit if formed/weld ",
+   "name": "weld_gusset",
+   "parent": "gusset_rib"
+  }
+ ],
+ "constraints": [
+  {
+   "a": "upright_plate",
+   "b": "base_plate",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "gusset_rib",
+   "b": "base_plate",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "gusset_rib",
+   "b": "upright_plate",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "weld_base_upright",
+   "b": "base_plate",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "weld_gusset",
+   "b": "gusset_rib",
+   "type": "contact",
+   "value": 0
+  },
+  {
+   "a": "gusset_rib",
+   "b": "base_plate",
+   "type": "clearance",
+   "value": 0
+  }
+ ],
+ "faces": "Coordinate system for modelling: X = 100mm length (left-right in FRONT and TOP views), Y = 60mm depth (back-to-front), Z = 70mm height. FRONT VIEW: faces the outer face of upright_plate, looking along +Y in third-angle projection; upright_plate fills the view, base_plate is the bottom strip, gusset_rib and base holes are hidden/dashed behind it, upright holes appear as circles. TOP VIEW: faces the",
+ "length_mm": 100,
+ "object": "Gusseted angle bracket - an L-shaped bracket comprising a horizontal base plate, a vertical upright plate along the back edge, and a central triangular gusset/ ",
+ "unknowns": [
+  {
+   "critical": true,
+   "what": "Plate thickness of base_plate and upright_plate (assumed equal, 10mm)",
+   "why": "No thickness dimension is annotated; only the strip height in FRONT/RIGHT/TOP views gives a proportion estimate (~8-12mm). It sets hole edge distances, gusset contact faces and the inner L corner.",
+   "would_resolve": "A thickness dimension/callout on FRONT or RIGHT view, or a section view."
+  },
+  {
+   "critical": true,
+   "what": "Hole diameters (assumed 12mm) for the two base holes and two upright holes",
+   "why": "Circles are drawn but no diameter/radius dimension or drill note is annotated; diameter estimated from circle size relative to 100mm width.",
+   "would_resolve": "A diameter dimension (e.g. 4x dia12) or hole note in the title block."
+  },
+  {
+   "critical": true,
+   "what": "Exact hole centre positions (assumed X=25 and 75 for both pairs; upright holes Z=38, base holes Y=32 from back face)",
+   "why": "No centre-line dimensions are annotated; positions estimated from symmetry and circle placement in FRONT/TOP views. Symmetry about X=50 is strongly suggested but not dimensioned.",
+   "would_resolve": "Centre-distance dimensions from edges/centreline in FRONT and TOP views."
+  },
+  {
+   "critical": true,
+   "what": "Gusset_rib thickness (assumed 8mm), centring, and triangular extents (assumed up upright to Z=58, forward on base to Y=48)",
+   "why": "Gusset width is shown in FRONT/TOP views and triangle in RIGHT view, but no dimension is annotated; extents estimated from where the hypotenuse meets the plates in RIGHT view.",
+   "would_resolve": "Dimensions for gusset thickness, height along upright and length along base in RIGHT/FRONT views."
+  },
+  {
+   "critical": false,
+   "what": "Whether the L is formed from one bent sheet or two welded plates, and any bend radius / weld size / edge fillets",
+   "why": "No bend note, weld symbol, material or finish note is visible; junction appears as a sharp corner in RIGHT view.",
+   "would_resolve": "A manufacturing note, weld symbol, bend radius dimension, or material specification."
+  },
+  {
+   "critical": false,
+   "what": "Material grade, surface finish and colour",
+   "why": "Title block gives title/units/projection only; no material or finish field is completed.",
+   "would_resolve": "Material/finish note or title-block entry; assumed plain steel, metal material, light grey."
+  },
+  {
+   "critical": false,
+   "what": "Tolerances and whether hole positions in base and upright pairs are intended to align in X",
+   "why": "Hidden-line rectangles in FRONT/TOP/RIGHT views suggest the two pairs share X=25/75, but no dimension confirms it and no tolerance block is shown.",
+   "would_resolve": "Dimensioned centre positions for both hole pairs and a tolerance note."
+  }
+ ]
+}
