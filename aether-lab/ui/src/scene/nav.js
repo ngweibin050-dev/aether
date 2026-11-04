@@ -1,19 +1,22 @@
 // Blender-style viewport navigation (z-up turntable).
 //   MMB drag orbit · Shift+MMB pan · Ctrl+MMB zoom · wheel zoom
 //   Laptop: Alt+LMB orbit (emulate 3-button mouse), Alt+Shift+LMB pan, trackpad two-finger scroll orbits,
-//   Shift+scroll pans, pinch (Ctrl+wheel) zooms.
+//   Shift+scroll pans, pinch (Ctrl+wheel) zooms. Drag the VIEW (not a model): right-drag, or Space + left-drag.
+//   The wheel zooms toward the point under the cursor. home() flies back to the AETHER desk from anywhere.
 //   Numpad 1/3/7 (Ctrl = opposite side) switch to orthographic axis views, 5 toggles ortho, 0 = viewer's eye,
 //   2/4/6/8 orbit in 15° steps, . frames the selection, Home frames everything.
 import * as THREE from "three";
 
 const TAU = Math.PI * 2;
+export const HOME = { target: [0, 0, 60], theta: -1.0, phi: 1.05, dist: 560 };     // the desk, as the lab opens
 const ease = (t) => 1 - Math.pow(1 - t, 3);
 
 export class Nav {
   constructor(persp, ortho, dom, setCamera) {
     this.persp = persp; this.ortho = ortho; this.dom = dom; this.setCamera = setCamera;
-    this.target = new THREE.Vector3(0, 0, 60);
-    this.theta = -1.0; this.phi = 1.05; this.dist = 560;
+    this.target = new THREE.Vector3(...HOME.target);
+    this.theta = HOME.theta; this.phi = HOME.phi; this.dist = HOME.dist;
+    this.space = false;
     this.isOrtho = false; this.autoOrtho = false;
     this.anim = null; this.listeners = new Set();
     this.drag = null;
@@ -73,16 +76,41 @@ export class Nav {
     this.phi = THREE.MathUtils.clamp(this.phi + dPhi, 0.0005, Math.PI - 0.0005);
     this.apply();
   }
+  // back to the desk from wherever the view is (also after panning far away or zooming deep into a part)
+  home() {
+    this.autoOrtho = false;
+    this.setOrtho(false);
+    this.animateTo({ theta: HOME.theta, phi: HOME.phi, dist: HOME.dist, target: new THREE.Vector3(...HOME.target) }, 520);
+  }
   pan(dxPx, dyPx) {
     const h = this._h;
-    const perPx = (2 * this.dist * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2))) / h;
+    // far from the desk, a drag covers more ground (else a view that drifted metres away could never be dragged back
+    // while zoomed in); near the desk it is the usual 1 pixel = 1 pixel
+    const away = Math.hypot(this.target.x, this.target.y, this.target.z - HOME.target[2]);
+    const d = Math.max(this.dist, 0.8 * away);
+    const perPx = (2 * d * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2))) / h;
     const cam = this.camera;
     const right = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
     const up = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
     this.target.addScaledVector(right, -dxPx * perPx).addScaledVector(up, dyPx * perPx);
     this.apply();
   }
-  zoom(f) { this.dist = THREE.MathUtils.clamp(this.dist * f, 20, 3500); this.apply(); }
+  zoom(f) { this.dist = THREE.MathUtils.clamp(this.dist * f, 20, 25000); this.apply(); }
+  // zoom toward the point under the cursor (it stays under the cursor), like CAD tools
+  zoomAt(f, clientX, clientY) {
+    const r = this.dom.getBoundingClientRect();
+    const nd = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    const cam = this.camera;
+    const dir = new THREE.Vector3().subVectors(this.target, cam.position).normalize();
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(dir, this.target);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(nd, cam);
+    const P = ray.ray.intersectPlane(plane, new THREE.Vector3());
+    const d0 = this.dist;
+    this.dist = THREE.MathUtils.clamp(this.dist * f, 20, 25000);
+    if (P) this.target.add(P.sub(this.target).multiplyScalar(1 - this.dist / d0));
+    this.apply();
+  }
 
   view(name) {
     const v = {
@@ -113,9 +141,10 @@ export class Nav {
     const d = this.dom;
     this._down = (e) => {
       const emulate = e.button === 0 && e.altKey;
-      if (e.button !== 1 && !emulate) return;
+      const hand = (e.button === 0 && this.space) || (e.button === 2 && !e.shiftKey);    // drag the view itself
+      if (e.button !== 1 && !emulate && !hand) return;
       e.preventDefault();
-      const mode = e.ctrlKey ? "zoom" : e.shiftKey ? "pan" : "orbit";
+      const mode = hand ? "pan" : e.ctrlKey ? "zoom" : e.shiftKey ? "pan" : "orbit";
       this.drag = { mode, x: e.clientX, y: e.clientY };
       d.setPointerCapture?.(e.pointerId);
       cancelAnimationFrame(this.anim);
@@ -136,9 +165,17 @@ export class Nav {
       if (e.ctrlKey) this.zoom(Math.exp(e.deltaY * 0.01));                  // pinch / Ctrl+wheel
       else if (trackpad && e.shiftKey) this.pan(-e.deltaX, -e.deltaY);
       else if (trackpad) this.orbit(e.deltaX * 0.006, e.deltaY * 0.006);
-      else this.zoom(Math.exp(Math.sign(e.deltaY) * 0.12));
+      else this.zoomAt(Math.exp(Math.sign(e.deltaY) * 0.12), e.clientX, e.clientY);
     };
     this._aux = (e) => e.button === 1 && e.preventDefault();
+    this._key = (e) => {
+      if (e.code !== "Space" || e.target.closest?.("input, textarea, [contenteditable=true]")) return;
+      this.space = e.type === "keydown";
+      d.style.cursor = this.space ? "grab" : "";
+      if (this.space) e.preventDefault();
+    };
+    addEventListener("keydown", this._key);
+    addEventListener("keyup", this._key);
     d.addEventListener("pointerdown", this._down);
     addEventListener("pointermove", this._move);
     addEventListener("pointerup", this._up);
@@ -153,6 +190,8 @@ export class Nav {
     removeEventListener("pointerup", this._up);
     d.removeEventListener("wheel", this._wheel);
     d.removeEventListener("auxclick", this._aux);
+    removeEventListener("keydown", this._key);
+    removeEventListener("keyup", this._key);
     cancelAnimationFrame(this.anim);
   }
 }

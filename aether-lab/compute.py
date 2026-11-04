@@ -130,8 +130,11 @@ def _remote_run(state, name, args):
     return res, new_state, (str(res["error"]) if res.get("error") else None)
 
 
+LOCAL_ONLY = {"export_film"}       # writes a file the user downloads: on Modal it landed on the cloud machine's disk
+
+
 def run(state, name, args):
-    if where() != "modal" or name not in HEAVY:
+    if where() != "modal" or name not in HEAVY or name in LOCAL_ONLY:
         return _local(state, name, args)
     bad = lab.check_args(name, args)                 # a bad argument is the caller's error, never a reason to redeploy
     if bad:

@@ -33,7 +33,7 @@ export default function useShortcuts() {
         if (num === "Subtract") { e.preventDefault(); return view.nav?.zoom(1.18); }
       }
       if (code === "NumpadDecimal" || (k === "." && !shift && !ctrl)) return go("view.frame");
-      if (k === "home") return go("view.all");
+      if (k === "home") return go(e.ctrlKey || e.metaKey ? "view.desk" : "view.all");
       if (k === "escape") { s.setMenu(null); s.setDock(null); return; }
       if (k === "tab" && shift) return go("view.panelsToggle");
       if (k === "tab") return go("view.mode");
@@ -49,6 +49,7 @@ export default function useShortcuts() {
         if (k === "o") return go("file.open");
         if (k === "i") return go("sel.invert");
         if (k === "p") return go("obj.parent");
+        if (k === "h") return go("edit.history");
         return;
       }
       if (alt) {
@@ -68,7 +69,7 @@ export default function useShortcuts() {
         return;
       }
       if (["g", "r", "s"].includes(k) && s.selection.length) { e.preventDefault(); return startModal(k.toUpperCase()); }
-      const m = { a: "sel.all", h: "obj.hide", e: "in.explode", "/": "in.isolate", t: "view.toolbar", n: "view.sidebar" }[k];
+      const m = { a: "sel.all", h: "obj.hide", e: "in.explode", "/": "in.isolate", n: "view.sidebar" }[k];
       if (m) return go(m);
       if (k === "b") { e.preventDefault(); return s.setTool("select"); }
       if (k === "z") return menu("pie-shading");

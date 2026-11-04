@@ -23,6 +23,12 @@ export const addPrim = (type) => {
 };
 
 const download = (url, name) => { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+// the print film: made into the project's exports, then downloaded like any file (it is also in the project folder)
+const filmDownload = () => S().tool("export_film").then((r) => {
+  if (!r?.url) return;
+  download(r.url, r.name);
+  S().notify(`Print film downloaded: ${r.name} (${(r.bytes / 1024).toFixed(0)} KB, also in the project's exports)`);
+});
 const frameSel = () => view.nav?.frame(sceneBox(S().selection.length ? S().selection : null));
 const eyeView = () => {
   const s = S().state, box = sceneBox();
@@ -65,7 +71,7 @@ export const importGLB = () => document.getElementById("glb-input")?.click();
 
 export const COMMANDS = [
   // File
-  { id: "file.new", menu: "File", group: "Project", label: "New empty scene", run: () => S().commitParts([], null) },
+  { id: "file.new", menu: "File", group: "Project", label: "New empty scene", run: () => S().commitParts([], null, "new empty scene") },
   { id: "file.open", menu: "File", group: "Project", label: "Open scene…", keys: "Ctrl O", run: openScene },
   { id: "file.save", menu: "File", group: "Project", label: "Save scene", keys: "Ctrl S", run: saveScene },
   { id: "file.import", menu: "File", group: "Import", label: "Import glTF / GLB…", run: importGLB },
@@ -80,10 +86,11 @@ export const COMMANDS = [
   { id: "file.asmstep", menu: "File", group: "Export", label: "Export STEP of the machine (B-rep assembly, validated)", run: () => { S().setPanel("asm", true); S().exportStep(); } },
   { id: "file.stl", menu: "File", group: "Export", label: "Export STL (millimetres)", run: () => download("/api/export.stl", "aether-model.stl") },
   { id: "file.report", menu: "File", group: "Export", label: "Build report (one page)", run: () => window.open("/api/report.html", "_blank") },
-  { id: "file.film", menu: "File", group: "Export", label: "Export print film (2400 dpi)", run: () => S().tool("export_film").then((r) => r?.path && S().notify("Film saved: " + r.path)) },
+  { id: "file.film", menu: "File", group: "Export", label: "Export print film (2400 dpi)", run: filmDownload },
   // Edit
   { id: "edit.undo", menu: "Edit", label: "Undo", keys: "Ctrl Z", run: () => S().undoOnce() },
   { id: "edit.redo", menu: "Edit", label: "Redo", keys: "Ctrl ⇧ Z", run: () => S().redoOnce() },
+  { id: "edit.history", menu: "Edit", label: "History…", keys: "Ctrl H", run: () => S().setPanel("history", !S().panels.history) },
   { id: "edit.search", menu: "Edit", label: "Menu search…", keys: "F3", run: () => S().setMenu({ kind: "search" }) },
   { id: "edit.rename", menu: "Edit", label: "Rename active", keys: "F2", when: () => !!one(), run: () => S().setMenu({ kind: "rename" }) },
   // Select
@@ -99,6 +106,13 @@ export const COMMANDS = [
   { id: "add.photo", menu: "Add", label: "Model from a photo (SAM 3.1)…", group: "AI", run: () => document.getElementById("photo-input")?.click() },
   { id: "ai.fix", menu: "Add", label: "Fix design for the desk (AI loop)", group: "AI", run: () => S().optimize(80) },
   { id: "add.glb", menu: "Add", label: "Import GLB model…", group: "AI", run: importGLB },
+  // Object · tools (they were a toolbar under the menu bar; W cycles them)
+  { id: "tool.select", menu: "Object", group: "Tools", label: "Tool: Select / box select", keys: "B", run: () => S().setTool("select") },
+  { id: "tool.cursor", menu: "Object", group: "Tools", label: "Tool: 3D cursor", run: () => S().setTool("cursor") },
+  { id: "tool.move", menu: "Object", group: "Tools", label: "Tool: Move gizmo", run: () => S().setTool("move") },
+  { id: "tool.rotate", menu: "Object", group: "Tools", label: "Tool: Rotate gizmo", run: () => S().setTool("rotate") },
+  { id: "tool.scale", menu: "Object", group: "Tools", label: "Tool: Scale gizmo", run: () => S().setTool("scale") },
+  { id: "tool.measure", menu: "Object", group: "Tools", label: "Tool: Measure (click two points)", run: () => S().setTool("measure") },
   // Object
   { id: "obj.move", menu: "Object", label: "Move", keys: "G", when: hasSel, run: () => startModal("G") },
   { id: "obj.rotate", menu: "Object", label: "Rotate", keys: "R", when: hasSel, run: () => startModal("R") },
@@ -122,6 +136,7 @@ export const COMMANDS = [
   // View
   { id: "view.frame", menu: "View", group: "Camera", label: "Frame selected", keys: "Num .", run: frameSel },
   { id: "view.all", menu: "View", group: "Camera", label: "Frame all", keys: "Home", run: () => view.nav?.frame(sceneBox()) },
+  { id: "view.desk", menu: "View", group: "Camera", label: "Back to the AETHER desk", keys: "Ctrl Home", run: () => view.nav?.home() },
   { id: "view.front", menu: "View", group: "Camera", label: "Front", keys: "Num 1", run: () => view.nav?.view("front") },
   { id: "view.back", menu: "View", group: "Camera", label: "Back", keys: "Ctrl Num 1", run: () => view.nav?.view("back") },
   { id: "view.right", menu: "View", group: "Camera", label: "Right", keys: "Num 3", run: () => view.nav?.view("right") },
@@ -133,7 +148,7 @@ export const COMMANDS = [
   { id: "view.wire", menu: "View", group: "Shading", label: "Shading: Wireframe", keys: "Z", run: () => S().setShading("wire") },
   { id: "view.solid", menu: "View", group: "Shading", label: "Shading: Solid", keys: "Z", run: () => S().setShading("solid") },
   { id: "view.holo", menu: "View", group: "Shading", label: "Shading: Hologram", keys: "Z", run: () => S().setShading("holo") },
-  { id: "view.toolbar", menu: "View", group: "Panels", label: "Toolbar", keys: "T", run: () => S().setPanel("toolbar") },
+  { id: "view.explain", menu: "View", group: "Panels", label: "Explain this machine panel", run: () => { S().setPanel("explain", true); S().setWin("explain", "normal"); } },
   { id: "view.sidebar", menu: "View", group: "Panels", label: "Sidebar (Item)", keys: "N", run: () => { S().setPanel("outliner", true); useStore.setState({ outlinerTab: "item" }); } },
   { id: "view.mode", menu: "View", group: "Mode", label: "Switch Laptop / Hand mode", keys: "Tab", run: () => S().setMode(S().mode === "laptop" ? "hand" : "laptop") },
   // Inspect (see inside)
@@ -161,7 +176,7 @@ export const COMMANDS = [
   { id: "holo.search", menu: "Hologram", label: "Search widest column (80% at 10 cm)", run: () => S().tool("search_column_width", { height_cm: 10, min_sharpness_pct: 80 }) },
   { id: "holo.speckle", menu: "Hologram", label: "Speckle comparison", run: () => S().tool("speckle_compare", { k: 3 }) },
   { id: "holo.hand", menu: "Hologram", label: "Hand occlusion check", run: () => S().tool("hand_check") },
-  { id: "holo.film", menu: "Hologram", label: "Export print film", run: () => S().tool("export_film") },
+  { id: "holo.film", menu: "Hologram", label: "Export print film", run: filmDownload },
 ];
 
 export const cmd = (id) => COMMANDS.find((c) => c.id === id);

@@ -9,6 +9,8 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
@@ -27,7 +29,8 @@ load_env()
 
 from engine import lab  # noqa: E402
 import agent  # noqa: E402
-import assistant  # noqa: E402
+import assistant
+import history  # noqa: E402
 import projects  # noqa: E402
 import compute  # noqa: E402
 import explain  # noqa: E402
@@ -35,7 +38,26 @@ import explain  # noqa: E402
 WEB = ROOT / "ui" / "dist" if (ROOT / "ui" / "dist" / "index.html").exists() else ROOT / "web"
 OUT = ROOT / "output"
 OUT.mkdir(exist_ok=True)
-_PROJECT = projects.ensure(lab.default_state())
+# the project opened at start: AETHER_PROJECT (a test server on a copy), else the most recently saved one. IMPORTED
+# (tests import this module for its set-up) it opens a scratch project instead: the module saves the undo history and
+# the scene to the open project, and an eval run must never write into the user's work (it did: an eval's "Sports car"
+# ended up in a real project's undo history)
+_SCRATCH = "_imported-by-tests"
+
+
+def _start_project():
+    if os.environ.get("AETHER_PROJECT"):
+        return projects.open_(os.environ["AETHER_PROJECT"])
+    if __name__ != "__main__":
+        if not (projects.ROOT / _SCRATCH / "project.json").exists():
+            st = lab.default_state()
+            st["parts"] = []
+            projects.create(_SCRATCH, st)
+        return projects.open_(_SCRATCH)
+    return projects.ensure(lab.default_state())
+
+
+_PROJECT = _start_project()
 STATE = _PROJECT.get("state") or lab.default_state()
 # Imported meshes carry their whole geometry in params (vertices, faces, drawn lines: megabytes). The UI gets that
 # geometry once from /api/meshes; the state it is sent leaves those fields out, and parts coming back from the UI
@@ -79,6 +101,15 @@ REC = OUT / "recorded"                           # the last successful live demo
 def _recorded(demo_id):
     f = REC / f"{demo_id}.json"
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+
+def _fresh_ids(parts, taken):
+    """Copies of parts whose ids are not in `taken` (a recorded model added twice), parents following."""
+    import uuid
+    new = {p["id"]: (uuid.uuid4().hex[:8] if p["id"] in taken else p["id"]) for p in parts}
+    return [{**p, "id": new[p["id"]], "parent": new.get(p.get("parent"), p.get("parent"))} for p in parts]
+# the open CAD document's folder (model.aethercad, brep/, sheet.png); a test server sets AETHER_CAD_DIR to its own
+CAD_DIR = Path(os.environ.get("AETHER_CAD_DIR") or OUT / "cad" / "current")
 LOCK = threading.Lock()
 DIRTY = threading.Event()
 STOP = threading.Event()                          # set by /api/chat/stop, cleared when a turn starts
@@ -122,17 +153,49 @@ def on_step(e):
             x.setdefault("s", round(now - x.get("t0", now), 1))
 
 
+EXPORTS = {"key": None, "files": {}}
+EXPORT_LOCK = threading.Lock()
+
+
+def _scene_export(path):
+    """A download of the whole scene, built ONCE per scene version (clicking Export again, or five times quickly, gets
+    the same bytes) and outside the scene lock: only a copy of the scene is taken under it, so a running AI turn or
+    another download never queues behind the export."""
+    from engine import export
+    with EXPORT_LOCK:                                   # one build at a time; the others wait and reuse it
+        with LOCK:
+            key = STATE.get("version")
+            if EXPORTS["key"] != key:
+                EXPORTS.update(key=key, files={})
+            hit = EXPORTS["files"].get(path)
+            if hit:
+                return hit
+            snap = {**STATE, "parts": list(STATE["parts"])}
+        if path.endswith(".glb"):
+            out = export.glb(snap), "model/gltf-binary"
+        elif path.endswith(".stl"):
+            out = export.stl(snap), "model/stl"
+        else:
+            out = export.report_html(snap, agent.LAST_REPORT, LAST_STEPS).encode(), "text/html; charset=utf-8"
+        EXPORTS["files"][path] = out
+        return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # the browser hung up (a download clicked again, a tab closed, a poll cancelled): nothing to answer
+            return
         if self.command == "POST":
             print(f"POST {self.path} {code} {len(data)} B in {time.time() - self._t0:.1f} s", flush=True)
             if code == 200 and not self.path.startswith(("/api/projects", "/api/transcribe", "/api/warm", "/api/files")):
@@ -140,17 +203,24 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send_file(self, f):
         data = f.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", mimetypes.guess_type(str(f))[0] or "application/octet-stream")
-        self.send_header("Content-Disposition", f'attachment; filename="{f.name}"')
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        inline = "inline=1" in self.path                 # the chat's preview shows a PDF in the page
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", mimetypes.guess_type(str(f))[0] or "application/octet-stream")
+            self.send_header("Content-Disposition", f'{"inline" if inline else "attachment"}; filename="{f.name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            return
 
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/api/progress":            # live steps of the running chat turn (read without the lock)
             return self._send(200, {**PROGRESS, "now": time.time()})     # server clock, for the live step timers
+        if path == "/api/history":
+            with LOCK:
+                return self._send(200, history.listing())
         if path == "/api/state":
             return self._send(200, {"state": lean(STATE), "compute": compute.where(), "gpu": compute.status})
         if path == "/api/demos":
@@ -164,26 +234,23 @@ class Handler(BaseHTTPRequestHandler):
             rec = _recorded(demo_id)
             if not rec:
                 return self._send(404, {"error": f"no recorded run of demo {demo_id} yet"})
+            # the recorded machine is ADDED beside the user's models (replacing the scene wiped their work, with no undo),
+            # standing on the desk, as one undo step
             with LOCK:
-                STATE.clear()
-                STATE.update(rec["state"])
-                STATE["version"] = int(STATE.get("version", 0)) + 1000
+                before = history.snapshot(STATE)
+                STATE["parts"] += _fresh_ids(rec["state"]["parts"], {p["id"] for p in STATE["parts"]})
+                assistant.arrange(STATE)
+                STATE["version"] = int(STATE.get("version", 0)) + 1
+                _record(before, f"demo: {DEMOS[demo_id][3]} (recorded run)", "build")
+            DIRTY.set()
             return self._send(200, {**{k: v for k, v in rec.items() if k != "state"}, "state": lean(STATE)})
         if path in ("/api/export.glb", "/api/export.stl", "/api/report.html"):   # downloads of the current scene
-            from engine import export
-            with LOCK:
-                if path.endswith(".glb"):
-                    body, ctype = export.glb(STATE), "model/gltf-binary"
-                elif path.endswith(".stl"):
-                    body, ctype = export.stl(STATE), "model/stl"
-                else:
-                    body = export.report_html(STATE, agent.LAST_REPORT, LAST_STEPS).encode()
-                    ctype = "text/html; charset=utf-8"
+            body, ctype = _scene_export(path)
             return self._send(200, body, ctype)
         if path == "/api/cad/document":
             import cad_client
             try:
-                return self._send(200, cad_client.call("document"))
+                return self._send(200, cad_client.call("document", timeout=5))
             except Exception as e:
                 return self._send(409, {"error": str(e)})
         if path in ("/api/cad/export.step", "/api/cad/export.glb", "/api/cad/export.aethercad", "/api/cad/report.json"):
@@ -198,7 +265,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, Path(f).read_bytes(), ctype)
         if path.startswith("/api/cad/image/"):
             name = Path(path).name
-            f = OUT / "cad" / "current" / name
+            f = CAD_DIR / name
             if f.suffix == ".png" and f.is_file():
                 return self._send(200, f.read_bytes(), "image/png")
             return self._send(404, {"error": "not found"})
@@ -213,6 +280,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"files": list_files()})
         if path == "/api/projects":
             return self._send(200, {"projects": projects.listing(), "current": projects.CURRENT["slug"]})
+        if path == "/api/chats":
+            return self._send(200, projects.chat_list(CHAT))
         if path == "/api/project":
             doc = projects._read(projects.CURRENT["slug"]) or {}
             return self._send(200, {"slug": projects.CURRENT["slug"], "name": doc.get("name"), "saved": doc.get("saved"),
@@ -286,15 +355,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/explain":            # Muse Spark explains the built machine (explain.py), off the lock
             try:
                 with LOCK:
-                    snap = {"parts": [dict(p) for p in STATE["parts"]]}
+                    snap = {**STATE, "parts": [dict(p) for p in STATE["parts"]]}
+                req = json.loads(raw or b"{}")
                 PROGRESS.update(running=True, steps=[])
                 try:
-                    res = explain.explain(snap, agent.LAST_IMAGE.get("data_url"), on_step=on_step,
-                                          scale={"known": agent.LAST_REPORT.get("scale_known", False),
-                                                 "source": agent.LAST_REPORT.get("scale_source")})
+                    sub, m, image, scale, feats = assistant.explain_target(snap, chat_ctx([]), req.get("target"))
+                    res = explain.explain(sub, image, on_step=on_step, scale=scale, model=m, cad_features=feats)
                 finally:
                     PROGRESS["running"] = False
-                demo_id = json.loads(raw or b"{}").get("demo_id")
+                demo_id = req.get("demo_id")
                 if demo_id in DEMOS and _recorded(demo_id):            # kept with that demo's recorded run
                     rec = _recorded(demo_id)
                     rec["explain"] = res
@@ -303,6 +372,11 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 traceback.print_exc()
                 return self._send(500, {"error": f"{type(e).__name__}: {e}"})
+        if self.path.startswith("/api/chats/"):
+            try:
+                return self._send(200, chat_route(self.path, json.loads(raw or b"{}")))
+            except Exception as e:
+                return self._send(400, {"error": f"{type(e).__name__}: {e}"})
         if self.path.startswith("/api/projects/"):
             try:
                 return self._send(200, project_route(self.path, json.loads(raw or b"{}")))
@@ -328,11 +402,17 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if self.path == "/api/tool":
                     args = body.get("args", {})
-                    if body["name"] == "export_film":
-                        args["out_dir"] = str(OUT)
+                    if body["name"] == "export_film":     # into the project's exports: downloadable like any export
+                        args["out_dir"] = str(projects.exports_dir())
+                    before = history.snapshot(STATE)
                     res = compute.run(STATE, body["name"], args)
+                    if body["name"] == "export_film" and isinstance(res, dict) and res.get("path"):
+                        fp = Path(res["path"])
+                        res.update(url=f"/api/files/{fp.parent.name}/{fp.name}", name=fp.name, bytes=fp.stat().st_size)
                     if body["name"] in ("import_mesh", "build_assembly") and not (res or {}).get("error"):
                         assistant.arrange(STATE)       # a new model stands on the desk, beside the others
+                    if body.get("label", "") is not None:     # None: an animation or a live input (turning gears, hands)
+                        _record(before, body.get("label") or TOOL_LABEL.get(body["name"], body["name"].replace("_", " ")))
                     return self._send(200, {"result": res, "state": lean(STATE), "gpu": compute.status})
                 if self.path in ("/api/chat", "/api/photo", "/api/optimize"):
                     PROGRESS.update(running=True, steps=[])
@@ -344,7 +424,7 @@ class Handler(BaseHTTPRequestHandler):
                             reply, trace, images, HISTORY, extras = assistant.turn(
                                 STATE, HISTORY, body.get("text") or "", chat_ctx(att))
                             CHAT.append({"role": "user", "text": body.get("text") or "",
-                                         "files": [{"name": n, "kind": _kind(n)} for n in att]})
+                                         "files": [{"name": n, "kind": _kind(n), "url": f"/api/files/files/{n}"} for n in att]})
                             if trace:
                                 CHAT.append({"role": "steps", "trace": trace})
                             CHAT.append({"role": "ai", "text": reply, "extras": extras})
@@ -352,13 +432,17 @@ class Handler(BaseHTTPRequestHandler):
                             if extras.get("changes"):
                                 projects.snapshot(STATE, body.get("text") or "assistant change")
                         elif self.path == "/api/photo":        # phone photo -> SAM 3.1 -> Muse Spark -> physics
+                            before = history.snapshot(STATE)
                             reply, trace, images, HISTORY = agent.photo_to_design(
                                 STATE, HISTORY, body["image"], body.get("prompt") or "object",
                                 float(body.get("size_mm") or 80), str(OUT), on_step,
                                 body.get("mode") or "interpret", body.get("kind") or "auto")
                             assistant.arrange(STATE)
+                            _record(before, "build from " + (body.get("prompt") or "a drawing / photo"), "build")
                         else:                                  # closed design loop on the current scene
+                            before = history.snapshot(STATE)
                             res = agent.optimize(STATE, float(body.get("target_pct", 80)), int(body.get("max_rounds", 3)), on_step)
+                            _record(before, "make it sharp on the desk", "edit")
                             images = res.pop("_images", {})
                             trace = [{"tool": "optimize_for_desk", "args": {}, "result": res}]
                             reply = None
@@ -376,17 +460,37 @@ class Handler(BaseHTTPRequestHandler):
                             {"recorded_at": time.strftime("%Y-%m-%d %H:%M"), "reply": reply, "trace": trace, "images": images,
                              "steps": [dict(x) for x in PROGRESS["steps"]], "state": STATE}, default=str), encoding="utf-8")
                     return self._send(200, out)
-                if self.path == "/api/scene":          # undo / redo / bulk edits from the UI
-                    STATE["parts"] = restore(body["parts"])
+                if self.path == "/api/scene":          # bulk edits from the UI (delete, duplicate, colour, hide...)
+                    before = history.snapshot(STATE)
+                    new = restore(body["parts"])
+                    reset = lab.guard_cad_leaves(STATE["parts"], new)
+                    if reset:
+                        print(f"/api/scene: CAD components moved one by one were put back: {reset[:6]}", flush=True)
+                    STATE["parts"] = new
                     STATE["selected"] = body.get("selected")
                     if "view" in body:
                         STATE["view"] = body["view"]
                     STATE["version"] += 1
+                    _record(before, body.get("label") or "edit in the app")
                     return self._send(200, {"state": lean(STATE)})
+                if self.path in ("/api/undo", "/api/history/undo"):   # Ctrl+Z, the History panel, "undo this" in the chat
+                    r = history.undo(STATE, body.get("id"))
+                    if r.get("undone") and body.get("id") and self.path == "/api/undo":
+                        CHAT.append({"role": "ai", "text": f"Undone: {r['reverted']} ({r['what']}).", "extras": {}})
+                    _after_undo(r)
+                    DIRTY.set()
+                    return self._send(200, {"result": r, "state": lean(STATE), "history": history.listing()})
+                if self.path == "/api/history/redo":
+                    r = history.redo(STATE)
+                    _after_undo(r)
+                    DIRTY.set()
+                    return self._send(200, {"result": r, "state": lean(STATE), "history": history.listing()})
                 if self.path == "/api/reset":
+                    before = history.snapshot(STATE)
                     STATE.clear()
                     STATE.update(lab.default_state())
                     HISTORY = []
+                    _record(before, "reset the scene")
                     return self._send(200, {"state": lean(STATE)})
             self._send(404, {"error": "not found"})
         except Exception as e:
@@ -399,16 +503,26 @@ class Handler(BaseHTTPRequestHandler):
 
 def cad_import_current(name, status_extra=None):
     """Bring the worker's current CAD model into the scene (tessellation of the validated B-rep)."""
+    with LOCK:
+        return _cad_import(name)
+
+
+def _cad_import(name):
+    """cad_import_current without taking the lock (the caller holds it: an assistant turn adding a CAD feature). A
+    re-import of the same document keeps the model where it is, at its size: only a new model is fitted and placed."""
     import cad_client
     m = cad_client.call("meshes")
     doc = cad_client.call("document")
-    with LOCK:
-        res = lab.import_cad(STATE, m["meshes"], m["groups"], name, doc["document_id"],
-                             provenance={"maturity": doc["maturity"], "stale": m["stale"]})
+    res = lab.import_cad(STATE, m["meshes"], m["groups"], name, doc["document_id"],
+                         provenance={"maturity": doc["maturity"], "stale": m["stale"]})
+    if not res.get("kept_placement"):
         # shown on the desk at one uniform DISPLAY scale (the CAD document keeps its real millimetres)
         res["display_fit"] = agent._fit_to_desk(STATE, res["id"])
         assistant.arrange(STATE)                       # beside the other models, standing on the desk
     return res, doc
+
+
+assistant.CAD_REIMPORT = lambda name: _cad_import(name)[0]
 
 
 def cad_route(path, body):
@@ -417,7 +531,7 @@ def cad_route(path, body):
     /api/cad/open {path}: open a saved .aethercad (recompute with replayed model answers)."""
     import base64
     import cad_client
-    out = OUT / "cad" / "current"
+    out = CAD_DIR
     if path == "/api/cad/from_sheet":
         out.mkdir(parents=True, exist_ok=True)
         raw = base64.b64decode(body["image"].split(",", 1)[-1])
@@ -598,11 +712,66 @@ def chat_ctx(attachment_names):
     for a in list(att):                                   # a PDF brings its page images with it
         if a["kind"] == "pdf":
             att += [f for f in files if f["name"].startswith(Path(a["name"]).stem + "_p") and f["kind"] == "image"]
-    return {"out_dir": str(OUT), "exports_dir": str(projects.exports_dir()), "cad_brep_dir": str(OUT / "cad" / "current" / "brep"),
+    return {"out_dir": str(OUT), "exports_dir": str(projects.exports_dir()), "cad_brep_dir": str(CAD_DIR / "brep"),
             "files": files, "attachments": att, "data_url": _data_url, "on_step": on_step, "stopped": STOP.is_set,
-            "asm": ASSEMBLY.get("report"),
+            "asm": ASSEMBLY.get("report"), "jobs": JOBS,
             "have": {"B-rep assembly check": bool(ASSEMBLY.get("report")), "drawing reading (balloons)": bool(agent.LAST_IMAGE),
                      "build report": bool(agent.LAST_REPORT)}}
+
+
+def _after_load():
+    """A project just loaded (at start-up or opened): its undo stack, and repairs of scenes saved by older versions:
+    CAD components carrying a transform of their own, and models left metres off the desk (the old _bbox bug)."""
+    history.load(projects.path(), STATE)
+    assistant.INTAKE.clear()
+    fixed = lab.fold_cad_leaves(STATE)
+    if fixed:
+        print(f"project: repaired CAD component transforms of {fixed}", flush=True)
+    far = []
+    for m in assistant.roots(STATE):
+        lo, hi = assistant._bbox(lab.subtree(STATE, m["id"]))
+        if lo is not None and np.abs((lo + hi) / 2)[:2].max() > 3000:
+            far.append(m["name"])
+    if far:
+        assistant.arrange(STATE)
+        print(f"project: brought back to the desk: {far}", flush=True)
+    if fixed or far:
+        STATE["version"] = int(STATE.get("version", 0)) + 1
+        DIRTY.set()
+    _reopen_cad()
+
+
+def _reopen_cad():
+    """After a restart the CAD worker has no document open, so a CAD model on the desk could not take CAD features
+    (refining it) or be edited in the CAD panel. If the saved document belongs to a model of this project, it is opened
+    again in the background (a full recompute: a few minutes); the app shows it as a job."""
+    f = CAD_DIR / "model.aethercad"
+    if not f.exists():
+        return
+    try:
+        doc_id = json.loads(f.read_text(encoding="utf-8")).get("document_id")
+    except (OSError, ValueError):
+        return
+    if not any((m.get("eng") or {}).get("cad_document") == doc_id for m in assistant.roots(STATE)):
+        return
+    sheet = f.parent / "sheet.png"
+
+    def run():
+        import cad_client
+        JOBS["cad_open"] = {"label": "Opening the car's CAD document (for CAD edits)", "state": "running", "t0": time.time()}
+        try:
+            d = cad_client.call("document", timeout=5)
+            if d.get("document_id") == doc_id:          # already open (the worker kept running)
+                JOBS["cad_open"].update(state="done", s=0.0)
+                return
+        except Exception:
+            pass
+        try:
+            cad_client.call("open", path=str(f), sheet=str(sheet) if sheet.exists() else None, out_dir=str(f.parent))
+            JOBS["cad_open"].update(state="done", s=round(time.time() - JOBS["cad_open"]["t0"], 1))
+        except Exception as e:
+            JOBS["cad_open"].update(state="error", error=str(e)[:300])
+    threading.Thread(target=run, daemon=True).start()
 
 
 def _switch(doc):
@@ -614,10 +783,29 @@ def _switch(doc):
         STATE["version"] = int(STATE.get("version", 0)) + 1
         HISTORY = doc.get("history") or []
         CHAT = doc.get("chat") or []
-        assistant.UNDO.clear()
+        _after_load()
         ASSEMBLY.update(report=None, meshes={}, geo={}, pose={}, step=None, built_at=None)
         agent.LAST_IMAGE.clear()
         agent.LAST_REPORT.clear()
+
+
+def chat_route(path, body):
+    """Chats of the open project: several conversations about the same scene (the scene and its undo history are
+    shared). /api/chats/new, /open {id}, /rename {id, title}, /delete {id}."""
+    global HISTORY, CHAT
+    if path in ("/api/chats/new", "/api/chats/open"):
+        if PROGRESS.get("running"):
+            raise ValueError("the AI is still answering in this chat: stop it or wait, then switch")
+        with LOCK:
+            cid, CHAT, HISTORY = projects.chat_switch(CHAT, HISTORY, body.get("id") if path.endswith("open") else None)
+            assistant.INTAKE.clear()
+        projects.save(STATE, HISTORY, CHAT)
+        return {"id": cid, "chat": CHAT, **projects.chat_list(CHAT)}
+    if path == "/api/chats/rename":
+        return projects.chat_rename(body["id"], body.get("title"))
+    if path == "/api/chats/delete":
+        return projects.chat_delete(body["id"])
+    raise ValueError(path)
 
 
 def project_route(path, body):
@@ -643,15 +831,68 @@ def project_route(path, body):
         st = projects.version_state(body["n"])
         projects.snapshot(STATE, f"before restoring version {body['n']}")
         with LOCK:
+            before = history.snapshot(STATE)
             STATE["parts"] = st["parts"]
             STATE["selected"] = st.get("selected")
             STATE["version"] += 1
+            _record(before, f"restore version {body['n']}")
         projects.save(STATE, HISTORY, CHAT)
         return {"restored": body["n"], "state": lean(STATE)}
     raise ValueError(path)
 
 
 JOBS = {}                                         # background work the app shows (e.g. the CAD detail pass)
+
+
+UNDO_SAVE = threading.Lock()
+
+
+def _save_undo():
+    """The project's undo history to disk, off the request (a CAD body makes it megabytes)."""
+    folder = projects.path()
+
+    def run():
+        with UNDO_SAVE:
+            if projects.path() == folder:
+                history.save(folder)
+    threading.Thread(target=run, daemon=True).start()
+
+
+history.ON_CHANGE = _save_undo
+
+
+def _record(before, label, source="edit", extra=None):
+    """A change of the scene made outside an assistant turn (an edit in the app, a background build) as a step of the
+    project's undo history. The caller holds LOCK."""
+    return history.record(before, STATE, label, source, extra)
+
+
+TOOL_LABEL = {"update_part": "move / edit a part", "add_part": "add a part", "delete_part": "delete a part",
+              "import_mesh": "import a 3D file", "place_on_base": "stand on the desk", "turn_gear": "turn the gears",
+              "build_assembly": "build a machine"}
+
+
+def _after_undo(r):
+    """Undo / redo of a step that changed a CAD document (CAD features the assistant added): the document follows in the
+    background (a recompute), the scene already shows the step's parts as they were."""
+    for x in r.get("cad") or []:
+        c = x["cad"]
+        threading.Thread(target=_cad_follow, args=(c, bool(r.get("undone"))), daemon=True).start()
+
+
+def _cad_follow(c, undone):
+    import cad_client
+    jid = "cad_history"
+    JOBS[jid] = {"label": ("Taking the undone CAD features out of the CAD document" if undone
+                           else "Putting the redone CAD features back into the CAD document"), "state": "running", "t0": time.time()}
+    try:
+        if undone:
+            cad_client.call("remove_features", document_id=c["document_id"], ids=c["features"], timeout=None)
+        else:
+            cad_client.call("add_feature", document_id=c["document_id"], features=c["specs"], timeout=None)
+        JOBS[jid].update(state="done", s=round(time.time() - JOBS[jid]["t0"], 1))
+    except Exception as e:
+        JOBS[jid].update(state="error", error=str(e)[:300])
 
 
 def start_cad_detail(name):
@@ -663,7 +904,10 @@ def start_cad_detail(name):
         JOBS["cad_detail"] = {"label": "CAD details (pockets, imprints)", "state": "running", "t0": time.time()}
         try:
             r = cad_client.call("detail")
-            cad_import_current(name)
+            with LOCK:
+                before = history.snapshot(STATE)
+                _cad_import(name)
+                _record(before, f"CAD details of {name} (windows, lights, grille)", "auto")
             JOBS["cad_detail"].update(state="done", s=round(time.time() - JOBS["cad_detail"]["t0"], 1),
                                       details=r.get("details"))
             DIRTY.set()
@@ -675,6 +919,69 @@ def start_cad_detail(name):
 agent.ON_CAD_DETAIL = start_cad_detail
 
 
+def start_cad_job(data_url, hint, decisions, source_file):
+    """A three-view drawing -> CAD model in the BACKGROUND (about 2 minutes): the chat turn that asked for it ends at
+    once, so the user keeps working (other models, questions, edits) meanwhile. The pipeline runs without the scene
+    lock; only the import into the scene takes it, briefly. When it lands: an undo step, a chat message (shown by the
+    app's job poll), the project saved, and the detail pass (pockets, imprints) starts."""
+    import base64
+    import io
+    import uuid
+    import cad_client
+    from PIL import Image
+    jid = "cad_" + uuid.uuid4().hex[:6]
+    name = f"{(hint or 'model')[:40]} (CAD from three views)"
+    JOBS[jid] = {"label": f"Building {hint or 'the model'} from the drawing (CAD)", "state": "running", "t0": time.time(),
+                 "kind": "cad_build"}
+
+    def run():
+        try:
+            out = CAD_DIR
+            out.mkdir(parents=True, exist_ok=True)
+            sheet = out / "sheet.png"
+            Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
+            r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), defer_detail=True, decisions=decisions,
+                                timeout=1800)
+            with LOCK:
+                before = assistant.snapshot(STATE)
+                imp, doc = _cad_import(name)
+                g = next((p for p in STATE["parts"] if p["id"] == imp["id"]), None)
+                if g is not None:
+                    g.setdefault("eng", {})["source_file"] = source_file
+                e = _record(before, f"build {name} from {source_file}", "build")
+                undo_id = e and e["id"]
+                L = ((decisions or {}).get("overall_length_mm") or {}).get("value")
+                agent.LAST_REPORT.clear()
+                agent.LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": bool(L),
+                                          "scale_source": f"given by the user: overall length {L:.0f} mm" if L else
+                                          "assumed: overall length 4500 mm (no dimension on the sheet)"})
+                rep_ = r.get("report") or {}
+                msg = {"role": "ai", "text": (
+                    f"**{name}** is built and on the desk, beside your other models. "
+                    f"{len(doc['features'])} CAD features, {len([c for c in doc['components'] if not c.get('group')])} solid parts"
+                    + (f"; real size from you: {L:.0f} mm long." if L else "; real size assumed (4.5 m long) until you give one.")
+                    + " Pockets and imprints (windows, lights, grille) are still being added in the background."),
+                    "extras": {"changes": [f"Added {name} to the desk"], "undo_id": undo_id}}
+                CHAT.append(msg)
+                STATE["version"] += 1
+            _save_undo()
+            DIRTY.set()
+            JOBS[jid].update(state="done", s=round(time.time() - JOBS[jid]["t0"], 1), message=msg, model=name,
+                             all_valid=rep_.get("all_valid"))
+            start_cad_detail(name)
+        except Exception as e:
+            traceback.print_exc()
+            msg = {"role": "ai", "text": f"Building the CAD model from {source_file} failed: {type(e).__name__}: {str(e)[:300]}"}
+            CHAT.append(msg)
+            JOBS[jid].update(state="error", error=str(e)[:300], message=msg)
+            DIRTY.set()
+    threading.Thread(target=run, daemon=True).start()
+    return {"job": jid, "model": name}
+
+
+assistant.START_CAD_JOB = start_cad_job
+
+
 def _doc_brief(doc):
     return {k: doc[k] for k in ("title", "document_id", "maturity", "status", "stale")}
 
@@ -684,4 +991,5 @@ if __name__ == "__main__":
     print(f"AETHER Lab running: http://localhost:{port}  (compute: {compute.where()})")
     print("Meta key:", "found" if os.environ.get("META_API") else "MISSING (set META_API in .env)")
     compute.warm()
+    _after_load()
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

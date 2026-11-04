@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import re
 import time
 import traceback
 
@@ -504,7 +505,133 @@ def cmd_detail(a):
     return {"status": st, "details": det, "section_shape": s5, "seconds": round(time.time() - t, 1)}
 
 
-CMDS = {"ping": cmd_ping, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
+def cmd_add_feature(a):
+    """Features the assistant adds to the BODY of the open document (refining a model), all in ONE recompute (each
+    recompute of a car body costs a minute or two): an imprint (an outline split into the surface, a named region the
+    viewer can colour: lamp, plate, door line) or a pocket (a recess `depth_mm` deep: grille, intake, plate recess).
+    a["features"]: [{op, view, polygons, region, material?, depth_mm?}]; an outline is a polygon in the view plane in
+    model mm (side: (x, z), top: (x, y), front / rear: (y, z)). The features are optional: one that cannot be built
+    within the validity rules is skipped (status failed_optional), then taken out of the document and reported, so
+    the others still land. They go after the body's current last feature; the body component outputs the last one."""
+    doc = _need()
+    if a.get("document_id") and a["document_id"] != doc.data["document_id"]:
+        raise RuntimeError("that model's CAD document is not the one open in the CAD worker (only the latest CAD model "
+                           "can take CAD features); add a part with attach instead")
+    body = next((c for c in doc.data["components"] if c["kind"] == "body_shell"), None)
+    if body is None:
+        raise RuntimeError("this CAD document has no body to add a feature to")
+    specs = a.get("features") or [a]
+    has_skin = any(f["id"] == "body.skin" for f in doc.data["features"])
+    first_last = body["output"]
+    i = next(k for k, f in enumerate(doc.data["features"]) if f["id"] == first_last) + 1
+    # numbered after the highest one there (one taken out by an undo must not hand its number to a new one)
+    n = max([int(m.group(1)) for f in doc.data["features"] if f.get("ai")
+             for m in [re.match(r"body\.ai(\d+)_", f["id"])] if m] or [0])
+    added = []
+    for sp in specs:
+        op, view = sp["op"], sp["view"]
+        if op not in ("imprint", "pocket"):
+            raise ValueError("op must be imprint or pocket")
+        if view not in ("side", "top", "front", "rear"):
+            raise ValueError("view must be side, top, front or rear")
+        polys = [[[float(x), float(y)] for x, y in poly] for poly in sp["polygons"]]
+        if not polys or any(len(q) < 3 for q in polys):
+            raise ValueError("each outline needs at least 3 points")
+        n += 1
+        region = str(sp.get("region") or f"detail {n}").strip().lower()[:40]
+        oid = f"obs.ai.{n}"
+        doc.data["observations"][oid] = {"kind": "region_outlines", "class": "assistant", "view": view, "data": polys,
+                                         "note": f"outline drawn by the assistant for '{region}' (refinement), model mm"}
+        params = {"view": view, "polygons": {"$obs": oid}, "scale": 1.0, "name": region, "region": region,
+                  "defer_si": True}
+        if op == "pocket":
+            params["depth"] = float(sp.get("depth_mm") or 5.0)
+        else:
+            params["material"] = sp.get("material") or "panel"
+        fid = f"body.ai{n}_{op}"
+        feat = {"id": fid, "op": f"{op}_projection", "inputs": [body["output"]] + (["body.skin"] if op == "pocket" and has_skin else []),
+                "params": params, "component": "body", "optional": True, "ai": True,
+                "label": f"{'Imprint' if op == 'imprint' else 'Pocket'}: {region} (assistant, {view} view)",
+                "region": {"kind": region, "view": view, "material": params.get("material")}}
+        doc.data["features"].insert(i, feat)
+        i += 1
+        body["output"] = fid
+        added.append((feat, oid))
+    t = time.time()
+    st = doc.recompute(validate=_fast_validate)
+    failed = [(f, o) for f, o in added if f.get("status") != "ok"]
+    if failed or st["state"] != "ok":                    # take the ones that did not build out, rebuild without them
+        drop = {f["id"] for f, _ in failed} if st["state"] == "ok" else {f["id"] for f, _ in added}
+        for f, o in added:
+            if f["id"] in drop:
+                doc.data["features"].remove(f)
+                doc.data["observations"].pop(o, None)
+        prev = first_last
+        for f, _ in added:                               # re-chain the ones that stay
+            if f["id"] not in drop:
+                f["inputs"][0] = prev
+                prev = f["id"]
+        body["output"] = prev
+        st = doc.recompute(validate=_fast_validate)
+    ok = [f for f, _ in added if f in doc.data["features"]]
+    si_s = None
+    if ok and st["state"] == "ok":
+        # the self-intersection check, once for the whole batch on the finished body; faulty -> the batch is taken out
+        from cad.validate import _argument_analysis
+        t1 = time.time()
+        si = _argument_analysis(doc.shapes[body["output"]])
+        si_s = round(time.time() - t1, 1)
+        if si["faulty"]:
+            for f, o in added:
+                if f in doc.data["features"]:
+                    doc.data["features"].remove(f)
+                    doc.data["observations"].pop(o, None)
+                    f["status"], f["error"] = "failed_optional", "self-intersecting body after the batch: " + str(si.get("faults"))[:200]
+            body["output"] = first_last
+            st = doc.recompute(validate=_fast_validate)
+            ok = []
+    if ok and st["state"] == "ok":
+        _save(doc, STATE["out_dir"])
+    return {"ok": bool(ok) and st["state"] == "ok", "seconds": round(time.time() - t, 1), "check_seconds": si_s,
+            "added": [{"feature": f["id"], "region": f["params"]["region"], "label": f["label"],
+                       **{k: v for k, v in (doc.info.get(f["id"]) or {}).items() if k in ("outline_inset_mm", "depth_mm")}}
+                      for f in ok],
+            "failed": [{"region": f["params"]["region"], "error": (f.get("error") or st.get("message") or "")[:400]}
+                       for f, _ in added if f not in ok]}
+
+def cmd_remove_features(a):
+    """Take features the assistant added out of the open document again (an undo in the app), in one recompute: the
+    features after them are chained to what came before."""
+    doc = _need()
+    if a.get("document_id") and a["document_id"] != doc.data["document_id"]:
+        return {"ok": False, "skipped": "another CAD document is open now"}
+    feats = doc.data["features"]
+    gone = [f for f in feats if f["id"] in set(a.get("ids") or []) and f.get("ai")]
+    if not gone:
+        return {"ok": True, "removed": []}
+    sub = {f["id"]: f["inputs"][0] for f in gone}
+
+    def back(x):
+        while x in sub:
+            x = sub[x]
+        return x
+    for f in feats:
+        if f not in gone and f.get("inputs"):
+            f["inputs"] = [back(x) for x in f["inputs"]]
+    for c in doc.data["components"]:
+        if c.get("output"):
+            c["output"] = back(c["output"])
+    for f in gone:
+        feats.remove(f)
+        doc.data["observations"].pop((f["params"].get("polygons") or {}).get("$obs"), None)
+    t = time.time()
+    st = doc.recompute(validate=_fast_validate)
+    if st["state"] == "ok":
+        _save(doc, STATE["out_dir"])
+    return {"ok": st["state"] == "ok", "removed": [f["id"] for f in gone], "seconds": round(time.time() - t, 1)}
+
+
+CMDS = {"ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
         "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "asm_build": cmd_asm_build,
         "asm_step": cmd_asm_step, "asm_step_status": cmd_asm_step_status, "asm_section": cmd_asm_section}
 

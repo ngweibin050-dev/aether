@@ -384,11 +384,18 @@ def import_cad(state, meshes, groups, name, document_id, replace=False, provenan
     old_g = next((p for p in state["parts"] if p["type"] == "group" and (p.get("eng") or {}).get("cad_document") == document_id
                   and not p.get("parent")), None)
     keep_pose = (old_g["position"], old_g["scale"], old_g["rotation"], old_g["name"]) if old_g else None
+    # what the user / assistant set on the old parts is kept: colours, region colours, visibility (by CAD component)
+    looks = {(p.get("eng") or {}).get("cad_component"): {k: p[k] for k in ("color", "region_colors", "visible") if k in p}
+             for p in state["parts"] if (p.get("eng") or {}).get("cad_document") == document_id and p["type"] == "cad"}
     state["parts"] = [p for p in state["parts"] if (p.get("eng") or {}).get("cad_document") != document_id
                       or (replace and (p.get("eng") or {}).get("cad_document"))]
     if replace:
         state["parts"] = [p for p in state["parts"] if not (p.get("eng") or {}).get("cad_document")]
     g = _part("group", {}, name, (0, 0, 0))
+    if old_g:
+        # the same id: parts added to the model by the user or the assistant (parented to it) stay on it
+        g["id"] = old_g["id"]
+        g["visible"] = old_g.get("visible", True)
     g["eng"] = {"kind": "cad assembly", "cad_document": document_id, "dims": {}, "joints": [], **(provenance or {})}
     state["parts"].append(g)
     sub = {}
@@ -408,6 +415,7 @@ def import_cad(state, meshes, groups, name, document_id, replace=False, provenan
             p["color"] = retina.hex_color(m["colour"])
         p["eng"] = {"kind": m["kind"], "cad_document": document_id, "cad_component": cid, "dims": {}, "joints": [],
                     "material": m.get("material")}
+        p.update(looks.get(cid) or {})
         state["parts"].append(p)
     state["selected"] = g["id"]
     _bump(state)
@@ -418,6 +426,56 @@ def import_cad(state, meshes, groups, name, document_id, replace=False, provenan
         g["position"] = [float(-(lo[0] + hi[0]) / 2), float(-(lo[1] + hi[1]) / 2), 0.0]
     place_on_base(state, g["id"], 0.0)
     return {"id": g["id"], "parts": len(meshes), "size_mm": _clean(np.round(hi - lo, 1)), "kept_placement": bool(keep_pose)}
+
+
+def guard_cad_leaves(old_parts, new_parts):
+    """A CAD component is display geometry of the B-rep in its document's frame: it stays at identity under its
+    group (moving / scaling the MODEL moves the group). An edit from the UI that moved or scaled the components one by
+    one (seen once: every component of a car at scale pi) is put back; returns the names that were reset."""
+    old = {p["id"]: p for p in old_parts}
+    reset = []
+    for p in new_parts:
+        o = old.get(p["id"])
+        if p.get("type") != "cad" or o is None:
+            continue
+        for k in ("position", "rotation", "scale"):
+            if p.get(k) != o.get(k):
+                p[k] = o.get(k)
+                reset.append(p["name"])
+    return sorted(set(reset))
+
+
+def fold_cad_leaves(state):
+    """Repair a model whose CAD components all carry the same transform T (instead of identity): T goes into the
+    group (uniform scale, no rotation, as the repair needs), the components go back to identity, and the group's other
+    children are moved so nothing changes on screen. Returns the models repaired."""
+    fixed = []
+    for g in [p for p in state["parts"] if p["type"] == "group" and not p.get("parent") and (p.get("eng") or {}).get("cad_document")]:
+        leaves = [p for p in subtree(state, g["id"]) if p["type"] == "cad"]
+        if not leaves:
+            continue
+        T = {(tuple(p["position"]), tuple(p["rotation"]), tuple(p["scale"])) for p in leaves}
+        if len(T) != 1:
+            continue
+        pos, rot, sc = (np.asarray(x, float) for x in next(iter(T)))
+        if np.allclose(pos, 0) and np.allclose(sc, 1) and np.allclose(rot, 0):
+            continue
+        if not (np.allclose(rot, 0) and np.allclose(sc, sc[0]) and np.allclose(g.get("rotation", [0, 0, 0]), 0)):
+            continue
+        k = float(sc[0])
+        G = np.asarray(g["scale"], float)
+        g["position"] = _clean(np.asarray(g["position"], float) + G * pos)
+        g["scale"] = _clean(G * k)
+        for p in leaves:
+            p["position"], p["rotation"], p["scale"] = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]
+        for p in state["parts"]:
+            if p.get("parent") == g["id"] and p["type"] != "cad" and not (p.get("eng") or {}).get("cad_document"):
+                p["position"] = _clean((np.asarray(p["position"], float) - pos) / k)
+                p["scale"] = _clean(np.asarray(p["scale"], float) / k)
+        fixed.append(g["name"])
+    if fixed:
+        _bump(state)
+    return fixed
 
 
 def set_display(state, preset=None, pitch_um=None, wavelength_nm=None, samples=None, distance_mm=None,

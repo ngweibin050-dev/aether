@@ -62,6 +62,8 @@ def hex_color(c):
     c = str(c).strip()
     if re.fullmatch(r"#?[0-9a-fA-F]{6}", c):
         return "#" + c.lstrip("#").lower()
+    if re.fullmatch(r"#?[0-9a-fA-F]{3}", c):              # short form #222 -> #222222
+        return "#" + "".join(ch * 2 for ch in c.lstrip("#").lower())
     raise ValueError(f"colour must be a hex like #b87333, got {c}")
 
 

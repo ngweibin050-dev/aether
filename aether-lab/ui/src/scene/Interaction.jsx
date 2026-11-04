@@ -48,16 +48,17 @@ function inBox(rect) {
 export default function Interaction() {
   const [rect, setRect] = useState(null);
   useEffect(() => {
-    let down = null;
+    let down = null, rdown = null;
     const st = useStore.getState;
     const onDown = (e) => {
       if (e.target !== view.dom || modalActive()) return;
       if (e.button === 2) {
+        // right-drag pans the view (scene/nav.js); a right-CLICK (no drag) opens the context menu, on release
         if (e.shiftKey) { const h = pick(e.clientX, e.clientY); h && useStore.setState({ cursor3d: h.point }); }
-        else st().setMenu({ kind: "context", x: e.clientX, y: e.clientY });
+        else rdown = { x: e.clientX, y: e.clientY };
         return;
       }
-      if (e.button !== 0 || e.altKey || view.gizmo?.axis) return;
+      if (e.button !== 0 || e.altKey || view.gizmo?.axis || view.nav?.space) return;      // Space + drag: pan (nav)
       st().setMenu(null);
       down = { x: e.clientX, y: e.clientY, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey, box: false };
     };
@@ -67,6 +68,11 @@ export default function Interaction() {
       if (down.box) setRect({ x0: Math.min(down.x, e.clientX), y0: Math.min(down.y, e.clientY), x1: Math.max(down.x, e.clientX), y1: Math.max(down.y, e.clientY) });
     };
     const onUp = (e) => {
+      if (rdown && e.button === 2) {
+        const r = rdown; rdown = null;
+        if (Math.hypot(e.clientX - r.x, e.clientY - r.y) < 5) st().setMenu({ kind: "context", x: e.clientX, y: e.clientY });
+        return;
+      }
       if (!down) return;
       const d = down; down = null;
       if (d.box) {

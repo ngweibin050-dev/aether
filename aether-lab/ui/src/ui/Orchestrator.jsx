@@ -6,6 +6,7 @@ import { L, useLayout } from "./layout";
 import Icon from "./Icon";
 import { SineLoader } from "./Charts";
 import Markdown from "./Markdown";
+import ChatSessions from "./ChatSessions";
 
 const NAMES = {
   build_assembly: "Build assembly", add_part: "Add part", update_part: "Edit part", delete_part: "Delete part",
@@ -168,9 +169,21 @@ function friendlyError(t = "") {
 
 const FILE_ICON = { image: "camera", pdf: "film", mesh: "cube", cad: "holo", other: "upload" };
 
+// An attached file: an image shows itself (double-click: the Lightbox opens it big); any other file shows its icon and
+// name, and double-click opens the preview (3D viewer for GLB / STL / OBJ, PDF / SVG inline) with Download.
 function Chip({ f, onRemove }) {
+  const src = f.preview || f.url;
+  if (f.kind === "image" && src) return (
+    <span className="relative inline-block" title={`${f.name} (double-click to enlarge)`}>
+      <img src={src} alt={f.name} className="h-16 max-w-[160px] cursor-zoom-in rounded-lg border border-white/10 object-cover" />
+      {f.uploading && <span className="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-glow" />}
+      {onRemove && <button type="button" onClick={onRemove} title="Remove"
+        className="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-black/80 text-[11px] text-white hover:bg-rose-500">×</button>}
+    </span>
+  );
   return (
-    <span className="flex max-w-[220px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] text-slate-200">
+    <span onDoubleClick={() => f.url && useStore.setState({ preview: f })} title={f.url ? `${f.name} (double-click to preview)` : f.name}
+      className={`flex max-w-[220px] items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[11px] text-slate-200 ${f.url ? "cursor-pointer hover:bg-white/[0.09]" : ""}`}>
       <Icon name={FILE_ICON[f.kind] || "upload"} className="h-3.5 w-3.5 shrink-0 text-cyan-glow" />
       <span className="truncate">{f.name}</span>
       {f.page_count ? <span className="shrink-0 font-mono text-[9.5px] text-slate-500">{f.page_count} p</span> : null}
@@ -185,16 +198,23 @@ function Extras({ x, onOption }) {
   if (!x) return null;
   return (
     <div className="mt-2 space-y-2">
+      {x.status && (
+        <div title={x.status === "checks_passed" ? "The self-check found nothing floating, sticking out, overlapping or duplicated"
+          : "The self-check still objects to something it added: see the reply"}
+          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-wide ${
+            x.status === "checks_passed" ? "border-emerald-400/30 text-emerald-300" : "border-amber-400/40 text-amber-300"}`}>
+          {x.status === "checks_passed" ? "✓ checks passed" : "! needs review"}</div>)}
       {x.changes?.length > 0 && (
         <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/[0.05] px-2.5 py-1.5">
           <div className="mb-0.5 font-mono text-[9.5px] uppercase tracking-wide text-emerald-300/90">What changed</div>
           {x.changes.map((c, i) => <div key={i} className="text-[11.5px] text-slate-200">• {c}</div>)}
-          <button type="button" onClick={() => onOption("undo")} className="mt-1 font-mono text-[10px] text-slate-400 hover:text-white">↶ undo this</button>
+          <button type="button" onClick={() => (x.undo_id ? useStore.getState().undoTurn(x.undo_id) : onOption("undo"))} className="mt-1 font-mono text-[10px] text-slate-400 hover:text-white">↶ undo this</button>
         </div>)}
       {x.downloads?.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {x.downloads.map((d) => (
-            <a key={d.url} href={d.url} download={d.name}
+            <a key={d.url} href={d.url} download={d.name} title="Click to download · double-click to preview"
+              onDoubleClick={(e) => { e.preventDefault(); useStore.setState({ preview: d }); }}
               className="flex items-center gap-2 rounded-lg border border-cyan-glow/30 bg-cyan-glow/[0.07] px-2.5 py-1.5 text-[11.5px] text-white hover:bg-cyan-glow/15">
               <Icon name="upload" className="h-3.5 w-3.5 rotate-180 text-cyan-glow" />
               <span><span className="block font-semibold">{d.label}</span><span className="font-mono text-[9.5px] text-slate-400">{d.name} · {(d.bytes / 1024).toFixed(0)} KB</span></span>
@@ -293,11 +313,13 @@ export default function Orchestrator() {
   const file = useRef();
   const attach = async (list) => {
     for (const f of [...(list || [])]) {
-      const tmp = { name: f.name, kind: "other", uploading: true, key: Math.random() };
+      const img = /^image\//.test(f.type);
+      const tmp = { name: f.name, kind: img ? "image" : "other", uploading: true, key: Math.random(),
+        ...(img ? { preview: URL.createObjectURL(f) } : {}) };
       setFiles((x) => [...x, tmp]);
       try {
         const meta = await useStore.getState().upload(f);
-        setFiles((x) => x.map((y) => (y.key === tmp.key ? meta : y)));
+        setFiles((x) => x.map((y) => (y.key === tmp.key ? { ...meta, preview: tmp.preview } : y)));
       } catch (e) { setFiles((x) => x.filter((y) => y.key !== tmp.key)); notify(`${f.name}: ${e.message}`, "error"); }
     }
   };
@@ -310,11 +332,29 @@ export default function Orchestrator() {
     addEventListener("keydown", f); return () => removeEventListener("keydown", f);
   }, []);
 
+  // the message box grows with its text (up to about 8 lines, then it scrolls)
+  const grow = (el) => { if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 168)}px`; };
+  // a message written while Muse Spark is still answering is queued and sent when it is done (not lost, not blocked)
+  const [queued, setQueued] = useState([]);
+  // Stop: the server ends the turn at once (a Muse Spark call in flight is abandoned); queued messages are dropped too
+  const stopAI = () => {
+    fetch("/api/chat/stop", { method: "POST", body: "{}" }).catch(() => {});
+    setQueued([]);
+    notify("Stopping the AI…");
+  };
+  useEffect(() => {
+    if (busy || !queued.length) return;
+    const [q, ...rest] = queued;
+    setQueued(rest);
+    ask(q.text, q.files);
+  }, [busy, queued]); // eslint-disable-line react-hooks/exhaustive-deps
   const send = (q) => {
     const t = (q ?? text).trim();
     const ready = files.filter((f) => !f.uploading);
-    if ((!t && !ready.length) || busy || files.some((f) => f.uploading)) return;
+    if ((!t && !ready.length) || files.some((f) => f.uploading)) return;
     setText(""); setFiles([]);
+    requestAnimationFrame(() => grow(input.current));
+    if (busy) { setQueued((x) => [...x, { text: t || "Here is a file.", files: ready }]); return; }
     ask(t || "Here is a file.", ready);
   };
   // voice: the transcript goes to Muse Spark, tagged with the model and its seconds; "Explain this machine" (or
@@ -355,13 +395,13 @@ export default function Orchestrator() {
   const lay = useLayout();
   const minimised = open && lay.win.orchestrator === "min";
   const mode = useStore((s) => s.mode), setMode = useStore((s) => s.setMode);
-  const modeSwitch = (
+  const modeSwitch = (<div className="flex items-center"><ChatSessions />
     <div className="mr-1 flex rounded-lg border border-white/10 bg-black/30 p-0.5">
       {[["laptop", "laptop", "Laptop mode (mouse and keyboard)"], ["hand", "hand", "Hand tracking (camera)"]].map(([m, ic, t]) => (
         <button key={m} title={t} onClick={() => setMode(m)}
           className={`flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition ${mode === m ? "tab-on" : "text-slate-400 hover:text-white"}`}>
           <Icon name={ic} className="h-3.5 w-3.5" /><span className="hidden xl:inline">{m === "laptop" ? "Laptop" : "Hand"}</span></button>))}
-    </div>
+    </div></div>
   );
   // the top edge drags: up = taller chat, down = shorter; remembered in this browser
   const [h, setH] = useState(() => { try { return +localStorage.getItem("aether.orch.h") || null; } catch { return null; } });
@@ -437,10 +477,16 @@ export default function Orchestrator() {
           </div>
         )}
         {photo && <PhotoForm image={photo} onCancel={() => setPhoto(null)} />}
+        {queued.length > 0 && <div className="shrink-0 space-y-0.5">{queued.map((q, i) => (
+          <div key={i} className="flex items-center gap-1.5 rounded-lg border border-dashed border-white/15 px-2 py-1 text-[11px] text-slate-400">
+            <span className="font-mono text-[9.5px] uppercase text-cyan-glow/70">queued</span>
+            <span className="min-w-0 flex-1 truncate">{q.text}</span>
+            <button type="button" className="text-slate-500 hover:text-white" title="Remove" onClick={() => setQueued((x) => x.filter((_, j) => j !== i))}>×</button>
+          </div>))}</div>}
         {files.length > 0 && <div className="flex shrink-0 flex-wrap gap-1.5">{files.map((f, i) => (
           <Chip key={f.key || f.name} f={f} onRemove={() => setFiles((x) => x.filter((_, j) => j !== i))} />))}</div>}
         <form onSubmit={(e) => { e.preventDefault(); send(); }}
-          className={`relative flex shrink-0 items-center gap-1.5 overflow-hidden rounded-xl border bg-black/35 p-1 transition ${busy ? "border-cyan-glow/40" : "border-white/10 focus-within:border-cyan-glow/50 focus-within:shadow-[0_0_24px_rgba(95,225,255,.18)]"}`}>
+          className={`relative flex shrink-0 items-end gap-1.5 overflow-hidden rounded-xl border bg-black/35 p-1 transition ${busy ? "border-cyan-glow/40" : "border-white/10 focus-within:border-cyan-glow/50 focus-within:shadow-[0_0_24px_rgba(95,225,255,.18)]"}`}>
           <button type="button" title="Hold to talk (Muse Voice)" onPointerDown={startRec} onPointerUp={stopRec} onPointerLeave={stopRec}
             className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg transition ${rec ? "animate-pulse bg-magenta-glow/25 text-magenta-glow" : "text-silver hover:bg-white/10 hover:text-white"}`}>
             <Icon name="mic" /></button>
@@ -451,16 +497,21 @@ export default function Orchestrator() {
           <input ref={file} id="photo-input" type="file" multiple className="hidden"
             accept="image/*,.pdf,.glb,.gltf,.stl,.obj,.step,.stp"
             onChange={(e) => { attach(e.target.files); e.target.value = ""; }} />
-          <input id="ai-input" ref={input} value={text} onChange={(e) => setText(e.target.value)}
+          <textarea id="ai-input" ref={input} value={text} rows={1}
+            onChange={(e) => { setText(e.target.value); grow(e.target); }}
             onPaste={(e) => { if (e.clipboardData?.files?.length) { e.preventDefault(); attach(e.clipboardData.files); } }}
-            onKeyDown={(e) => e.key === "Escape" && e.target.blur()}
-            placeholder={rec ? "Listening… release to send" : "Ask Muse Spark to design, change or check something…"}
-            className="min-w-0 flex-1 truncate bg-transparent px-1 py-1.5 text-[12.5px] text-white outline-none placeholder:text-white/35" />
-          {busy && <button type="button" title="Stop (after the current step)"
-            onClick={() => { fetch("/api/chat/stop", { method: "POST", body: "{}" }); notify("Stopping after the current step…"); }}
-            className="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/10 text-white hover:bg-rose-500/40">
-            <span className="h-2.5 w-2.5 rounded-sm bg-white" /></button>}
-          {!busy && <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky-400 via-indigo-500 to-violet-500 text-white shadow-[0_6px_18px_-6px_rgba(99,102,241,.9)] transition hover:brightness-110 disabled:bg-none disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") return busy ? stopAI() : e.target.blur();
+              // Enter sends, Shift+Enter is a new line (not while an IME is composing a word)
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+            }}
+            placeholder={rec ? "Listening… release to send" : "Ask Muse Spark to design, change or check something… (Shift+Enter: new line)"}
+            className="scroll-thin max-h-[168px] min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-[12.5px] leading-[1.45] text-white outline-none placeholder:text-white/35" />
+          {busy && <button type="button" title="Stop the AI now (Esc). What it already changed stays as one undo step."
+            onClick={stopAI}
+            className="relative z-10 flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-rose-500/80 px-2.5 text-[11.5px] font-medium text-white shadow-[0_0_14px_rgba(244,63,94,.45)] transition hover:bg-rose-500">
+            <span className="h-2.5 w-2.5 rounded-[2px] bg-white" />Stop</button>}
+          {(!busy || text.trim()) && <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-sky-400 via-indigo-500 to-violet-500 text-white shadow-[0_6px_18px_-6px_rgba(99,102,241,.9)] transition hover:brightness-110 disabled:bg-none disabled:bg-white/10 disabled:text-white/30 disabled:shadow-none"
             disabled={(!text.trim() && !files.length) || files.some((f) => f.uploading)}><Icon name="send" /></button>}
           {busy && <div className="pointer-events-none absolute inset-0 busy-sheen" />}
         </form>

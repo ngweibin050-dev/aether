@@ -357,10 +357,16 @@ def face_materials(doc, shape):
     PV = doc.param_values()
     imps = []
     for f in doc.data["features"]:
-        if f["op"] == "imprint_projection" and MATERIALS.get(f["params"].get("material")):
+        if f.get("ai") and f.get("status", "ok") == "ok":     # a region the assistant added: its own name, model mm
+            polys = doc.data["observations"][f["params"]["polygons"]["$obs"]]["data"]
+            imps.insert(0, (f["params"]["view"], polys, f["params"]["region"]))
+        elif f["op"] == "imprint_projection" and MATERIALS.get(f["params"].get("material")):
             sc = PV.get("region_scale", 1.0)
             polys = [[[c * sc for c in q] for q in poly] for poly in doc.data["observations"][f["params"]["polygons"]["$obs"]]["data"]]
-            imps.append((f["params"]["view"], polys, f["params"]["material"]))
+            mat = f["params"]["material"]
+            # lamps keep their own name (headlight, tail light: coloured apart); all windows are one "glass" region
+            name = (f.get("region") or {}).get("kind", mat).replace("_", " ") if mat == "light" else mat
+            imps.append((f["params"]["view"], polys, name))
     out = []
     ex = TopExp_Explorer(shape, TopAbs_FACE)
     while ex.More():

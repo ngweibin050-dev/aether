@@ -8,8 +8,10 @@ import PhysicsPanel from "./ui/PhysicsPanel";
 import CadPanel from "./ui/CadPanel";
 import AssemblyPanel from "./ui/AssemblyPanel";
 import DrawingPanel from "./ui/DrawingPanel";
+import HistoryPanel from "./ui/HistoryPanel";
 import OpticsFigure from "./ui/OpticsFigure";
-import Toolbar from "./ui/Toolbar";
+import Lightbox, { useLightboxListener } from "./ui/Lightbox";
+import FilePreview from "./ui/FilePreview";
 import { PanelTray } from "./ui/FloatPanel";
 import EmptyDesk from "./ui/EmptyDesk";
 import NavGizmo from "./ui/NavGizmo";
@@ -24,6 +26,7 @@ import { useStore } from "./store";
 export default function App() {
   const ready = useStore((s) => !!s.state);
   useShortcuts();
+  useLightboxListener();
   useEffect(() => { useStore.getState().load().catch((e) => useStore.getState().notify(e.message, "error")); }, []);
   useEffect(() => {
     const block = (e) => {
@@ -43,10 +46,11 @@ export default function App() {
       <div className="pointer-events-none absolute inset-0">
         <MenuBar />
         {ready && <>
-          <Orchestrator /><Outliner /><PhysicsPanel /><CadPanel /><AssemblyPanel /><DrawingPanel /><OpticsFigure /><Toolbar /><NavGizmo /><Dock /><ExplainPlayer /><RecordedBanner /><HandTracker /><EmptyDesk /><PanelTray /><StatusBar />
+          <Orchestrator /><Outliner /><PhysicsPanel /><CadPanel /><AssemblyPanel /><DrawingPanel /><HistoryPanel /><OpticsFigure /><NavGizmo /><Dock /><ExplainPlayer /><RecordedBanner /><HandTracker /><EmptyDesk /><PanelTray /><StatusBar />
         </>}
       </div>
       {ready && <><Interaction /><Menus /><AirCursor /></>}
+      <Lightbox /><FilePreview />
       {!ready && <div className="absolute inset-0 grid place-items-center"><div className="busy-sheen rounded-2xl border border-white/10 px-6 py-3 text-silver">Connecting to the AETHER physics server…</div></div>}
     </div>
   );

@@ -36,6 +36,68 @@ def stl(state):
     return head + struct.pack("<I", len(T)) + rec.tobytes()
 
 
+def three_mf(state):
+    """3MF bytes (the 3D-printing format slicers prefer over STL: units, one named object per part, colours): every
+    visible part in world millimetres, z up."""
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+    ms = _meshes(state)
+    cols, objs, items = [], [], []
+    for i, (p, V, F) in enumerate(ms, 1):
+        c = str(p.get("color") or "#9aa7b8").lstrip("#")
+        cols.append(f'<base name="{escape(p["name"])}" displaycolor="#{(c if len(c) == 6 else "9aa7b8").upper()}FF"/>')
+        vs = "".join(f'<vertex x="{x:.4f}" y="{y:.4f}" z="{z:.4f}"/>' for x, y, z in V)
+        ts = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c_}"/>' for a, b, c_ in F)
+        objs.append(f'<object id="{i + 1}" name="{escape(p["name"])}" type="model" pid="1" pindex="{i - 1}">'
+                    f'<mesh><vertices>{vs}</vertices><triangles>{ts}</triangles></mesh></object>')
+        items.append(f'<item objectid="{i + 1}"/>')
+    model = ('<?xml version="1.0" encoding="UTF-8"?><model unit="millimeter" xml:lang="en-US" '
+             'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
+             '<metadata name="Application">AETHER Lab</metadata><resources>'
+             f'<basematerials id="1">{"".join(cols)}</basematerials>{"".join(objs)}</resources>'
+             f'<build>{"".join(items)}</build></model>')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/'
+                   'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-'
+                   'package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-'
+                   '3dmodel+xml"/></Types>')
+        z.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/'
+                   'package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" '
+                   'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+        z.writestr("3D/3dmodel.model", model)
+    return buf.getvalue()
+
+
+def analyze(meshes, densities):
+    """Mass properties of closed meshes [(part, V mm, F)] and densities g/cm3 by part id: volume, area, mass, centre of
+    mass, size. Volumes by the divergence theorem (signed tetrahedra from the origin); an open mesh is flagged."""
+    out, tot_m, mom = [], 0.0, np.zeros(3)
+    lo, hi = np.full(3, np.inf), np.full(3, -np.inf)
+    area_all = 0.0
+    for p, V, F in meshes:
+        T = V[F]
+        vol6 = np.einsum("ij,ij->i", T[:, 0], np.cross(T[:, 1], T[:, 2]))
+        vol = float(vol6.sum() / 6)
+        area = float(0.5 * np.linalg.norm(np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]), axis=1).sum())
+        c = (vol6[:, None] * (T[:, 0] + T[:, 1] + T[:, 2]) / 4).sum(0) / (vol6.sum() or 1e-12)
+        e = np.sort(np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]]), 1)
+        _, cnt = np.unique(e, axis=0, return_counts=True)
+        rho = densities.get(p["id"], 7.85)
+        mass = abs(vol) * rho / 1000.0                   # mm3 x g/cm3 / 1000 = g
+        out.append({"part": p["name"], "volume_cm3": round(abs(vol) / 1000, 2), "area_cm2": round(area / 100, 1),
+                    "density_g_cm3": rho, "mass_g": round(mass, 1), "closed": bool((cnt == 2).all())})
+        tot_m += mass
+        mom += mass * c
+        area_all += area
+        lo, hi = np.minimum(lo, V.min(0)), np.maximum(hi, V.max(0))
+    return {"parts": out, "mass_kg": round(tot_m / 1000, 3),
+            "centre_of_mass_mm": [round(float(x), 1) for x in mom / max(tot_m, 1e-9)],
+            "size_mm": [round(float(x), 1) for x in hi - lo], "area_cm2": round(area_all / 100, 1),
+            "open_meshes": [x["part"] for x in out if not x["closed"]]}
+
+
 def _rgb(c):
     c = str(c or "#9aa7b8").lstrip("#")
     return [int(c[i:i + 2], 16) / 255 for i in (0, 2, 4)] if len(c) == 6 else [0.6, 0.65, 0.72]

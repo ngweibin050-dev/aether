@@ -101,7 +101,9 @@ CASES = [
      lambda b, a, r, t, x: ["window not blue"] if not any((p.get("region_colors") or {}).get("glass") for p in a["parts"]) else []),
     ("refine: more detailed car", car_scene, "can separate single body to more detailed, like car windows, car doors, seats inside, steering wheel, front and back bonnet", (),
      lambda b, a, r, t, x: (["car removed"] if "Sports car" not in names(a) else [])
-     + (["used create_model instead of add_parts"] if "create_model" in tools(t) and "add_parts" not in tools(t) else [])
+     + (["the car was rebuilt (its group is gone)"] if not ({p["id"] for p in b["parts"] if p["name"] == "Sports car"}
+                                                            & {p["id"] for p in a["parts"]}) else [])
+     + (["used create_model while refining"] if "create_model" in tools(t) else [])
      + (["nothing added to the car"] if len(lab.subtree(a, next(p for p in a["parts"] if p["name"] == "Sports car")["id"])) <= 6 else [])),
     ("add a GLB beside the car", car_scene, "put this glb beside the car", ("glb",),
      lambda b, a, r, t, x: (["car removed"] if "Sports car" not in names(a) else []) + (["no import"] if "import_file" not in tools(t) else [])
@@ -131,7 +133,7 @@ def main(filt=None):
     for name, scene, msg, att, check in CASES:
         if filt and filt.lower() not in name.lower():
             continue
-        A.UNDO.clear()
+        A.steps.reset()
         st = scene()
         before = copy.deepcopy(st)
         files = [glb_file()] if "glb" in att else []
@@ -150,7 +152,10 @@ def main(filt=None):
                         "error": err})
     n = sum(r["pass"] for r in results)
     print(f"\n{n}/{len(results)} pass")
-    (ROOT / "output" / "eval_assistant.json").write_text(json.dumps(results, indent=1, ensure_ascii=False), encoding="utf-8")
+    f = ROOT / "output" / "eval_assistant.json"         # merged by case: running one case keeps the others' latest result
+    old = {r["case"]: r for r in (json.loads(f.read_text(encoding="utf-8")) if f.exists() else [])}
+    old.update({r["case"]: r for r in results})
+    f.write_text(json.dumps(list(old.values()), indent=1, ensure_ascii=False), encoding="utf-8")
     return results
 
 

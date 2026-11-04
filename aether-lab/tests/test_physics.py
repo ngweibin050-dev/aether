@@ -494,7 +494,7 @@ def test_explain_grounded():
     """30. Explain this machine (explain.py, no API): the validator rejects a step naming a part the model does not have
     and a step with a number that is not in the model (an invented 300 mm); a measured size, the tooth counts and the
     ratio computed from them pass; with no scale on the drawing a size in mm must say "model scale, real size unknown"; teeth assumed from the size give "ratio unknown". A first answer with a bad step is retried once; a step still bad is dropped and
-    counted. If Muse Image fails, the explanation is still returned, with the reason and no picture."""
+    counted. Subsystems keep only the model's own part ids; a quiz item with an invented number is dropped."""
     import agent
     import explain
     P = lambda i, n, k, dims=None, joints=None, reason=None: {
@@ -531,24 +531,27 @@ def test_explain_grounded():
     print(f"  no scale: bare mm {e_unknown[0]}, labelled {e_unknown[1]}; scale read: bare mm {e_known[0]}")
     assert fx["scale"]["real_size_known"] is False and any("model scale" in e for e in e_unknown[0])
     assert e_unknown[1] == [] and e_known[0] == []
-    base = [dict(good, title=f"Step {k}") for k in "ABCDEF"]
-    answers = [{"machine": "reducer", "steps": base + [invented]}, {"machine": "reducer", "steps": base + [bad_id]}]
+    base = [dict(good, title=f"Step {k}", kind="subsystem") for k in "ABCDEF"]
+    extra = {"overview": "A two-stage reducer.", "design_rationale": ["Shafts are parallel so that the housing stays simple."],
+             "subsystems": [{"name": "gears", "role": "reduce speed", "parts": ["g1", "g2", "g9"]},
+                            {"name": "ghost", "role": "x", "parts": ["zz"]}],
+             "assembly_order": ["gears", "ghost"],
+             "quiz": [{"question": "How many teeth does the pinion have?", "options": ["20", "30", "40"], "answer": 0},
+                      {"question": "How wide is the housing?", "options": ["300 mm", "500 mm"], "answer": 0}]}
+    answers = [{"machine": "reducer", "steps": base + [invented], **extra}, {"machine": "reducer", "steps": base + [bad_id], **extra}]
     calls = []
-    real_json, real_post = agent._spark_json, agent._post
+    real_json = agent._spark_json
     agent._spark_json = lambda content, *a, **k: (calls.append(content) or answers.pop(0), {"calls": 1, "retried": False})
-    def no_image(path, body, timeout=120):
-        raise TimeoutError("Muse Image did not answer")
-    agent._post = no_image
     try:
-        r = explain.explain(st, image=None)
+        r = explain.explain(st, image=None, render=False)
     finally:
-        agent._spark_json, agent._post = real_json, real_post
+        agent._spark_json = real_json
     print(f"  explain: {len(r['steps'])} steps kept, rejected {r['rejected_steps']}, retried {r['retried']}, "
-          f"illustration {r['illustration']}")
+          f"subsystems {r['subsystems']}, quiz {len(r['quiz'])}")
     assert len(calls) == 2 and "300" in calls[1][-1]["text"] and r["retried"]
     assert len(r["steps"]) == 6 and len(r["rejected_steps"]) == 1 and "g9" in str(r["rejected_steps"])
-    assert r["illustration"]["data_url"] is None and r["illustration"]["error"]
-    assert r["illustration"]["label"] == "AI illustration — concept, not the measured model"
+    assert [x["name"] for x in r["subsystems"]] == ["gears"] and r["subsystems"][0]["parts"] == ["g1", "g2"]
+    assert r["assembly_order"] == ["gears"] and len(r["quiz"]) == 1 and "illustration" not in r
 
 
 def test_plausible_parts_and_section_gears():

@@ -41,9 +41,34 @@ def op_section_sketch(p, inputs, doc):
     return edge, {"valid": True, "points_yz": [[round(a, 4), round(b, 4)] for a, b in pts], "x": p["x"]}
 
 
+SKIN_SMOOTH_MM = 200.0      # default fairing of the measured sections along the body (p["smooth_mm"] overrides; 0 = off)
+
+
+def _fair_sections(st, sigma):
+    """Each section keypoint's track along the body, averaged with its neighbours (Gaussian in x, sigma mm): the
+    sections are measured one by one from the drawing, and their small disagreements, interpolated exactly by the skin,
+    made the body look crumpled (bumps up to 93 mm). Nose and tail sections stay as measured; near them the window
+    shrinks so the ends are not pulled in. Measured on the car sheet: 200 mm halves the largest bump and keeps the
+    silhouette agreement with the drawing within 0.01 IoU."""
+    if sigma <= 0 or len(st) < 3:
+        return st
+    xs = np.array([x for x, _ in st], float)
+    H = np.stack([np.asarray(h, float) for _, h in st])
+    out = []
+    for i, x in enumerate(xs):
+        if i in (0, len(xs) - 1):
+            out.append((x, [tuple(q) for q in H[i]]))
+            continue
+        w = np.exp(-0.5 * ((xs - x) / sigma) ** 2)
+        w[np.abs(xs - x) > min(x - xs[0], xs[-1] - x) + 1e-6] = 0
+        out.append((x, [tuple(q) for q in np.tensordot(w / w.sum(), H, axes=1)]))
+    return out
+
+
 def op_skin_sections(p, inputs, doc):
-    """Body solid by skinning the station half-sections (cad.kernel.skin_body_v3)."""
+    """Body solid by skinning the station half-sections (cad.kernel.skin_body_v3), faired along the body first."""
     st = [(info["x"], [tuple(q) for q in info["points_yz"]]) for _, info in inputs]
+    st = _fair_sections(st, float(p.get("smooth_mm", SKIN_SMOOTH_MM)))
     sol, info = K.skin_body_v3(st, what="body skin")
     info["valid"] = _valid(sol)
     if not info["valid"]:
@@ -391,7 +416,9 @@ def _imprint_once(p, inputs, doc):
         v1 = mass(sol)["volume_mm3"]
     if abs(v1 - v0) > 1e-6 * abs(v0):
         raise K.KernelError(f"imprint {p.get('name')}: volume changed by {v1 - v0:.3f} mm^3 (an imprint must not)")
-    si = _argument_analysis(sol)
+    # an assistant batch checks self-intersection ONCE on the finished body (cmd_add_feature), not per outline: the
+    # check of a whole car body costs seconds to tens of seconds and grows with every imprint
+    si = {"faulty": False, "deferred": True} if p.get("defer_si") else _argument_analysis(sol)
     return sol, {"valid": _valid(sol) and not si["faulty"], "why": si.get("faults"), "edges_imprinted": n,
                  "tolerance_budget": attempt, "region": p.get("name"), "material": p.get("material"),
                  "self_intersection_check": si}
@@ -429,7 +456,7 @@ def op_pocket_projection(p, inputs, doc):
     s = K.solids(res)
     if len(s) != 1:
         raise K.KernelError(f"pocket {p.get('name')}: left {len(s)} solids")
-    si = _argument_analysis(s[0])
+    si = {"faulty": False, "deferred": True} if p.get("defer_si") else _argument_analysis(s[0])
     return s[0], {"valid": _valid(s[0]) and not si["faulty"], "why": si.get("faults"), "region": p.get("name"),
                   "depth_mm": d, "self_intersection_check": si}
 

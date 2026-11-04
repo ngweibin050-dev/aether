@@ -15,7 +15,7 @@ export default function EmptyDesk() {
       const el = document.getElementById("ai-input");
       if (!el) return;
       if (text) {
-        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
         set.call(el, text);
         el.dispatchEvent(new Event("input", { bubbles: true }));
       }

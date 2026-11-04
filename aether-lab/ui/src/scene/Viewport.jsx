@@ -75,6 +75,7 @@ function Cap({ cap, color }) {
 }
 
 const REGION_DEFAULT = { glass: "#1d2b3a", light: "#dfe7ef" };      // as the CAD document's materials
+const regionDefault = (n) => REGION_DEFAULT[n] || (/light|lamp/.test(n) ? REGION_DEFAULT.light : null);   // headlight, tail light
 
 function PartNode({ part, childrenOf }) {
   const ref = useRef();
@@ -95,7 +96,7 @@ function PartNode({ part, childrenOf }) {
     if (!geom || !mesh?.r) return;
     const names = part.params?.region_names || [];
     const base = new THREE.Color(part.color || "#cfd8e4");
-    const cols = names.map((n) => new THREE.Color(part.region_colors?.[n] || REGION_DEFAULT[n] || part.color || "#cfd8e4"));
+    const cols = names.map((n) => new THREE.Color(part.region_colors?.[n] || regionDefault(n) || part.color || "#cfd8e4"));
     const F = mesh.f, n = geom.attributes.position.count, c = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) base.toArray(c, i * 3);
     for (let t = 0; t < mesh.r.length; t++) {

@@ -1,61 +1,83 @@
-"""Explain this machine: Muse Spark writes a 5-10 step explanation grounded in the BUILT model, and Muse Image draws
-one concept illustration next to it.
+"""Explain this machine: an engineer's walk-through of ONE built model, grounded in that model and illustrated with
+renders of that model (never an invented picture).
+
+The explanation is structured the way an engineer teaches a machine:
+  overview -> architecture (the subsystems, each a set of the model's own part ids) -> why this architecture ->
+  each subsystem -> the power / load path -> interfaces between subsystems -> assembly order -> what was measured and
+  what was assumed -> a short check-yourself quiz.
 
 Grounding, enforced in code (never trusted to the prompt alone):
-- facts(state) lists every part of the model with its id, name, kind and sizes, each size tagged "measured" (traced,
-  read or measured on the drawing) or "guessed" (assumed, or added by the engineer's completion, with its reason);
-  gear pairs come from the parts' gear_mesh joints with their tooth counts, and the ratio is computed here.
+- facts(state) lists every part of the model with its id, name, kind, its size and place in the model (measured on
+  the model's geometry), its sizes from the drawing tagged "measured" or "guessed", gear pairs with the ratio computed
+  here from counted teeth, and the CAD features of a CAD body.
 - validate(plan, facts) rejects a step that names a part id the model does not have, or writes a number that is not in
-  the facts (a size, a tooth count, a ratio, a count of parts, a label printed on the drawing).
+  the facts; subsystems with unknown ids are dropped.
 - explain() retries once with the errors shown to Muse Spark; steps still invalid are dropped and counted.
 
-Muse Image (muse-image-1.0, POST /v1/images/generations, checked on dev.meta.ai/docs 2026-11-01) is asked in parallel
-for ONE illustration, labelled ILLUSTRATION_LABEL wherever it is shown; it is never the measured result. If it fails or
-takes longer than IMAGE_LIMIT_S, the explanation is returned without it."""
+Pictures (engine/snap.py): every step gets a render of the model from its camera, the step's parts highlighted
+(exploded or cut open when the step says so); the architecture step colours each subsystem. The source drawing is the
+model's OWN (assistant.build_from_drawing records it per model), not the last drawing built."""
 import concurrent.futures as cf
 import json
 import re
 import time
 
+import numpy as np
+
 import agent
 
-IMAGE_MODEL = "muse-image-1.0"
-IMAGE_LIMIT_S = 30
-ILLUSTRATION_LABEL = "AI illustration — concept, not the measured model"
-CAMERAS = ["front", "top", "iso", "section"]
+CAMERAS = ["front", "top", "iso", "section", "rear", "left"]
+KINDS = ["overview", "architecture", "why", "subsystem", "flow", "interfaces", "assembly", "assumptions"]
 GUESSED = ("assumed", "engineer", "added", "guess", "typical", "rule")
+PALETTE = ["#4cc9f0", "#f72585", "#ffd166", "#06d6a0", "#b388ff", "#ff8c42", "#90be6d", "#ef476f", "#118ab2", "#c9ada7"]
 
-PLAN_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["machine", "steps"], "properties": {
+PLAN_SCHEMA = {"type": "object", "additionalProperties": False,
+               "required": ["machine", "overview", "subsystems", "design_rationale", "assembly_order", "steps", "quiz"],
+               "properties": {
     "machine": {"type": "string"},
+    "overview": {"type": "string"},
+    "subsystems": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                              "required": ["name", "role", "parts"], "properties": {
+        "name": {"type": "string"}, "role": {"type": "string"}, "parts": {"type": "array", "items": {"type": "string"}}}}},
+    "design_rationale": {"type": "array", "items": {"type": "string"}},
+    "assembly_order": {"type": "array", "items": {"type": "string"}},
     "steps": {"type": "array", "items": {"type": "object", "additionalProperties": False,
-                                         "required": ["title", "text", "parts", "camera", "explode"], "properties": {
+                                         "required": ["kind", "title", "text", "parts", "camera", "explode"], "properties": {
+        "kind": {"type": "string", "enum": KINDS},
         "title": {"type": "string"}, "text": {"type": "string"},
         "parts": {"type": "array", "items": {"type": "string"}},
-        "camera": {"type": "string", "enum": CAMERAS}, "explode": {"type": "boolean"}}}}}}
+        "camera": {"type": "string", "enum": CAMERAS}, "explode": {"type": "boolean"}}}},
+    "quiz": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                        "required": ["question", "options", "answer"], "properties": {
+        "question": {"type": "string"}, "options": {"type": "array", "items": {"type": "string"}},
+        "answer": {"type": "integer"}}}}}}
 
-PROMPT = """You are a senior mechanical engineer explaining a machine to a smart newcomer, step by step, while a 3D
-viewer highlights the parts you name. The image is the drawing the model was built from. The JSON below is the BUILT
-MODEL: every part with its id, kind and sizes; "src" says whether a size was measured on the drawing or guessed.
+PROMPT = """You are a senior engineer teaching how this machine is built and why, to a smart newcomer, while a 3D viewer
+shows the model and highlights the parts you name. {image_note} The JSON below is the BUILT MODEL: every part with its id,
+name, kind, its size and where it sits (size_mm, at = its centre as fractions of the model: x rear->front or along the
+model, y, z bottom->top), sizes from the drawing ("src": measured or guessed), gear pairs, CAD features of a CAD body.
 
-Write 5 to 10 steps in this order:
-1. what the machine is (from the drawing and the parts; say if that is your reading),
-2. the frame / housing that holds everything,
-3. where the power comes in,
-4. how the motion is passed on: the gear pairs (say if a pair was guessed, and why); give a ratio only where
-   the JSON gives one, else say the ratio is unknown because the teeth were not counted,
-5. the output (what moves at the end, and how),
-6. last step: what was guessed and why (thicknesses, depths, parts added by the engineer).
+Answer with:
+- machine: what it is (say if that is your reading).
+- overview: 2-3 sentences: what it does and how, in plain words.
+- subsystems: 3-7 functional subsystems (e.g. frame / body, power, transmission, running gear, controls, enclosure),
+  each with its role in one sentence and the ids of ALL its parts. Every part belongs to exactly one subsystem.
+- design_rationale: 2-4 short reasons WHY the machine is arranged this way (the engineering trade-offs you can see:
+  load paths, packaging, symmetry, serviceability). This is your reasoning: write it as such ("likely", "so that").
+- assembly_order: the subsystem names in the order they would be assembled.
+- steps: 7 to 12 steps in this order of kinds: overview, architecture, why, one "subsystem" step per subsystem,
+  flow (how power or load travels from input to output), interfaces (where subsystems connect and how), assembly
+  (explode: true), assumptions (what was measured on the drawing and what was guessed, and why).
+- quiz: 3 questions with 3 options each and the index (0-2) of the right one, about THIS model.
 
 Rules (checked by a program; a step that breaks one is rejected):
-- "parts": 1-12 part ids from the JSON, exactly as written there; the viewer highlights them.
-- Sizes are in mm: write the unit (e.g. "12 mm"). Every number you write must appear in the JSON (a size, a tooth
-  count, a ratio, a count, a drawing label). Do not convert units, do not add up or estimate. If a number is not
-  there, describe it in words.
-- "scale" says whether the real size is known. When real_size_known is false (a patent drawing has no scale), prefer
-  proportions ("the output wheel is about three times the pinion"); a step that gives a size in mm must say "model
-  scale, real size unknown" in that step.
-- "text": 2 to 4 plain sentences. "title": at most 6 words, no number unless it is in the JSON.
-- "camera": front (the drawing's view), top, iso (3/4 view) or section (cut through the middle).
+- "parts": 1-30 part ids from the JSON, exactly as written; the viewer highlights them. The overview / architecture
+  / why steps may list the main parts.
+- Every number you write must appear in the JSON (a size, a count, a tooth count, a ratio, a label). Do not convert
+  units, add up or estimate. If a number is not there, describe it in words. Sizes are mm: write the unit.
+- When scale.real_size_known is false, a step that gives a size in mm must say "model scale, real size unknown".
+- "text": 2 to 5 plain sentences. "title": at most 7 words, no number unless it is in the JSON.
+- "camera": front / rear / left / top (looking at that side of the model), iso (3/4 view) or section (cut open).
 - "explode": true when parts hide each other and pulling them apart helps.
 Answer with the JSON object only.
 
@@ -67,9 +89,10 @@ def _src(s):
     return "guessed" if any(w in str(s).lower() for w in GUESSED) else "measured"
 
 
-def facts(state, scale=None):
+def facts(state, scale=None, geometry_of=None, cad_features=None):
     """The built model as Muse Spark sees it, and the numbers a step may use. scale: {"known": bool, "source": str}
-    (None: not known, as for any patent drawing without a dimension)."""
+    (None: not known, as for any patent drawing without a dimension). geometry_of: {part id: (size_mm, at)} measured
+    on the model (explain() fills it); cad_features: labels of a CAD body's features."""
     parts = [p for p in state["parts"] if p.get("type") != "group" and p.get("visible", True)]
     by_name = {p["name"]: p for p in parts}
     out, kinds = [], {}
@@ -81,7 +104,11 @@ def facts(state, scale=None):
         for d, v in (e.get("dims") or {}).items():
             val, src = (v[0], v[1]) if isinstance(v, (list, tuple)) and len(v) == 2 else (v, "")
             dims[d] = {"v": val, "src": _src(src)} if isinstance(val, (int, float)) else {"v": str(val)[:40], "src": _src(src)}
-        f = {"id": p["id"], "name": p["name"], "kind": k, "dims": dims}
+        f = {"id": p["id"], "name": p["name"], "kind": k}
+        if dims:
+            f["dims"] = dims
+        if geometry_of and p["id"] in geometry_of:
+            f["size_mm"], f["at"] = geometry_of[p["id"]]
         if e.get("reason"):
             f["added_because"] = str(e["reason"])[:160]
         j = [f"{x.get('type')} {x.get('with')}" for x in e.get("joints") or [] if x.get("with")]
@@ -112,12 +139,16 @@ def facts(state, scale=None):
     sc = {"real_size_known": known, "note": (f"sizes are real mm: {scale.get('source')}" if known else
                                              "sizes are model mm only: the drawing states no scale or dimension"
                                              + (f" ({scale.get('source')})" if (scale or {}).get("source") else ""))}
-    return {"scale": sc, "parts": out, "gear_pairs": pairs, "shafts": shafts, "count_by_kind": kinds, "parts_total": len(out)}
+    fx = {"scale": sc, "parts": out, "gear_pairs": pairs, "shafts": shafts, "count_by_kind": kinds, "parts_total": len(out)}
+    if cad_features:
+        fx["cad_features"] = cad_features[:40]
+    return fx
 
 
 def _numbers_in(obj):
     """Every number in the facts (values, counts, ratios, and digits inside names / drawing labels)."""
     nums = set()
+
     def walk(x):
         if isinstance(x, bool):
             return
@@ -140,12 +171,22 @@ NUMBER = re.compile(r"(?<![\w.])(\d+(?:[.,]\d+)?)(?![\w])")
 SIZE_MM = re.compile(r"\d(?:[.,]\d+)?\s*mm\b", re.I)
 
 
+def _bad_numbers(text, allowed):
+    out = []
+    for m in NUMBER.findall(text):
+        x = float(m.replace(",", "."))
+        dec = len(m.split(".")[1]) if "." in m else 0
+        if not any(abs(round(v, dec) - x) < 1e-9 for v in allowed):
+            out.append(f"number {m} is not in the model data")
+    return out
+
+
 def validate(plan, fx):
     """Per step a list of problems (empty = valid): unknown part ids, numbers that are not in the facts, a camera that
-    does not exist, text outside 2-4 sentences. A number written is accepted when some fact rounds to it at the
-    precision written (25 for 25.4 is accepted, 26 is not); 1 and 2 are always accepted (one of, two gears)."""
+    does not exist, text outside 2-5 sentences. A number written is accepted when some fact rounds to it at the
+    precision written (25 for 25.4 is accepted, 26 is not); 1, 2 and 3 are always accepted (one of, two gears)."""
     ids = {p["id"] for p in fx["parts"]}
-    allowed = _numbers_in({k: v for k, v in fx.items() if k != "scale"}) | {1.0, 2.0}
+    allowed = _numbers_in({k: v for k, v in fx.items() if k != "scale"}) | {1.0, 2.0, 3.0}
     scale_known = (fx.get("scale") or {}).get("real_size_known", True)
     out = []
     for s in plan.get("steps") or []:
@@ -155,99 +196,167 @@ def validate(plan, fx):
             bad.append(f"part ids not in the model: {unknown[:5]}")
         if not s.get("parts"):
             bad.append("no part ids")
-        for m in NUMBER.findall(f"{s.get('title', '')} {s.get('text', '')}"):
-            x = float(m.replace(",", "."))
-            dec = len(m.split(".")[1]) if "." in m else 0
-            if not any(abs(round(v, dec) - x) < 1e-9 for v in allowed):
-                bad.append(f"number {m} is not in the model data")
-        if not scale_known and SIZE_MM.search(f"{s.get('title', '')} {s.get('text', '')}") and \
-                "model scale" not in f"{s.get('title', '')} {s.get('text', '')}".lower():
+        txt = f"{s.get('title', '')} {s.get('text', '')}"
+        bad += _bad_numbers(txt, allowed)
+        if not scale_known and SIZE_MM.search(txt) and "model scale" not in txt.lower():
             bad.append("a size in mm without \"model scale, real size unknown\" (the drawing has no scale)")
         if s.get("camera") not in CAMERAS:
             bad.append(f"camera {s.get('camera')!r}")
         n = len([x for x in re.split(r"(?<=[.!?])\s+", (s.get("text") or "").strip()) if x])
-        if not 2 <= n <= 4:
-            bad.append(f"{n} sentences (2-4)")
+        if not 2 <= n <= 5:
+            bad.append(f"{n} sentences (2-5)")
         out.append(bad)
     return out
 
 
+def clean_extras(plan, fx):
+    """Subsystems keep only real part ids (an empty one is dropped); a quiz item whose question or RIGHT answer has a
+    number that is not in the model, or with a bad answer index, is dropped (wrong options may be any number)."""
+    ids = {p["id"] for p in fx["parts"]}
+    allowed = _numbers_in({k: v for k, v in fx.items() if k != "scale"}) | {1.0, 2.0, 3.0}
+    subs = []
+    for s in plan.get("subsystems") or []:
+        ps = [i for i in s.get("parts") or [] if i in ids]
+        if ps:
+            subs.append({"name": s.get("name", "")[:60], "role": s.get("role", "")[:240], "parts": ps})
+    quiz = [q for q in plan.get("quiz") or [] if len(q.get("options") or []) >= 2
+            and 0 <= int(q.get("answer", -1)) < len(q["options"])
+            and not _bad_numbers(q["question"] + " " + q["options"][int(q["answer"])], allowed)][:4]
+    why = [w for w in plan.get("design_rationale") or [] if not _bad_numbers(w, allowed)][:5]
+    return subs, quiz, why
+
+
 def _spark_plan(fx, image, extra=None):
-    content = [{"type": "text", "text": PROMPT.replace("{facts}", json.dumps(fx, separators=(",", ":")))}]
+    note = ("The image is the drawing this model was built from." if image else
+            "There is no source drawing for this model: work from the model data.")
+    content = [{"type": "text", "text": PROMPT.replace("{image_note}", note).replace(
+        "{facts}", json.dumps(fx, separators=(",", ":")))}]
     if image:
         content.append({"type": "image_url", "image_url": {"url": image}})
     if extra:
         content.append({"type": "text", "text": extra})
-    return agent._spark_json(content, PLAN_SCHEMA, "explanation", timeout=120, effort="low")
+    return agent._spark_json(content, PLAN_SCHEMA, "explanation", timeout=150, effort="low")
 
 
-def illustration_prompt(fx):
-    k = fx["count_by_kind"]
-    main = ", ".join(f"{n} {kind}{'s' if n > 1 else ''}" for kind, n in sorted(k.items(), key=lambda kv: -kv[1])
-                     if kind not in ("pin", "hub", "added", "group"))[:300]
-    return ("Clean technical concept illustration of a mechanical machine, three-quarter view, soft studio light, "
-            f"brushed metal on a dark blue background, no text, no labels, no people. It contains: {main}.")
+# ------------------------------------------------------------------------------------------------ geometry + pictures
+def measure(state, model):
+    """{part id: (size_mm, at)} on the model's own geometry: each part's box size and its centre as fractions of the
+    model's box (x along the model / rear->front, y, z bottom->top)."""
+    from engine import snap
+    ms = snap.model_meshes(state, model)
+    if not ms:
+        return {}
+    allV = np.vstack([V for _, V, _, _ in ms])
+    lo, hi = allV.min(0), allV.max(0)
+    span = np.maximum(hi - lo, 1e-6)
+    f = snap.front_axis(model)
+    out = {}
+    for p, V, _, _ in ms:
+        a, b = V.min(0), V.max(0)
+        c = ((a + b) / 2 - lo) / span
+        if f[0] < -0.5:                                 # x as rear (0) -> front (1) for a model facing -x
+            c[0] = 1 - c[0]
+        out[p["id"]] = ([round(float(x)) for x in b - a], [round(float(x), 2) for x in c])
+    return out
 
 
-def illustrate(prompt, limit_s=IMAGE_LIMIT_S):
-    """One Muse Image illustration -> (data URL, seconds). Raises on HTTP error or after limit_s."""
-    t0 = time.time()
-    r = agent._post("/images/generations", {"model": IMAGE_MODEL, "prompt": prompt, "n": 1,
-                                             "output_format": "jpeg", "response_format": "b64_json"}, timeout=limit_s)
-    d = (r.get("data") or [{}])[0]
-    s = round(time.time() - t0, 1)
-    if not d.get("b64_json"):
-        raise RuntimeError("Muse Image returned no image")
-    if s > limit_s:                          # the socket timeout is per read, not for the whole call
-        raise TimeoutError(f"Muse Image took {s} s (limit {limit_s} s)")
-    return "data:image/jpeg;base64," + d["b64_json"], s
+def _offsets(state, model):
+    """Explode offsets accumulated down the tree (a part moves with its sub-assembly), in the model frame."""
+    from engine import cutaway, lab
+    sub = lab.subtree(state, model["id"])
+    off = cutaway.explode_offsets(sub)
+    by = {p["id"]: p for p in sub}
+    tot = {}
+    for p in sub:
+        v, q = np.zeros(3), p
+        while q is not None and q["id"] != model["id"]:
+            v = v + np.asarray(off.get(q["id"], np.zeros(3)), float)
+            q = by.get(q.get("parent"))
+        tot[p["id"]] = v
+    return tot
 
 
-def explain(state, image=None, with_illustration=True, on_step=None, scale=None):
-    """-> {"machine", "steps", "rejected_steps", "retried", "timing", "illustration", "facts_summary"}.
-    image: the drawing (data URL) the model was built from, shown to Muse Spark. Raises agent.SparkError when Muse
-    Spark gives no usable explanation (fewer than 5 valid steps after one retry)."""
+def render_steps(state, model, steps, subsystems, size=440):
+    """One picture per step (data URLs, JPEG) and the architecture picture (subsystems coloured)."""
+    from engine import snap
+    f = snap.front_axis(model)
+    plain = snap.model_meshes(state, model)
+    if not plain:
+        return [None] * len(steps), None
+    exploded = snap.model_meshes(state, model, offsets=_offsets(state, model))
+    allV = np.vstack([V for _, V, _, _ in plain])
+    mid = (allV.min(0) + allV.max(0)) / 2
+    side = snap.sides(f)["left"]
+    tint = {pid: PALETTE[k % len(PALETTE)] for k, s in enumerate(subsystems) for pid in s["parts"]}
+    n_parts = len(plain)
+
+    def one(s):
+        cam = s.get("camera", "iso")
+        view = {"section": "iso", "front": "front", "rear": "rear", "left": "left", "top": "top"}.get(cam, "iso")
+        ms = exploded if s.get("explode") else plain
+        clip = (side, float(mid @ side)) if cam == "section" else None
+        t = tint if s.get("kind") == "architecture" else None
+        hl = s.get("parts")
+        if t or len(set(hl or [])) >= 0.7 * n_parts:      # a step about (nearly) the whole model: its own colours
+            hl = None
+        im = snap.render(ms, view, f, size, highlight=hl, tint=t, clip=clip)
+        return snap.png_data_url(im, "JPEG")
+    with cf.ThreadPoolExecutor(4) as pool:
+        imgs = list(pool.map(one, steps))
+        arch = pool.submit(lambda: snap.png_data_url(snap.render(exploded, "iso", f, 520, tint=tint), "JPEG")).result() \
+            if subsystems else None
+    return imgs, arch
+
+
+# ------------------------------------------------------------------------------------------------ the explanation
+def explain(state, image=None, on_step=None, scale=None, model=None, cad_features=None, render=True):
+    """-> {"machine", "overview", "subsystems" (+ colour), "design_rationale", "assembly_order", "steps" (+ image),
+    "architecture_image", "quiz", "rejected_steps", "retried", "timing", "scale", "facts_summary"}.
+    state: the scene (or a sub-scene holding one model); model: the model's root group (its own frame is used for
+    the geometry and the pictures). image: the model's own source drawing (data URL) or None. Raises agent.SparkError
+    when Muse Spark gives no usable explanation (fewer than 5 valid steps after one retry)."""
     step = on_step or (lambda e: None)
     t0 = time.time()
-    fx = facts(state, scale)
+    geo = measure(state, model) if (model is not None and render) else None
+    fx = facts(state, scale, geo, cad_features)
     if not fx["parts"]:
         raise ValueError("there is no model to explain")
-    pool = cf.ThreadPoolExecutor(2)
-    img = pool.submit(illustrate, illustration_prompt(fx)) if with_illustration else None
     step({"stage": "tool", "tool": "explain · Muse Spark"})
     plan, meta = _spark_plan(fx, image)
     errs = validate(plan, fx)
     retried = False
-    if any(errs) or not 5 <= len(plan.get("steps") or []) <= 10:
+    if any(errs) or not 5 <= len(plan.get("steps") or []) <= 14:
         retried = True
         problems = "; ".join(f"step {i + 1}: {', '.join(e)}" for i, e in enumerate(errs) if e) or \
-            f"{len(plan.get('steps') or [])} steps (5-10 needed)"
+            f"{len(plan.get('steps') or [])} steps (7-12 needed)"
         plan2, meta2 = _spark_plan(fx, image, "Your previous answer broke the rules: " + problems +
-                                   ". Previous answer: " + json.dumps(plan)[:6000] + " Answer again, fixing them.")
+                                   ". Previous answer: " + json.dumps(plan)[:8000] + " Answer again, fixing them.")
         meta["calls"] += meta2["calls"]
         plan, errs = plan2, validate(plan2, fx)
-    keep = [s for s, e in zip(plan.get("steps") or [], errs) if not e][:10]
+    keep = [s for s, e in zip(plan.get("steps") or [], errs) if not e][:14]
     rejected = [{"title": s.get("title"), "why": e} for s, e in zip(plan.get("steps") or [], errs) if e]
     step({"stage": "done", "tool": "explain · Muse Spark",
           "error": None if len(keep) >= 5 else f"only {len(keep)} valid steps"})
     if len(keep) < 5:
-        pool.shutdown(wait=False, cancel_futures=True)
         raise agent.SparkError(f"Muse Spark's explanation had only {len(keep)} valid steps after one retry: {rejected[:3]}")
+    subs, quiz, why = clean_extras(plan, fx)
+    for k, s in enumerate(subs):
+        s["color"] = PALETTE[k % len(PALETTE)]
     t_spark = round(time.time() - t0, 1)
-    ill = None
-    if img is not None:
-        step({"stage": "tool", "tool": "illustration · Muse Image"})
+    arch = None
+    if render and model is not None:
+        step({"stage": "tool", "tool": "pictures of the model"})
         try:
-            url, s = img.result(timeout=max(0.1, IMAGE_LIMIT_S - (time.time() - t0)))
-            ill = {"data_url": url, "label": ILLUSTRATION_LABEL, "model": IMAGE_MODEL, "s": s}
-            step({"stage": "done", "tool": "illustration · Muse Image"})
+            imgs, arch = render_steps(state, model, keep, subs)
+            for s, im in zip(keep, imgs):
+                s["image"] = im
+            step({"stage": "done", "tool": "pictures of the model"})
         except Exception as e:
-            reason = (f"took longer than {IMAGE_LIMIT_S} s" if isinstance(e, cf.TimeoutError) and not str(e)
-                      else f"{type(e).__name__}: {str(e)[:160]}")
-            ill = {"data_url": None, "label": ILLUSTRATION_LABEL, "model": IMAGE_MODEL, "error": reason}
-            step({"stage": "done", "tool": "illustration · Muse Image", "error": reason})
-    pool.shutdown(wait=False, cancel_futures=True)
-    return {"machine": plan.get("machine", ""), "steps": keep, "rejected_steps": rejected, "retried": retried,
+            step({"stage": "done", "tool": "pictures of the model", "error": f"{type(e).__name__}: {e}"[:200]})
+    return {"machine": plan.get("machine", ""), "overview": plan.get("overview", ""), "subsystems": subs,
+            "design_rationale": why, "assembly_order": [a for a in plan.get("assembly_order") or [] if a in {s["name"] for s in subs}],
+            "steps": keep, "architecture_image": arch, "quiz": quiz, "rejected_steps": rejected, "retried": retried,
             "spark_calls": meta["calls"], "timing": {"spark_s": t_spark, "total_s": round(time.time() - t0, 1)},
-            "illustration": ill, "scale": fx["scale"], "facts_summary": {"parts": fx["parts_total"], "gear_pairs": len(fx["gear_pairs"]),
-                                                   "count_by_kind": fx["count_by_kind"]}}
+            "model": {"id": model["id"], "name": model["name"]} if model is not None else None,
+            "source_image": image, "scale": fx["scale"],
+            "facts_summary": {"parts": fx["parts_total"], "gear_pairs": len(fx["gear_pairs"]), "count_by_kind": fx["count_by_kind"]}}

@@ -3,7 +3,9 @@
 Meta Model API is OpenAI-compatible (https://api.meta.ai/v1, Bearer key).
 The key is read from the environment variable META_API (loaded from .env by server.py).
 """
+import http.client
 import json
+import time
 import os
 import urllib.error
 import urllib.request
@@ -152,8 +154,22 @@ def _post(path, body, timeout=120):
     req = urllib.request.Request(API + path, data=json.dumps(body).encode(), method="POST",
                                  headers={"Authorization": f"Bearer {key}",
                                           "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    # a dropped connection (WinError 10054, reset, DNS hiccup) or a busy server (429, 5xx) is retried twice with a short
+    # wait: one network blip used to fail the whole turn; a bad request (other 4xx) and a timeout are not retried
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                raise
+        except (ConnectionError, http.client.RemoteDisconnected, http.client.IncompleteRead) as e:
+            if attempt == 2:
+                raise
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, TimeoutError) or "timed out" in str(e.reason) or attempt == 2:
+                raise
+        time.sleep((2, 5)[attempt])
 
 
 class SparkError(RuntimeError):
@@ -285,7 +301,7 @@ LAST_IMAGE = {}                                  # the drawing the current machi
 
 
 def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".", on_step=None, mode="interpret",
-                    kind="auto"):
+                    kind="auto", decisions=None):
     """An upload -> a 3D model, routed by what it IS:
     - "machine": one view of a machine -> Muse Spark reads it like an engineer -> 3D mechanism (_blueprint_to_design);
     - "three_view": a sheet with side / top / end views of one object -> parametric CAD (cad/, OpenCascade B-rep); without
@@ -311,7 +327,7 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     if kind == "three_view":
         import cad_client
         if cad_client.available():
-            return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step))
+            return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step, decisions))
         return first(("The three-view CAD pipeline needs the CAD environment (aether-lab/cad-worker/.venv: Python 3.12 + "
                       "CadQuery). Create it with cad-worker/setup, or set AETHER_CAD_PYTHON. Nothing was built: I will not "
                       "silently substitute the visual-hull preview for CAD.",
@@ -384,7 +400,7 @@ def _spark_name_regions(name):
     return namer
 
 
-def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
+def _sheet_to_cad(state, history, data_url, prompt, out_dir, step, decisions=None):
     """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
     Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
     STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics."""
@@ -393,13 +409,13 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
     from pathlib import Path
     import cad_client
     from PIL import Image
-    out = Path(out_dir) / "cad" / "current"
+    out = Path(os.environ.get("AETHER_CAD_DIR") or Path(out_dir) / "cad" / "current")
     out.mkdir(parents=True, exist_ok=True)
     sheet = out / "sheet.png"
     Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
     step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
     try:
-        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), defer_detail=True)
+        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), defer_detail=True, decisions=decisions)
     except Exception as e:
         step({"stage": "done", "tool": "cad_pipeline", "error": str(e)[:300]})
         return (f"The CAD reconstruction failed: {e}", [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e)}}], {}, history)
@@ -413,15 +429,18 @@ def _sheet_to_cad(state, history, data_url, prompt, out_dir, step):
         ON_CAD_DETAIL(f"{prompt[:40]} (CAD from three views)")
     rep = r.get("report") or {}
     LAST_REPORT.clear()
-    LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": False,
-                        "scale_source": "assumed: overall length 4500 mm (no dimension on the sheet)",
+    L = ((decisions or {}).get("overall_length_mm") or {}).get("value")
+    LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": bool(L),
+                        "scale_source": f"given by the user: overall length {L:.0f} mm" if L else
+                        "assumed: overall length 4500 mm (no dimension on the sheet)",
                         "view_match_iou_pct": {k: round(100 * v, 1) for k, v in (rep.get("reprojection_iou") or {}).items()}})
     feats = [f for f in doc["features"]]
     text = (f"Built a parametric CAD model ({len(feats)} features, {len([c for c in doc['components'] if not c.get('group')])} "
             f"solid components) from the sheet. Maturity: {doc['maturity'].replace('_', ' ')}. All solids valid: "
             f"{rep.get('all_valid')}. STEP round trip: {'passed' if rep.get('step_all_pass') else 'not passed'}. "
             "Reprojection IoU per view: " + ", ".join(f"{k} {v:.3f}" for k, v in (rep.get("reprojection_iou") or {}).items())
-            + ". Real size is assumed (4.5 m overall length) until you enter a real dimension; the cross-sections between "
+            + (f". Real size from you: {L:.0f} mm overall length" if L else ". Real size is assumed (4.5 m overall length) until you enter a real dimension")
+            + "; the cross-sections between "
               "the end views and every recess depth are inferred or assumed and labelled so in the CAD panel.")
     trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
                                                             "document": {k: doc[k] for k in ("title", "maturity", "status")}}}]
@@ -633,22 +652,21 @@ def _fit_to_desk(state, group_id, target_pct=80):
     lo, hi = geometry.bounds(mine)
     zone = lab.sharp_zone(state, target_pct, ((lo[0] + hi[0]) / 2, 0.0))
     H = float(hi[2] - lo[2])
-    room = 0.92 * (zone[1] - zone[0])
+    room = 0.92 * zone[1]                            # standing on the surface: only the zone ABOVE it counts
     s = min(1.0, room / max(H, 1e-6))
     g["scale"] = [s, s, s]
     lo, hi = geometry.bounds(mine)
     H = float(hi[2] - lo[2])
-    # on the display surface when it fits above it; a model taller than the sharp zone above the surface is centred in
-    # the zone, which reaches behind the surface (an AETHER Desk image may sit behind the display) - said in the note
-    bottom = 0.0 if H <= 0.92 * zone[1] else (zone[0] + zone[1]) / 2 - H / 2
+    # always standing ON the desk: centring a tall model in the sharp zone put its lower half under the desk surface,
+    # which reads as a model hanging through the desk; its top above the sharp zone is said in the note instead
+    bottom = 0.0
     g["position"] = [float(g["position"][0] - (lo[0] + hi[0]) / 2), float(g["position"][1] - (lo[1] + hi[1]) / 2),
                      float(g["position"][2] + bottom - lo[2])]
     lab._bump(state)
     out = {"scale": round(s, 3), "sharp_zone_mm": zone, "height_mm": round(H, 1), "bottom_z_mm": round(bottom, 1)}
-    if bottom < 0:
-        out["note"] = (f"The model is {H:.0f} mm tall, more than the sharp zone above the display ({zone[1]:.0f} mm), so it is "
-                       f"centred in the sharp zone: its lowest {-bottom:.0f} mm are behind the display surface, where a "
-                       "hologram can also be shown sharply.")
+    if H > 0.92 * zone[1]:
+        out["note"] = (f"The model is {H:.0f} mm tall, more than the sharp zone above the display ({zone[1]:.0f} mm): it "
+                       f"stands on the desk and its top {H - zone[1]:.0f} mm is above the sharp zone (less sharp as a hologram).")
     return out
 
 
@@ -827,6 +845,7 @@ def _blueprint_to_design(state, history, data_url, prompts, size_mm, out_dir, st
     built = compute.run(state, "build_assembly", {"name": "Machine from drawing", "parts": specs,
                                                   "position": [0, 0, 0], "rotation": [90, 0, 0]})
     fit = _fit_to_desk(state, state["selected"])
+    LAST_IMAGE["model_id"] = state["selected"]           # Explain shows this drawing for THIS model only
     step({"stage": "done", "tool": "rebuild_3d"})
     rep.update({"scale_on_desk": fit["scale"], "real_size": info["scale_source"], "view": info.get("view")})
     trace = [sam, {"tool": "build_assembly", "args": {"parts": len(specs)}, "result": {**lab.for_agent(built), "rebuild": rep}}]

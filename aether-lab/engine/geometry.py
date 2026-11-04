@@ -411,6 +411,10 @@ PARAM_HELP = {
     "inflate": "polygons (as outline), thickness, round (0..1 edge rounding): rounded cast/forged solid of an outline",
 }
 
+from . import kit  # noqa: E402  (detail parts: rounded boxes, seats, steering wheels ...)
+BUILDERS.update(kit.BUILDERS)
+PARAM_HELP.update(kit.PARAM_HELP)
+
 # ---------------- transforms ----------------
 
 

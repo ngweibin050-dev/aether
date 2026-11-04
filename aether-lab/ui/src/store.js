@@ -28,8 +28,8 @@ export const useStore = create((set, get) => ({
   menu: null,                // { kind, x, y }
   modal: null,               // live G/R/S readout
   dock: null,                // open dock popover: section | explode
-  panels: { orchestrator: true, outliner: true, physics: true, toolbar: true, cad: false, asm: false, drawing: false, optics: false },
-  win: { orchestrator: "normal", outliner: "normal", physics: "normal", cad: "normal", asm: "normal", drawing: "normal", optics: "normal" },   // normal | min | max
+  panels: { orchestrator: true, outliner: true, physics: true, toolbar: true, cad: false, asm: false, drawing: false, optics: false, explain: false, history: false },
+  win: { orchestrator: "normal", outliner: "normal", physics: "normal", cad: "normal", asm: "normal", drawing: "normal", optics: "normal", explain: "normal" },   // normal | min | max
   dockBar: false,            // the tool strip (hologram, section, explode…) is in Tools; this shows it as a bar too
   outlinerTab: "outliner",
   busy: {},
@@ -38,7 +38,12 @@ export const useStore = create((set, get) => ({
   results: { hologram: null, recon: null, sweep: null, eye: null, desk: null, window: null, hand: null,
              speckle: null, search: null, film: null },
   chat: [],
-  undo: [], redo: [],
+  lightbox: null,            // { src, title }: a picture opened big (double-click any image)
+  preview: null,             // { name, url, ... }: a file opened in the preview (3D viewer, PDF, ...)
+  openLightbox: (lb) => set({ lightbox: lb }),
+  // the project's undo history lives on the server (history.py): one history for the assistant's turns, edits here
+  // and background builds; undo / redo reverse only the parts a step changed. undo / redo: its steps, newest first
+  undo: [], redo: [], history: { steps: [], redo: [] },
   handFrame: null,
   handCursor: null,          // { x, y, down } air cursor in hand mode
 
@@ -109,7 +114,13 @@ export const useStore = create((set, get) => ({
     if (get().asm || (j.brep || []).length) get().loadAsm();
   },
 
+  setChat(chat) { set({ chat: chat || [] }); },
+  async loadHistory() {
+    const h = await fetch("/api/history").then((r) => r.json()).catch(() => null);
+    if (h) set({ history: h, undo: h.steps.filter((x) => x.source !== "auto"), redo: h.redo });
+  },
   applyState(state) {
+    if (state.version !== get().state?.version) get().loadHistory();
     const ids = new Set(state.parts.map((p) => p.id));
     set((s) => ({
       state,
@@ -122,13 +133,10 @@ export const useStore = create((set, get) => ({
 
   // ---- tools (same names the AI agent uses) ----
   async tool(name, args = {}, { record = true, quiet = false } = {}) {
-    const before = get().state && clone(get().state.parts);
     const t0 = performance.now();
     set((s) => ({ busy: { ...s.busy, [name]: true } }));
     try {
-      const j = await api("/api/tool", { name, args });
-      if (record && before && JSON.stringify(before) !== JSON.stringify(j.state.parts))
-        set((s) => ({ undo: [...s.undo.slice(-49), { parts: before, selected: s.state.selected }], redo: [] }));
+      const j = await api("/api/tool", { name, args, ...(record ? {} : { label: null }) });
       get().applyState(j.state);
       get().ingest(name, j.result);
       if (j.result?._backend) set({ backend: j.result._backend });
@@ -211,20 +219,19 @@ export const useStore = create((set, get) => ({
   invertSelection() { const sel = get().selection; get().selectMany(get().state.parts.filter((p) => !sel.includes(p.id)).map((p) => p.id)); },
 
   // ---- scene edits as one undo step ----
-  async pushParts(parts, selected) {
-    const j = await api("/api/scene", { parts, selected });
+  async pushParts(parts, selected, label) {
+    const j = await api("/api/scene", { parts, selected, label });
     get().applyState(j.state);
   },
-  async commitParts(parts, selected = get().state.selected) {
-    const before = clone(get().state.parts);
-    set((s) => ({ undo: [...s.undo.slice(-49), { parts: before, selected: s.state.selected }], redo: [],
-                  state: { ...s.state, parts, selected } }));      // optimistic: no jump back while the server answers
-    await get().pushParts(parts, selected);
+  // one edit of the scene = one step of the project's history (label: what the History panel and "undo" say)
+  async commitParts(parts, selected = get().state.selected, label = "edit in the app") {
+    set((s) => ({ state: { ...s.state, parts, selected } }));      // optimistic: no jump back while the server answers
+    await get().pushParts(parts, selected, label);
   },
-  async editSelected(fn) {
+  async editSelected(fn, label = "edit") {
     const sel = new Set(get().selection);
     if (!sel.size) return;
-    await get().commitParts(clone(get().state.parts).map((p) => (sel.has(p.id) ? fn(p) ?? p : p)));
+    await get().commitParts(clone(get().state.parts).map((p) => (sel.has(p.id) ? fn(p) ?? p : p)), undefined, label);
   },
   async commitTransform(id, t) {
     return get().tool("update_part", { id, ...t });
@@ -237,7 +244,9 @@ export const useStore = create((set, get) => ({
     let grew = true;
     while (grew) { grew = false; for (const p of parts) if (drop.has(p.parent) && !drop.has(p.id)) { drop.add(p.id); grew = true; } }
     set({ selection: [] });
-    await get().commitParts(parts.filter((p) => !drop.has(p.id)), null);
+    const names = parts.filter((p) => sel.has(p.id)).map((p) => p.name);
+    await get().commitParts(parts.filter((p) => !drop.has(p.id)), null,
+      `delete ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` (+${names.length - 3})` : ""}`);
   },
   async duplicate() {
     const s = get().state;
@@ -252,32 +261,41 @@ export const useStore = create((set, get) => ({
     };
     for (const p of sel) if (!sel.some((q) => q.id === p.parent)) copyTree(p, p.parent);
     const ids = sel.map((p) => map[p.id]).filter(Boolean);
-    await get().commitParts(parts, ids[ids.length - 1]);
+    await get().commitParts(parts, ids[ids.length - 1], `duplicate ${sel.map((p) => p.name).slice(0, 3).join(", ")}`);
     get().selectMany(ids);
     return ids;
   },
   async setVisible(ids, visible) {
     const on = new Set(ids);
-    await get().commitParts(get().state.parts.map((p) => (on.has(p.id) ? { ...p, visible } : p)));
+    await get().commitParts(get().state.parts.map((p) => (on.has(p.id) ? { ...p, visible } : p)), undefined, visible ? "show" : "hide");
   },
   async parentTo(childIds, parentId) {
     const kids = new Set(childIds);
-    await get().commitParts(get().state.parts.map((p) => (kids.has(p.id) && p.id !== parentId ? { ...p, parent: parentId } : p)));
+    await get().commitParts(get().state.parts.map((p) => (kids.has(p.id) && p.id !== parentId ? { ...p, parent: parentId } : p)), undefined, "parent");
   },
 
-  async undoOnce() {
-    const { undo, state } = get();
-    if (!undo.length) return;
-    const prev = undo[undo.length - 1];
-    set((s) => ({ undo: s.undo.slice(0, -1), redo: [...s.redo, { parts: clone(state.parts), selected: state.selected }] }));
-    await get().pushParts(prev.parts, prev.selected);
+  // Ctrl+Z / Ctrl+Shift+Z / the History panel: the server's history (only the parts of that step go back)
+  async undoOnce(id) {
+    if (get().busy.history) return;
+    set((s) => ({ busy: { ...s.busy, history: true } }));
+    try {
+      const j = await api("/api/history/undo", id ? { id } : {});
+      get().applyState(j.state);
+      const r = j.result;
+      get().notify(r.undone ? `Undone: ${r.reverted} (${r.what})${r.also_undone?.length ? ` + ${r.also_undone.length} step(s) built on it` : ""}` : r.why,
+        r.undone ? "info" : "error");
+    } catch (e) { get().notify(e.message, "error"); }
+    set((s) => ({ busy: { ...s.busy, history: false } }));
   },
   async redoOnce() {
-    const { redo, state } = get();
-    if (!redo.length) return;
-    const next = redo[redo.length - 1];
-    set((s) => ({ redo: s.redo.slice(0, -1), undo: [...s.undo, { parts: clone(state.parts), selected: state.selected }] }));
-    await get().pushParts(next.parts, next.selected);
+    if (get().busy.history) return;
+    set((s) => ({ busy: { ...s.busy, history: true } }));
+    try {
+      const j = await api("/api/history/redo", {});
+      get().applyState(j.state);
+      get().notify(j.result.redone ? `Redone: ${j.result.step} (${j.result.what})` : j.result.why, j.result.redone ? "info" : "error");
+    } catch (e) { get().notify(e.message, "error"); }
+    set((s) => ({ busy: { ...s.busy, history: false } }));
   },
 
   // ---- see inside: local first, then the server (debounced), so the hologram uses the same view ----
@@ -286,10 +304,19 @@ export const useStore = create((set, get) => ({
   async pollJobs() {
     const j = await fetch("/api/jobs").then((r) => r.json()).catch(() => null);
     if (!j) return;
+    const prev = get().jobs || {};
     set({ jobs: j.jobs || {} });
+    // a background job that just finished (a CAD model built while the user kept working): its message into the chat,
+    // and the new model framed
+    for (const [id, job] of Object.entries(j.jobs || {})) {
+      if (job.message && prev[id] && prev[id].state === "running" && job.state !== "running") {
+        set((x) => ({ chat: [...x.chat, job.message] }));
+        if (job.state === "done") setTimeout(() => import("./commands").then((m) => m.run("view.all")), 1200);
+      }
+    }
     const s = get();
     if (s.project && j.project && j.project !== s.project.slug && !s.busy.chat) return s.loadProject().then(() => s.load());
-    if (j.version != null && s.state && j.version > s.state.version && !s.busy.chat && !s.busy.asm && !s.modal) {
+    if (j.version != null && s.state && j.version > s.state.version && !s.busy.asm && !s.modal) {
       const st = await api("/api/state").catch(() => null);
       if (st) get().applyState(st.state);
     }
@@ -302,7 +329,7 @@ export const useStore = create((set, get) => ({
     if (j) set({ project: { slug: j.slug, name: j.name, saved: j.saved }, chat: j.chat || [] });
   },
   _enter(j) {
-    set({ selection: [], undo: [], redo: [], explain: null, asm: null, caps: {}, results: { ...get().results, sam: null, sweep: null, score: null } });
+    set({ selection: [], explain: null, asm: null, caps: {}, results: { ...get().results, sam: null, sweep: null, score: null } });
     get().applyState(j.state);
     get().loadProject();
     setTimeout(() => import("./commands").then((m) => m.run("view.all")), 400);
@@ -384,15 +411,12 @@ export const useStore = create((set, get) => ({
   progress: [],                // live steps of the running Muse Spark turn
   // one Muse Spark turn (chat, photo -> SAM 3.1 -> model, or the closed design loop), with live steps
   async turn(path, body, userMsg) {
-    const before = clone(get().state.parts);
     set((s) => ({ chat: [...s.chat, userMsg], busy: { ...s.busy, chat: true }, progress: [] }));
     // the server's clock offset lets each running step show its own seconds without trusting this computer's clock
     const poll = setInterval(() => fetch("/api/progress").then((r) => r.json())
       .then((p) => set({ progress: p.steps || [], progressSkew: p.now ? Date.now() / 1000 - p.now : 0 })).catch(() => {}), 600);
     try {
       const j = await api(path, body);
-      if (JSON.stringify(before) !== JSON.stringify(j.state.parts))
-        set((s) => ({ undo: [...s.undo, { parts: before, selected: null }], redo: [] }));
       get().applyState(j.state);
       set({ view: { ...DEFAULT_VIEW, ...(j.state.view || {}) } });
       get().ingestTrace(j.trace, j.images);
@@ -408,7 +432,7 @@ export const useStore = create((set, get) => ({
         go();
       }
       const x = j.extras || {};
-      if (x.explain) set({ explain: x.explain, explainStep: 0 });          // "explain / teach me": the step player opens
+      if (x.explain) { set({ explain: x.explain, explainStep: 0 }); get().setPanel("explain", true); }   // "explain / teach me": the panel opens
       const PANEL = { assembly: "asm", drawing: "drawing", optics: "optics", cad: "cad", physics: "physics" };
       for (const u of x.ui || []) if (u.open_panel && PANEL[u.open_panel]) get().setPanel(PANEL[u.open_panel], true);
       set((s) => ({ chat: [...s.chat, ...(j.trace?.length ? [{ role: "steps", trace: j.trace }] : []),
@@ -421,6 +445,16 @@ export const useStore = create((set, get) => ({
       const done = (get().progress || []).filter((x) => x.s != null);
       set((s) => ({ busy: { ...s.busy, chat: false }, chat: done.length ? [...s.chat, { role: "timeline", steps: done }] : s.chat }));
     }
+  },
+  // "undo this" on an assistant message: back to the scene before THAT turn (saved with the project, so it works
+  // after a restart), without asking Muse Spark
+  async undoTurn(id) {
+    const j = await api("/api/undo", { id });
+    if (j.state) get().applyState(j.state);
+    const r = j.result || {};
+    set((s) => ({ chat: [...s.chat, { role: "ai", text: r.undone
+      ? `Undone: ${r.reverted} (${r.what}).${r.also_undone?.length ? ` Also undone, because they built on it: ${r.also_undone.join("; ")}.` : ""}`
+      : `Could not undo: ${r.why}` }] }));
   },
   // one message to the assistant, with the files attached to it (uploaded first: /api/files)
   ask(text, files = []) {
@@ -439,6 +473,7 @@ export const useStore = create((set, get) => ({
   async runExplain(demo_id = null) {
     if (get().busy.explain) return;
     set((s) => ({ busy: { ...s.busy, explain: true }, progress: [], explain: null }));
+    get().setPanel("explain", true);
     const poll = setInterval(() => fetch("/api/progress").then((r) => r.json())
       .then((p) => set({ progress: p.steps || [], progressSkew: p.now ? Date.now() / 1000 - p.now : 0 })).catch(() => {}), 600);
     try {
@@ -446,6 +481,7 @@ export const useStore = create((set, get) => ({
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
       set({ explain: j, explainStep: 0 });
+      get().setPanel("explain", true);
       const done = (get().progress || []).filter((x) => x.s != null);
       if (done.length) set((s) => ({ chat: [...s.chat, { role: "timeline", steps: done }] }));
     } catch (e) {
@@ -458,6 +494,7 @@ export const useStore = create((set, get) => ({
   setExplainStep(i) { set({ explainStep: i }); },
   closeExplain() {
     set({ explain: null, explainStep: 0 });
+    get().setPanel("explain", false);
     get().setView({ xray: false, explode: 0, section: null }, { now: true });
     get().select(null);
   },

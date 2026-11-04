@@ -45,10 +45,18 @@ def _start():
     return _proc
 
 
+class Busy(RuntimeError):
+    """The worker is busy with another request (a CAD build or a document being opened) for longer than the caller
+    can wait: the caller says so and carries on, instead of freezing the app behind a minutes-long build."""
+
+
 def call(cmd, timeout=None, **args):
-    """One request to the worker. Raises RuntimeError with the worker's error text."""
+    """One request to the worker. timeout: how long to WAIT for the worker if another request is running (None: as
+    long as it takes); raises Busy when it is not free in time. Raises RuntimeError with the worker's error text."""
     global _n
-    with _lock:
+    if not _lock.acquire(timeout=-1 if timeout is None else timeout):
+        raise Busy(f"the CAD worker is busy (a CAD build or document is running); tried for {timeout} s")
+    try:
         p = _start()
         _n += 1
         p.stdin.write(json.dumps({"id": _n, "cmd": cmd, "args": args}) + "\n")
@@ -63,6 +71,8 @@ def call(cmd, timeout=None, **args):
                 continue                         # not a protocol line
             if isinstance(msg, dict) and msg.get("id") == _n:
                 break
+    finally:
+        _lock.release()
     if not msg.get("ok"):
         raise RuntimeError(msg.get("error") or "CAD worker error")
     return msg["result"]
