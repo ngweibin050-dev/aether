@@ -539,6 +539,73 @@ def _comps(parts):
             for i, p in enumerate(parts)]
 
 
+EDIT_SCHEMA = {"type": "object", "additionalProperties": False,
+               "required": ["change", "remove", "components", "checks", "why"],
+               "properties": {
+                   "change": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 60}},
+                   "remove": {"type": "array", "maxItems": 30, "items": {"type": "string", "maxLength": 60}},
+                   "components": PLAN_SCHEMA["properties"]["components"],
+                   "checks": PLAN_SCHEMA["properties"]["constraints"],
+                   "why": {"type": "string", "maxLength": 600}}}
+
+EDIT_CHECK_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["achieved", "score", "problems"],
+                     "properties": {"achieved": {"type": "boolean"},
+                                    "score": {"type": "integer", "minimum": 0, "maximum": 10},
+                                    "problems": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 240}}}}
+
+
+def _sig(parts):
+    """name -> (volume, bbox centre, bbox size): what a part looks like, to find parts an edit changed by accident."""
+    from OCP.Bnd import Bnd_Box
+    from OCP.BRepBndLib import BRepBndLib
+    out = {}
+    for p in parts:
+        b = Bnd_Box()       # exact box from the surfaces, never from a display mesh (a part meshed for the checks gave a
+        BRepBndLib.AddOptimal_s(p["shape"], b, False, False)    # different box than the same part unmeshed)
+        if b.IsVoid():
+            continue
+        lo, hi = np.array(b.Get()[:3]), np.array(b.Get()[3:])
+        out[p["name"]] = (float(p.get("volume_mm3") or 0.0), (lo + hi) / 2, hi - lo)
+    return out
+
+
+def _regressions(base, now, allowed):
+    """Parts the edit was NOT meant to touch that went missing, moved or changed size / volume."""
+    out = []
+    for n, (v0, c0, s0) in base.items():
+        if n in allowed:
+            continue
+        if n not in now:
+            out.append(f"{n}: missing")
+            continue
+        v1, c1, s1 = now[n]
+        tol = max(1.0, 0.01 * float(np.max(s0)))
+        if np.linalg.norm(c1 - c0) > tol:
+            out.append(f"{n}: moved {np.linalg.norm(c1 - c0):.1f} mm")
+        elif np.max(np.abs(s1 - s0)) > tol or (v0 > 0 and abs(v1 - v0) / v0 > 0.02):
+            out.append(f"{n}: changed shape (size {np.round(s0, 1).tolist()} -> {np.round(s1, 1).tolist()})")
+    return out
+
+
+def _near(parts, names, frac=0.06):
+    """The named parts and every part whose box comes within frac of the model size of them (the close-up set)."""
+    sig = _sig(parts)
+    if not sig:
+        return parts
+    size = float(np.max(np.max([c + s / 2 for _, c, s in sig.values()], 0) - np.min([c - s / 2 for _, c, s in sig.values()], 0)))
+    tgt = [sig[n] for n in names if n in sig]
+    if not tgt:
+        return parts
+    lo = np.min([c - s / 2 for _, c, s in tgt], 0) - frac * size
+    hi = np.max([c + s / 2 for _, c, s in tgt], 0) + frac * size
+    keep = []
+    for p in parts:
+        q = sig.get(p["name"])
+        if q and np.all(q[1] + q[2] / 2 >= lo) and np.all(q[1] - q[2] / 2 <= hi):
+            keep.append(p)
+    return keep or parts
+
+
 def review_renders(parts, rdir, tag, log=print):
     """Renders for the critic and the writer: the real viewer (headless Chrome + three.js) when available, the
     built-in software renderer otherwise."""
@@ -639,9 +706,43 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
     model = model or AI.WONDER
     rep = {"sheet": sheet, "measured": measured, "not_measured_why": why_not, "request": request,
            "edit": bool(base_program), "rounds": []}
+    editing = bool(base_program and request and base_plan)
+    edit, base_sig, before, base_gate = None, {}, {}, None
     try:
-        log("Muse Wonder planning every component (parents, joints, evidence, unknowns)")
-        plan = make_plan(ai, model, sheet, meas, measured, why_not, request, base_plan, log)
+        if editing:                  # a change: plan only what changes, never re-plan (and rewrite) the whole model
+            r0 = run_program(base_program, meas, float(base_length_mm or 1.0), os.path.join(out_dir, "base"))
+            base_parts = load_parts(r0) if not r0["error"] else []
+            base_sig = _sig(base_parts)
+            base_gate = Q.gates(base_parts, [c["name"] for c in base_plan["components"]],
+                                free={c["name"] for c in base_plan["components"] if c.get("joint") in ("rotates", "clearance", "slides", "root")},
+                                cons=base_plan.get("constraints")) if base_parts else None
+            log(f"Muse Wonder planning the change ({len(base_parts)} parts in the current model)")
+            et = (_prompt("cad_engineer.md") + "\n\nThe user asks to CHANGE an existing model: " + request
+                  + "\n\nThe model's current component list is below. Plan the SMALLEST change that does what the user "
+                  "asks: `change` = the existing components whose geometry must change, `remove` = components to delete, "
+                  "`components` = the new or changed component entries (same fields as the list), and `checks` = the "
+                  "relations code must verify on the geometry after the change (contact: touching, clearance with its gap "
+                  "in mm, coaxial), naming components exactly. Every component NOT in `change` or `remove` stays exactly "
+                  "as it is. `why`: one or two sentences.\n" + json.dumps(base_plan["components"])[:30000])
+            ec = [{"type": "text", "text": et}] + ([_image(Image.open(sheet))] if sheet else [])
+            edit, _ = ai.ask_json("C0_edit", "edit", model, ec, EDIT_SCHEMA, seed=1, timeout=300, effort="medium")
+            gone = set(edit["remove"])
+            upd = {c["name"]: c for c in edit["components"]}
+            comps = [upd.pop(c["name"], c) for c in base_plan["components"] if c["name"] not in gone] + list(upd.values())
+            plan = {**base_plan, "components": comps,
+                    "constraints": list(base_plan.get("constraints") or []) + list(edit["checks"])}
+            edit["touch"] = sorted(set(edit["change"]) | {c["name"] for c in edit["components"]} | gone)
+            log(f"edit plan: change {edit['change'][:8]}, add {[c['name'] for c in edit['components'] if c['name'] not in base_sig][:6]}, "
+                f"remove {edit['remove'][:6]}; {len(edit['checks'])} check(s)")
+            view_names = set()                     # before and after are rendered with the SAME parts (same framing)
+            if base_parts:
+                near = _near(base_parts, edit["touch"])
+                view_names = {p["name"] for p in near} | set(edit["touch"])
+                before = review_renders(near, os.path.join(out_dir, "base"), "before", log)
+            rep["edit_plan"] = edit
+        else:
+            log("Muse Wonder planning every component (parents, joints, evidence, unknowns)")
+            plan = make_plan(ai, model, sheet, meas, measured, why_not, request, base_plan, log)
     except AI.ModelUnavailable as e:
         rep.update(error=f"plan: {e}"[:400], seconds=round(time.time() - t0, 1), hypotheses=ai.store)
         return rep
@@ -656,9 +757,15 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
         text += "\n\n" + _prof_text(meas)
     elif sheet:
         text += f"\n\nA drawing is attached; its views could not be measured automatically ({why_not}): read sizes from it."
-    if base_program:
+    if editing:
+        text += ("\n\nTHIS IS AN EDIT of the CURRENT program below (it built a valid model). Change ONLY: "
+                 f"{edit['touch']}. Every other component must be built by exactly the same code as now (copy it "
+                 f"unchanged: same numbers, same positions). After the change these must hold on the geometry (code "
+                 f"checks them): {json.dumps(edit['checks'])}. Why: {edit['why']}. length_mm was {base_length_mm}."
+                 f"\n```python\n{base_program[:120000]}\n```")
+    elif base_program:
         text += ("\n\nThe CURRENT program of the model (it built a valid model): revise it to implement the plan, keep "
-                 f"what is right. length_mm was {base_length_mm}.\n```python\n{base_program[:40000]}\n```")
+                 f"what is right. length_mm was {base_length_mm}.\n```python\n{base_program[:120000]}\n```")
     text += "\n\nAnswer with `object`, a short `plan` (what changed / how), `length_mm` and `code`."
     content = [{"type": "text", "text": text}] + ([_image(Image.open(sheet))] if sheet else [])
     valid, best, history = [], None, []
@@ -702,8 +809,50 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
                 gate["summary"] += f"; INVALID solids left out: {len(bad)}"
             iou, imgs, extra = score(parts, meas, out_dir, f"r{k}") if measured else ({}, {}, {})
             log(f"round {k}/{rounds}: {len(parts)} parts built; {gate['summary']}; rendering for the Muse Spark critic")
-            pics = review_renders(parts, rdir, f"r{k}", log)
-            crit = critique(ai, k, sheet, plan, pics, gate, iou, log)
+            if editing:                  # did the change happen, and did anything else change by accident?
+                chk = Q.constraints(parts, edit["checks"]) if edit["checks"] else []
+                reg = _regressions(base_sig, _sig(parts), set(edit["touch"]))
+                pics = review_renders([p for p in parts if p["name"] in view_names] or _near(parts, edit["touch"]),
+                                      rdir, f"r{k}", log)
+                ask = [{"type": "text", "text": (
+                    f"An engineer asked to change a CAD model: {request}\nThe parts meant to change: {edit['touch']}. "
+                    f"Code checks on the new geometry: {json.dumps(chk)[:3000]}. Parts that changed although they were not "
+                    f"meant to: {reg[:20]} (code compared every other part's exact geometry with the previous version; if this list "
+                    "is empty, nothing else changed, so do not report other parts as changed). Below: close-up renders "
+                    "BEFORE the change, then AFTER, of the same parts. Judge only this change: "
+                    "achieved = the request is visibly done and nothing nearby got worse; score 0-10; problems = what is "
+                    "still wrong, concretely (part, what, where).")}]
+                for v, f in list(before.items())[:3]:
+                    ask += [{"type": "text", "text": f"BEFORE {v}:"}, _image(f, 800)]
+                for v, f in list(pics.items())[:3]:
+                    ask += [{"type": "text", "text": f"AFTER {v}:"}, _image(f, 800)]
+                try:
+                    ec, _ = ai.ask_json("C2_edit", f"edit{k}", AI.SPARK, ask, EDIT_CHECK_SCHEMA, seed=k, timeout=240)
+                except AI.ModelUnavailable as e:
+                    ec = {"achieved": False, "score": 0, "problems": [f"edit check unavailable: {e}"[:200]]}
+                failed = [c for c in chk if not c["ok"]]
+                # judged against the model BEFORE the edit: defects it already had are not the edit's fault
+                worse = []
+                if base_gate:
+                    for k_ in ("floating", "slivers", "overlaps"):
+                        if len(gate.get(k_) or []) > len(base_gate.get(k_) or []):
+                            worse.append(f"{k_}: {len(base_gate.get(k_) or [])} -> {len(gate.get(k_) or [])}")
+                elif gate["hard_fail"]:
+                    worse.append(gate["summary"])
+                if gate.get("invalid_left_out"):
+                    worse.append(f"invalid solids: {gate['invalid_left_out'][:6]}")
+                entry["edit_check"] = {"checks": chk, "failed": failed, "regressions": reg, "achieved": ec["achieved"],
+                                       "score": ec["score"], "problems": ec["problems"], "gates_worse": worse,
+                                       "ok": not failed and not reg and not worse}
+                log(f"round {k}: change {'achieved' if ec['achieved'] else 'NOT achieved'} (Muse Spark {ec['score']}/10), "
+                    f"{len(chk) - len(failed)}/{len(chk)} checks pass, {len(reg)} other part(s) changed")
+                crit = {"overall": ec["score"], "scores": {"edit": ec["score"]},
+                        "defects": [{"part": "edit", "problem": p} for p in ec["problems"]] +
+                                   [{"part": c["a"], "problem": f"{c['type']} with {c['b']} fails: {c['measured']}"} for c in failed] +
+                                   [{"part": r.split(":")[0], "problem": "changed although not part of the edit: " + r} for r in reg[:12]]}
+            else:
+                pics = review_renders(parts, rdir, f"r{k}", log)
+                crit = critique(ai, k, sheet, plan, pics, gate, iou, log)
             entry.update(iou=iou, mean_iou=round(float(np.mean(list(iou.values()))), 4) if iou else None, invalid=bad, **extra,
                          gates=gate, critic=crit, renders=pics, check_s=round(time.time() - t, 1))
             log(f"round {k}: {len(parts)} parts, invalid {len(bad)}, {gate['summary']}, IoU {iou}, critic "
@@ -732,6 +881,10 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
             for v, f in list(pics.items())[:4]:
                 fb += [{"type": "text", "text": f"render {v}:"}, _image(f, 900)]
             rep["rounds"].append(entry)
+            if editing and entry["edit_check"]["ok"] and entry["edit_check"]["achieved"]:
+                log(f"round {k}: the change is done, checked by code, nothing else changed: done")
+                history = []
+                break
             if crit and crit["overall"] >= target and not gate["hard_fail"] and k >= 2:
                 log(f"round {k}: critic {crit['overall']} >= {target} with clean gates: done")
                 history = []
@@ -741,6 +894,17 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
         rep["rounds"].append(entry)
         history = [{"type": "text", "text": f"Your round {k} program:\n```python\n{ans['code'][:60000]}\n```"}] + fb
     rep.update(seconds=round(time.time() - t0, 1), hypotheses=ai.store)
+    if editing:                      # an edit replaces the model only when code confirms it and nothing else broke
+        ok = [v for v in valid if v["entry"].get("edit_check", {}).get("ok")]
+        best = max(ok, key=lambda v: (v["entry"]["edit_check"]["achieved"], v["entry"]["edit_check"]["score"],
+                                      v["entry"]["round"])) if ok else None
+        last = (rep["rounds"][-1].get("edit_check") if rep["rounds"] else None) or {}
+        rep["edit_result"] = ({"applied": True, "round": best["entry"]["round"], **{k: best["entry"]["edit_check"][k] for k in
+                               ("achieved", "score", "problems")}, "checks_passed": len(best["entry"]["edit_check"]["checks"])}
+                              if best else {"applied": False, "why": (
+                                  "no round both passed the change's checks and left the other parts unchanged; the model "
+                                  "is kept as it was"), "last_failed_checks": last.get("failed"),
+                                  "last_regressions": (last.get("regressions") or [])[:12], "last_problems": last.get("problems")})
     if best:
         comps = _comps(best["parts"])
         open(os.path.join(out_dir, "program.py"), "w", encoding="utf-8").write(strip_fence(best["code"]))

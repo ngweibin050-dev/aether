@@ -1,4 +1,4 @@
-"""Write docs/CAD_RESULTS.md from a CAD run's report.json + model.aethercad (numbers are copied, never typed).
+"""Write docs/archive/CAD_RESULTS.md from a CAD run's report.json + model.aethercad (numbers are copied, never typed).
 
     python tools/cad_results.py <run_dir> [pytest_summary_line]
 """
@@ -111,5 +111,5 @@ if pr.get("S5"):
         f"{c['name']} {c['score_mean_iou']:.4f}" for c in pr["S5"]["candidates"]) + f" → chosen: **{pr['S5']['chosen']}**")
 hyp = doc.get("hypotheses", [])
 w(f"- **Stored model answers:** {len(hyp)} (replayed only for identical prompts). Models used: " + ", ".join(sorted({h.get('model', '?') for h in hyp})))
-(Path(__file__).resolve().parents[1] / "docs" / "CAD_RESULTS.md").write_text("\n".join(L) + "\n", encoding="utf-8")
-print("wrote docs/CAD_RESULTS.md")
+(Path(__file__).resolve().parents[1] / "docs" / "archive" / "CAD_RESULTS.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+print("wrote docs/archive/CAD_RESULTS.md")

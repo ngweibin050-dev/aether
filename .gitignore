@@ -19,3 +19,11 @@ aether_chrome_*/
 aether-lab/tests/ground_truth/**/_child.py
 aether-lab/tests/ground_truth/**/_job.json
 aether-lab/tests/ground_truth/**/_result.json
+# local tools and personal notes: kept on disk, not part of the submission
+.agents/
+make_submission.ps1
+Meta Global AI Developer Hackathon 2026 Rules.txt
+# the demo video plan (a production note, not part of the submission)
+VIDEO_PLAN.md
+VOICE_SCRIPT.md
+voice.m4a

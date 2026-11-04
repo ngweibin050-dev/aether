@@ -1,217 +1,151 @@
-# AETHER Lab — reconstruct undocumented machines into traceable, editable CAD
+# AETHER Lab
 
-**Meta Global AI Developer Hackathon 2026 · Indie Developer track · Ng Wei Bin (solo) · built Oct 26 – Nov 4**
+### Old machine drawings in, editable engineering CAD out, and it tells you what it had to guess.
 
-Many machines exist only as old drawings: one view, no scale, hidden parts, the maker long gone. AETHER turns that
-incomplete evidence into **editable OpenCascade CAD that says what it measured, what it inferred and what it cannot
-determine**, then lets an engineer correct it by conversation.
+**Meta Global AI Developer Hackathon 2026 · Indie Developer track · Theme: Push the Frontier · Ng Wei Bin (solo)**
 
-Upload an engineering drawing (or describe the object). **Muse plans the model and writes the CAD program
-itself**: a CadQuery program on OpenCascade, for any object, with no built-in recipe for cars, presses or clamps.
-AETHER runs the program in a sandbox and checks every solid. With a drawing, it also compares every view against
-it, and Muse revises the program until the checks are as good as it can get them.
+▶ **[3-minute demo video](#)** _(link added on submission)_ &nbsp;·&nbsp;
+🔍 **[Hosted replay, no setup](https://aether-lab-delta.vercel.app/replay.html)** &nbsp;·&nbsp;
+📏 **[Ground truth](aether-lab/docs/GROUND_TRUTH.md)** &nbsp;·&nbsp;
+✅ **[Acceptance tests](aether-lab/docs/ACCEPTANCE.md)** &nbsp;·&nbsp;
+🧾 **[Provenance](AETHER_HACKATHON_PROVENANCE.md)**
 
-You then keep engineering by talking to it. One AI orchestrator chooses the tools and calls them for you:
-
-- "make the wings thicker" (a new version of the program);
-- "generate its blueprint";
-- "explain how it works";
-- "calculate a hologram";
-- "what is its centre of mass";
-- "export STEP".
-
-- **Demo video (3 min):** _link added on submission_
-- **Hosted replay (no key, no server):** https://aether-lab-delta.vercel.app/replay.html — the CAD demo opens first
-- **Evidence (every number, and how to reproduce it):** [aether-lab/docs/EVIDENCE.md](aether-lab/docs/EVIDENCE.md)
-- **Acceptance tests (14 / 14 through the chat API):** [aether-lab/docs/ACCEPTANCE.md](aether-lab/docs/ACCEPTANCE.md) · **Audit:** [aether-lab/docs/AI_ORCHESTRATION_AUDIT.md](aether-lab/docs/AI_ORCHESTRATION_AUDIT.md)
-- **Architecture:** [aether-lab/ARCHITECTURE.md](aether-lab/ARCHITECTURE.md) · **What was built when:** [aether-lab/BUILT_DURING_EVENT.md](aether-lab/BUILT_DURING_EVENT.md)
+![AETHER Lab with an AI-written CAD model of a roadster, its CAD document and the Muse Spark chat](aether-lab/docs/media/lab_roadster.jpg)
 
 ---
 
-## Why not just ask Muse Spark?
+## The problem
 
-We gave plain Muse Spark (no tools) the same car sheet, the same part vocabulary and the same model frame, and
-asked three times. (The AETHER row is the earlier rule-based pipeline; the AI-written program now replaces it,
-below.) Both outputs were scored the same way: each view's silhouette, compared with the
-drawing's ink.
+Factories, museums and repair shops keep machines running for which **no CAD exists**: only a patent figure, a
+faded catalogue page or a three-view sketch. One view, no scale, hidden parts, and the maker long gone. Today an
+engineer redraws such a machine by hand, and nothing records which dimensions were read off the paper and which
+were guessed.
 
-| | IoU side | IoU top | IoU end | what you get |
-|---|---|---|---|---|
-| **AETHER (CAD pipeline)** | **0.974** | **0.988** | **0.978** | valid B-rep solids, STEP, feature history |
-| plain Muse Spark, answer 1 | 0.861 | 0.927 | 0.922 | a list of primitives |
-| plain Muse Spark, answer 2 | 0.412 | 0.928 | 0.880 | a list of primitives |
-| plain Muse Spark, answer 3 | 0.324 | 0.918 | 0.909 | a list of primitives |
+## What AETHER Lab does
 
-Two of Spark's three answers look plausible from above but are wrong from the side: the body was drawn as a
-flat profile and never stood upright. Nothing in an answer says which one is right. AETHER *measures* the
-sheet and checks every view, so the model reasons and the code verifies. Script: `tests/baseline_spark.py`.
+You give it a drawing (or a description). Meta's models plan the machine and **write the CAD program themselves**;
+AETHER's own code runs it, checks it and keeps every number honest.
 
-## What it does
+| Step | Who does it | What happens |
+|---|---|---|
+| 1. Check the drawing | **Muse Spark** | Reads the sheet like an engineer taking a job: which views it shows, what is missing, the one question worth asking |
+| 2. Plan the machine | **Muse Wonder** | Every component with what it is mounted on, its joint (fixed / turns / slides), its evidence on the drawing, and the **unknowns**: what the drawing cannot tell |
+| 3. Write the CAD | **Muse Wonder** | A CadQuery / OpenCascade program, key sizes as named parameters (`measured`, `read`, `inferred`, `assumed`) |
+| 4. Build and check | **AETHER code** on Modal CPU | Sandboxed run; every solid validated by OpenCascade; quality gates (floating parts, parts passing through each other, mechanical constraints); each view compared with the drawing |
+| 5. Critique and revise | **Muse Spark** + renders | Looks at real renders, scores them, and Muse Wonder rewrites the program; the best *checked* round is kept |
+| 6. Keep engineering | **Muse Spark** orchestrator, 40 tools | "the bore is 30 mm", "explain how it works", "make a technical drawing", "check interference", "export STEP": by chat or by voice (**Muse Voice Transcribe**); a part from a phone photo via **SAM 3.1** |
 
-1. **Measure (code, no model).** Where the drawing has the standard views, their outlines are measured from the
-   ink. The program receives them as functions (`side_top(u)`, `half_width(u)` …), so its geometry is grounded
-   in the drawing.
-2. **Plan and write (Muse Wonder).** Muse writes a plan: what the object is, every part, and where each size
-   comes from. Then it writes the CadQuery program that builds every part as a named, coloured solid.
-3. **Run (sandbox).** The program's syntax tree is checked first: no imports, no file access, no dunders,
-   no `exec`/`eval`. It then runs in a separate process with only CadQuery, `math` and the measured profiles in
-   scope. Every part must pass OpenCascade's BRepCheck.
-4. **Check and revise.** Code compares each view with the drawing (IoU) and renders the model. Muse sees the
-   overlays, scores and renders and rewrites the program. The best checked round is kept.
-5. **Keep engineering by chat.** Each turn goes to one Muse Spark orchestrator that chooses among ~35 tools.
-   It can change the program, make a drawing from the B-rep, explain the model, calculate a hologram, analyse
-   mass properties, or export STEP/GLB/STL/3MF. A change that fails never replaces the last valid model.
+**Models propose, code decides.** No measured value comes from a model, and every guess is labelled as a guess.
 
-## Measured results
+## Proof: does the CAD match the real part?
 
-**Does the CAD match the real part?** ([GROUND_TRUTH.md](aether-lab/docs/GROUND_TRUTH.md)) Three parts with known
-dimensions were drawn as engineering drawings; AETHER got only the drawing. Its solids were measured against the
-known ones, next to a one-shot baseline (Muse Wonder writing the program once: no plan, gates or critic):
+Three parts with **known dimensions** were drawn as engineering drawings. AETHER got only the drawing, then its
+solids were measured against the known ones ([full table and method](aether-lab/docs/GROUND_TRUTH.md)):
 
-| | pillow block | flanged hub | gusset bracket |
+| | Pillow block | Flanged hub | Gusset bracket |
 |---|---|---|---|
-| one-shot baseline | **no solid** (the program crashed) | sizes exact; hub Ø +6, bore +3 mm | sizes exact; 0 of 4 holes |
-| AETHER loop | valid; sizes within 0.1 mm; bore +4, holes +2 mm (all marked *inferred*) | sizes exact; hub Ø +5 mm | sizes exact; holes +3 mm |
-| + engineer corrects the *inferred* values (same program re-run, ~10 s, no model call) | **every feature diameter exact**, IoU 0.95 / 1.00 / 0.99 | hub exact; bore / bolt holes still 4 / 3 mm under (modelled as liners: a limitation found) | **all 4 holes exact** |
+| **Muse Wonder alone, one shot** (no plan, checks or critic) | ❌ program crashed, no solid | sizes exact · hub Ø **+6 mm**, bore +3 mm | sizes exact · **0 of 4 holes** |
+| **AETHER loop** | ✅ valid · sizes within 0.1 mm · bore +4 mm (marked *inferred*) | sizes exact · hub Ø +5 mm | sizes exact · holes +3 mm |
+| **+ engineer corrects the *inferred* values** (≈10 s, no AI call) | ✅ **every diameter exact**, IoU 0.95 / 1.00 / 0.99 | hub exact · bore still under size (a limitation it exposed) | ✅ **all 4 holes exact** |
 
-Sizes written on the drawing come out exact; sizes scaled off it are a few mm off, and AETHER says so for each one.
+What this shows:
+- **Sizes written on the drawing come out exact.**
+- **Sizes it had to scale are a few mm off, and each one is marked *inferred*.** The engineer knows exactly what to measure.
+- **Correcting them re-runs the same program in about 10 seconds**, and the error goes to zero.
 
-**The loop, measured** ([CAD_QUALITY.md](aether-lab/docs/CAD_QUALITY.md); the same five objects after every change):
+<p align="center">
+  <img src="aether-lab/docs/media/ground_truth_drawing.jpg" width="49%" alt="Ground-truth drawing of a pillow block bearing housing">
+  <img src="aether-lab/docs/media/brep_topology.jpg" width="24%" alt="B-rep topology of a part: faces pulled apart with their edges and vertices">
+</p>
 
-| object | input | solids | gates on the kept round | IoU, one scale (side / top / ends) | critic (0-10) |
-|---|---|---|---|---|---|
-| 1909 drawing press | ONE sectional patent view | 67 | all 28 mechanical constraints pass, 2 overlaps | - (one view) | 5 |
-| engine | description | 90 | clean except 5 of 27 constraints | - | 5 |
-| clamp | description | 22 | clean | - | 5 |
-| roadster | CC0 four-view drawing | 99 | 5 floating, 8 of 29 constraints | 0.87 / 0.94 / 0.86 / 0.88 | 3 |
-| car | four-view drawing (third-party, local only) | 118 | 55 % box-like, 15 floating | 0.91 / 0.94 / 0.83 / 0.83 | 2 |
+## A 1909 patent, one view, no scale
 
-What the code checks do within one run, for example the press:
-- parts passing through each other: 35 → 2;
-- plain boxes: 39 % → 0 %;
-- failed mechanical constraints: 11 → 0;
-- critic: 2 → 5.
+US Patent 929,594 shows a metal drawing press in **one sectional view**. AETHER builds it as **67 exact solids**,
+lists what one view cannot tell (the depth, the real scale, the drive train behind the cover, the blade cut off
+the sheet), and its own checks improve the model within one run ([CAD quality](aether-lab/docs/CAD_QUALITY.md)):
 
-The press's plan lists what one view cannot fix, each with what would resolve it:
-- the machine's depth (plan and end views);
-- the real scale (a dimensioned drawing);
-- the drive train behind the cover (the patent text);
-- the blade mechanism cut off the sheet (the uncropped sheet).
+| Within one run | Round 1 | Kept round |
+|---|---|---|
+| Parts passing through each other | 35 | **2** |
+| Plain boxes | 39 % | **0 %** |
+| Failed mechanical constraints | 11 | **0 of 28** |
+| Critic score | 2 / 10 | **5 / 10** |
 
-Every key dimension carries its provenance (measured, read, inferred, assumed or user). An engineer can correct a value
-by chat, and the same program re-runs without being rewritten. Only parameters the geometry reads can be corrected
-(the CAD document panel greys out the rest). Until 4 November the programs' own `P()` hid every read and blocked
-corrections; that is fixed, and new builds read 13 of 13 (ground-truth parts). The recorded 1909 press was built
-before the fix and reads 1 of its 9.
+## An engineer's toolkit, not a 3D picture
 
-**These are not finished designs yet.** The critic scores 2-5 out of 10, and the cars are the weakest. The targets
-(IoU >= 0.95 per view on four-view drawings, 0 floating or overlapping parts, critic >= 9) are goals, not results. The
-earlier roadster cycles, measured with the shape-only score, are in
-[docs/ai_cad_runs](aether-lab/docs/ai_cad_runs/README.md).
+- **Exact B-rep and STEP.** Every part is an OpenCascade solid and the STEP opens in any CAD system.
+- **B-rep assembly check.** Every pair of parts is tested for contact and interference; the roadster has 117 parts, all 117 valid.
+- **Connection diagram.** What is mounted on what, with which joint, and whether the geometry confirms it.
+- **B-rep topology.** Any part pulled apart into its real faces, edges and vertices.
+- **CAD feature tree.** Parts nested by mounting, each with its operations (loft, split, fillet, recess…).
+- **Assembly drawing.** Three views with dimensions, an item view with numbered balloons, a parts list (material, mounted on, joint, operations) and the connection diagram, in one PDF.
+- **Explain this machine.** Step by step along the real connections ("the nose panel is fixed on the tub; the headlight housing is fixed on the nose…"); every part and number is checked against the model.
+- **Inspect.** Section cuts, X-ray, explode, isolate, measure, mass properties.
+- **Corrections without an AI call.** Fix a parameter and the same program re-runs.
+- **Edits by chat are checked.** Only the parts concerned may change; the requested relation (e.g. "the glass touches the frame") is verified on the geometry; anything else that moved is reported.
 
-**Acceptance tests ([ACCEPTANCE.md](aether-lab/docs/ACCEPTANCE.md)): 14 / 14 through the chat API.**
-- A three-view jet built from the drawing: an aircraft, with no dedicated code.
-- Its geometry changed by chat (a new program version).
-- A blueprint generated from the B-rep, and the Explain panel opened with 12 steps.
-- A hologram calculated, then recalculated at 600 mm.
-- Mass properties measured; STEP, STL, GLB and 3MF exported.
-- One request that combined several tools, and a follow-up that said only "it".
-- An invalid request refused with nothing changed.
-- A clamp built from a description alone.
-
-One test passed only by being honest: AETHER has no general motion solver, and it said so.
-
-**Earlier pipeline** (car-only rules, from [EVIDENCE.md](aether-lab/docs/EVIDENCE.md); kept as the record of
-what was measured with it):
-
-| What | Result |
-|---|---|
-| Three-view car sheet → B-rep, silhouette IoU vs the drawing | side 0.980 · top 0.991 · front 0.975 · rear 0.975 |
-| Public CC0 car sheet (Shelby Cobra four-view, Wikimedia Commons), first full run | side 0.905 · top 0.971 · front 0.775 · rear 0.781; 9 / 9 valid solids; STEP 9 / 9. Lower because it is an **open roadster**: the vehicle module assumes a closed body, so it covers the cockpit and builds neither the windscreen nor the roll bar ([EVIDENCE §1b](aether-lab/docs/EVIDENCE.md)) |
-| Solids valid (OpenCascade `BRepCheck`) | 11 / 11 |
-| STEP round trip, re-read in a fresh process | 11 / 11, volume within 6.7e-09 |
-| Whole workflow through the app's API (`tests/e2e_story.py`) | 8 / 8 steps: drawing → CAD → refine → section → pocket → validate → STEP → restart + undo |
-| Refine by chat / everyday requests | 5 / 5 · 16 / 16 |
-| Exports opened outside AETHER (trimesh) | 9 / 9 GLB / STL / 3MF, size within 0.004 mm |
-
-**Two workflows, two levels of evidence.**
-
-- **Three-view sheet → verified B-rep** (above). Every view is checked against the drawing.
-- **Single-view patent figure → inferred mechanism.** One view cannot show depth, so Muse Wonder proposes the
-  hidden shafts, bearings and depths, and each one is labelled as inferred. 79–86 % of the drawing's lines land
-  on built parts, but only **60–72 %** of the built outline lies on the drawing's ink. That is reported, not
-  hidden ([EVIDENCE §3](aether-lab/docs/EVIDENCE.md#3-drawing---mechanism-patent-drawings)).
-
-**Measured vs assumed.** The sheets carry no dimension, so the real size is *assumed* (and shown as assumed)
-until the user gives one. Shape is measured, size is not. Agreement in every view is necessary but not
-sufficient: the cross-sections between the views are inferred.
+<p align="center">
+  <img src="aether-lab/docs/media/connection_diagram.jpg" width="49%" alt="Connection diagram generated for the roadster">
+  <img src="aether-lab/docs/media/item_view.jpg" width="49%" alt="Item view with numbered balloons for all 117 parts">
+</p>
 
 ## Meta models, and what each one decides
 
-| Model | What it decides in AETHER |
+| Model | Role in AETHER Lab |
 |---|---|
-| **Muse Spark** (`muse-spark-1.3`) | reads a sheet like an engineer taking a job (what it shows, what is missing, the one question to ask); labels parts and regions; runs every chat turn as a tool loop; writes grounded explanations, where every part id and number is checked in code |
-| **Muse Wonder** (`muse-wonder-1.0`) | writes and revises the CAD program for any object, from a drawing or a description; plans every part and where its size comes from |
-| **SAM 3.1** (`sam-3.1`) | finds regions on the drawing (glass, lights, intakes) that become B-rep imprints and pockets; cuts a part out of a photo |
-| **Muse Voice Transcribe** | hold-to-talk commands |
+| **Muse Wonder** (`muse-wonder-1.0`) | Plans every component (parent, joint, evidence, unknowns) and **writes and revises the CAD program**; plans edits as the smallest change |
+| **Muse Spark** (`muse-spark-1.3`) | Orchestrates every chat turn across 40 tools; checks a drawing before a build; **critiques real renders**; judges whether an edit was achieved; writes grounded explanations |
+| **SAM 3.1** (`sam-3.1`) | Cuts a part out of a phone photo for a model of it |
+| **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`) | Hold-to-talk commands |
 
-Models propose, code decides. No model output is ever executed, and no model sets a measured value.
+Every step in the chat shows which model or engine did it and how long it took, live, including the cloud CAD jobs.
+
+## Honest limits
+
+- **These are engineering drafts, not certified CAD.** Complex machines score 2–5 out of 10 with the critic.
+- **The ground truth is synthetic:** drawings made from known models, not yet real measured parts.
+- **One view cannot show depth.** Hidden geometry is inferred, and labelled as inferred.
+- **Real scale is assumed** until a dimension is given or read.
+- **Muse Wonder sometimes models a feature wrongly**, for example holes filled with "liner" solids, and not every such case is caught yet.
+- **There is no general motion solver.**
 
 ## Try it
 
 **No setup:** the [hosted replay](https://aether-lab-delta.vercel.app/replay.html) shows recorded runs, each
-labelled "RECORDED · not live". It has the CAD car (B-rep viewer, IoU per view, STEP download) and two
-patent mechanisms.
+labelled "RECORDED · not live".
 
-**Run it locally** (Windows; Python 3.12+; a Meta Model API key for live runs):
+**Run it** (Windows, Python 3.12, a Meta Model API key):
 
 ```bash
 cd aether-lab
-cad-worker\setup.ps1             # once: the pinned CAD kernel env (CadQuery 2.8 / OpenCascade)
-# put META_API=... in .env (repo root)
-python -m modal deploy modal_cad.py   # optional: CAD jobs on Modal CPU, parallel and cancellable
-                                 # (needs the Modal secret aether-meta with META_API; else the local CAD worker is used)
-start.bat                        # http://localhost:8765 — Demo menu: CAD car (recorded), D press, C gearbox
+cad-worker\setup.ps1                  # once: the pinned CadQuery / OpenCascade environment
+#   put META_API=... in .env (repository root)
+python -m modal deploy modal_cad.py   # optional: CAD jobs on Modal CPU (needs the Modal secret aether-meta)
+start.bat                             # opens http://localhost:8765 when the lab is ready
 ```
 
-**Check the numbers without a key:** `python -m tests.test_physics`, `python -m tests.test_history`,
-`python -m tests.baseline_spark --score` (re-scores the saved Spark answers), `python -m tests.evidence`.
+**Check the numbers:**
+- Offline tests, no key: `cad-worker\.venv\Scripts\python -m pytest tests/test_physics.py` (32 pass).
+- Ground truth: `tests/ground_truth/` (scripts and saved results).
+- Acceptance tests: `python -m tests.acceptance_ai` (14 scenarios through the chat API).
 
-## Limits
-
-- The demo car sheet in the evidence is a third-party drawing. It is used for measurement only and is not
-  redistributed in this repository. The [CC0 Cobra sheet](aether-lab/docs/INPUTS.md) is the public, reproducible
-  input.
-- Model-written programs are executed, inside the sandbox described above. That is a deliberate change from the
-  earlier rule that no model output is ever executed.
-- Outline measurement needs the standard views (side, top, two ends). Other sheets are read from the image by Muse,
-  checked by renders, and their sizes are labelled as estimates.
-- There is no general motion or collision solver yet. Physical parameters (mass, friction, torque) are asked for,
-  never invented.
-- Sizes are assumed until a dimension is given. Hidden geometry is inferred and labelled.
-- Single-view mechanisms: about 1 in 3 built outline pixels is not on the drawing.
-
-## The long-term vision: a holographic desk
-
-AETHER started as research toward a no-headset holographic workbench. The same CAD model would sit at its
-true depth on a desk panel. The wave-optics engine (phase holograms, an eye model, a "Window Law") is in
-`aether-lab/engine/` and [ARCHITECTURE Part B](aether-lab/ARCHITECTURE.md). **All of it is simulation. No
-display has been built.** The roadmap is in [AETHER_LONG_TERM_PROPOSAL.md](AETHER_LONG_TERM_PROPOSAL.md).
-
-## Repository layout
+## Where things are
 
 ```
-aether-lab/            the hackathon product
-  cad/                 drawing → parametric OpenCascade B-rep (runs in cad-worker/.venv)
-  assistant.py         Muse Spark chat tool loop; refine.py, intake.py, history.py, projects.py
-  agent.py, explain.py patent-figure reading, completion and grounded explanation
-  engine/              mechanism rebuild (gears, outlines) + holographic-desk simulation
-  server.py, ui/       local server and React / three.js app
-  tests/               evidence, e2e story, Spark baseline, export checks, physics tests
-  docs/                EVIDENCE, STORY, RESULTS, INPUTS, hosted replay (index.html, replay.html)
-theory/, references/   research notes behind the long-term proposal (not product code)
+aether-lab/                 the hackathon product
+  cad/                      AI-written CAD loop (codegen.py), quality gates, assembly, drawings, topology
+  prompts/                  the instruction files Muse Wonder and the critic work from
+  assistant.py              Muse Spark orchestrator and its 40 tools
+  server.py, ui/            local server and React / three.js app
+  modal_cad.py              the CAD loop on Modal CPU (one container per job, cancellable)
+  tests/                    ground truth, acceptance, quality benchmark, physics tests
+  docs/                     evidence, results, replay site (start at docs/README.md)
+theory/, references/        background research for the long-term vision (see provenance)
 ```
 
-Inputs are public-domain patent drawings, NASA graphics and a CC0 car sheet ([INPUTS.md](aether-lab/docs/INPUTS.md)),
-except the third-party car sheet noted above. NASA does not endorse this project. MIT licence
-([aether-lab/LICENSE](aether-lab/LICENSE)).
+**The long-term vision**, AETHER started as research toward a no-headset holographic workbench; the wave-optics
+simulator is in `aether-lab/engine/`. All of it is simulation, and no display has been built. See
+[AETHER_LONG_TERM_PROPOSAL.md](AETHER_LONG_TERM_PROPOSAL.md).
+
+Inputs are public-domain patent drawings, NASA graphics and a CC0 car sheet ([INPUTS.md](aether-lab/docs/INPUTS.md)).
+NASA does not endorse this project. MIT licence ([aether-lab/LICENSE](aether-lab/LICENSE)).

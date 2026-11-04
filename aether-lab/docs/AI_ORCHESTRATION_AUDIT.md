@@ -4,6 +4,17 @@ This audit checks AETHER Lab against the directive "the AI is the engineer, AETH
 records what the code does today, what is object-specific, and the order of the changes. It was written before
 those changes were made.
 
+> **Status, 5 Nov 2026.** The changes below are done:
+> - **One orchestrator with a single tool registry.** `assistant.py`, 40 tools, including `build_cad`, `edit_cad`,
+>   `set_cad_param` and `build_brep_assembly`.
+> - **AI-written CAD for any object** (`cad/codegen.py`), with checked edits.
+> - **The car rules are retired.** `cad/vehicle.py`, `cad/planner.py` and `cad/pipeline.py` can no longer be reached
+>   from the app or the assistant: their entry points were removed and the route answers that it is retired. They
+>   remain only for the archived evidence.
+> - **Neutral instructions.** `prompts/cad_engineer.md` holds object-neutral engineering principles.
+>
+> Results: [ACCEPTANCE.md](ACCEPTANCE.md), [GROUND_TRUTH.md](GROUND_TRUTH.md), [CAD_QUALITY.md](CAD_QUALITY.md).
+
 ## 1. What already matches the directive
 
 **There is one orchestrator.** `assistant.py` runs one Muse Spark tool loop per user turn (`turn()`), with up to 16

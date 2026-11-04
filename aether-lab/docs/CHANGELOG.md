@@ -1,6 +1,46 @@
 # Changelog
 
-All work below was done during the Meta AI Builders Hackathon 2026 (Oct 26 – Nov 4).
+Work during the Meta Global AI Developer Hackathon 2026 (build window Oct 26 – Nov 4). Dates are when the work was
+done (Malaysia time); see `BUILT_DURING_EVENT.md` for the commits.
+
+## 2026-11-05 (after midnight; committed with its real date)
+
+- **Checked edits** (`cad/codegen.py` edit mode): an edit is planned as the smallest change (Muse Wonder names the
+  parts to change and the relations that must hold); only those parts may change; code verifies the relations on the
+  geometry and reports every other part that moved; Muse Spark judges close-up renders before / after; the model is
+  replaced only when the change is verified and nothing else broke. Reason: an edit of the roadster's windshield had
+  rewritten 38 plan entries and 110 unrelated program lines.
+- **B-rep assembly of AI-written parts** (`cad/assembly.py` reads each part's own `.brep`): the roadster's 117 parts
+  all built and valid (before: 0). New chat tool `build_brep_assembly`.
+- **Connection diagram**, **B-rep topology** (faces / edges / vertices of a part, from OpenCascade), **CAD feature
+  tree** nested by mounting with each part's operations (`feature_ops.py`).
+- **Assembly drawing**: item view with numbered balloons, parts list, connection diagram, in one PDF.
+- **Explain** walks through the real connections from the plan; a connection step must name connected parts.
+- Fixes: X-ray readability, group selection highlight, right-click selects the part, single-part moves kept, a
+  duplicated CAD part keeps its mesh, a project with a mesh-less part opens.
+- **No object recipes anywhere in the build path:** `prompts/cad_engineer.md` rewritten as object-neutral engineering
+  principles (examples from machines, mechanisms, vehicles, products; "a hole is a cut, never a liner"); the critic
+  rubric made neutral; the unreachable entry points of the retired car pipeline removed (`agent._sheet_to_cad`,
+  `server.start_cad_job`, the three-view background branch), its route retired.
+- **Edits judged fairly:** an edit is compared with the model as it was (defects it already had are not counted
+  against it); part sizes compared from the exact geometry (a meshed part's box had produced false "changed" parts);
+  before / after close-ups render the same parts; the cloud job survives a short network drop while polling.
+- Verification: `pytest tests/test_physics.py` 32 passed; the assembly build, topology, connections, assembly
+  drawing and chat tool tested on the 1909 press and the roadster; the roadster windshield edit re-run on the real
+  model (plan: change `windshield_glass` only, 3 checks; result recorded in the commit).
+
+## 2026-11-04
+
+- **AI-written CAD** (`cad/codegen.py`): Muse Wonder plans the assembly and writes a CadQuery / OpenCascade program for
+  any object, run in a sandbox, checked by quality gates and against the drawing, critiqued by Muse Spark on real
+  renders, revised up to 3 rounds. One orchestrator (`assistant.py`) with `build_cad`, `edit_cad`, `set_cad_param`.
+- **Cloud CAD** on Modal CPU (`modal_cad.py`, `cad_remote.py`): one container per job, live progress in the chat,
+  Stop cancels, retries on transient Meta API errors.
+- **Ground truth** (`tests/ground_truth/`, `docs/GROUND_TRUTH.md`): three parts with known dimensions; AETHER vs a
+  one-shot baseline vs an engineer's correction. Parameter corrections fixed (a model-written `P()` hid them).
+- Lighter display meshes (a 20 m model: 1.3 M → 35 k triangles), project autosave without re-reading the file,
+  auto-refresh of Modal status and project name, the app stays editable during a CAD job.
+- Verification: 14 / 14 acceptance scenarios (`docs/ACCEPTANCE.md`), 32 offline tests.
 
 ## 2026-11-01
 
@@ -51,7 +91,7 @@ All work below was done during the Meta AI Builders Hackathon 2026 (Oct 26 – N
   upload form has an explicit choice: Auto · Machine drawing · Three-view sheet · Part photo. The prompt is now an
   optional hint. The routing and its evidence are the first step in the chat's step list.
 - **`tests/run_reference.py`**: reference runs with the real key and Modal through the UI's own upload function;
-  saves JSON and images per run and writes `docs/RESULTS.md`.
+  saves JSON and images per run and writes `docs/archive/RESULTS.md`.
 - `graphify-out/` added to `.gitignore`.
 - **Copyright-free reference inputs** (`tests/inputs/`, sources in `docs/INPUTS.md`): Fig. 1 of US 1,699,653 (motor
   reduction gearing) and of US 929,594 (metal drawing press), and NASA's X-3 three-view. The earlier stock / brand
@@ -98,4 +138,4 @@ All work below was done during the Meta AI Builders Hackathon 2026 (Oct 26 – N
   same box (IoU 0.82) and both were dropped. D recall 68.4 % -> 76.8 % (3 live runs).
 - **Region naming runs in parallel with the hull** and with low reasoning effort (G import 104–172 s -> 38 s alone).
 - Runs now save every single reading and the full dropped list, so other agreement rules can be replayed offline.
-- `docs/PROGRESS.md`: status of every step with the measured numbers.
+- `docs/archive/PROGRESS.md`: status of every step with the measured numbers.

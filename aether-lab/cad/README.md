@@ -4,8 +4,8 @@ This package replaces the visual hull as AETHER Lab's three-view reconstruction.
 becomes an editable CAD document (`.aethercad`) with a feature history. Its geometry is valid OpenCascade B-rep
 solids, exported as STEP. The GLB and the viewport meshes are tessellations derived from that B-rep.
 
-The design and its test plan are in [`docs/CAR_CAD_ARCHITECTURE.md`](../docs/CAR_CAD_ARCHITECTURE.md). Measured results
-are in [`docs/CAD_RESULTS.md`](../docs/CAD_RESULTS.md).
+The design and its test plan are in [`docs/archive/CAR_CAD_ARCHITECTURE.md`](../docs/archive/CAR_CAD_ARCHITECTURE.md). Measured results
+are in [`docs/archive/CAD_RESULTS.md`](../docs/archive/CAD_RESULTS.md).
 
 ## Setup (once)
 

@@ -3,10 +3,10 @@
 
     python -m tests.run_reference                      # every input, 3 runs each
     python -m tests.run_reference car_three_view 1     # one input, one run
-    python -m tests.run_reference --summary            # only rebuild docs/RESULTS.md from saved runs
+    python -m tests.run_reference --summary            # only rebuild docs/archive/RESULTS.md from saved runs
 
 Each run is saved to output/reference/<input>/run<k>/ (result.json + every image the UI would show), and
-docs/RESULTS.md is rebuilt from ALL saved runs: per run and mean / spread per input. Costs Meta API calls."""
+docs/archive/RESULTS.md is rebuilt from ALL saved runs: per run and mean / spread per input. Costs Meta API calls."""
 import base64
 import json
 import os
@@ -25,7 +25,7 @@ import vision  # noqa: E402
 from engine import lab  # noqa: E402
 
 # name: (file under tests/, prompt hint, assumed size mm, public). Public inputs are copyright-free (docs/INPUTS.md) and
-# go to docs/RESULTS.md; the others are third-party images kept for internal comparison only
+# go to docs/archive/RESULTS.md; the others are third-party images kept for internal comparison only
 # (output/reference/RESULTS_internal.md, never in the repo or the README).
 INPUTS = {"patent_US1699653_fig1": ("inputs/US1699653_fig1.png", "", 240, True),
           "patent_US929594_fig1": ("inputs/US929594_fig1.png", "", 240, True),
@@ -210,9 +210,9 @@ NOTES_MARK = "<!-- Hand-written notes below; tests/run_reference.py keeps them w
 
 
 def summary():
-    """docs/RESULTS.md from the saved runs of the public inputs, output/reference/RESULTS_internal.md from the
+    """docs/archive/RESULTS.md from the saved runs of the public inputs, output/reference/RESULTS_internal.md from the
     third-party ones (numbers only from result.json files)."""
-    for public, path in ((True, ROOT / "docs" / "RESULTS.md"), (False, OUT / "RESULTS_internal.md")):
+    for public, path in ((True, ROOT / "docs" / "archive" / "RESULTS.md"), (False, OUT / "RESULTS_internal.md")):
         _summary([n for n, v in INPUTS.items() if v[3] == public], path, public)
 
 

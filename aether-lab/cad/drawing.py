@@ -70,8 +70,145 @@ def project(shape, view, size):
     return {"visible": vis, "hidden": hid}
 
 
-def draw(shapes, title, out_base, notes=()):
-    """shapes: exact solids (model mm). Writes out_base.svg / .pdf / .png; returns paths, view extents, PNG data URL."""
+JOINT_WORD = {"root": "base", "fixed": "fixed", "revolute": "turns", "continuous": "turns", "prismatic": "slides",
+              "slide": "slides", "hinge": "hinge", "ball": "ball"}
+
+
+def _centroid(shape):
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+    g = GProp_GProps()
+    BRepGProp.VolumeProperties_s(shape, g)
+    c = g.CentreOfMass()
+    return np.array([c.X(), c.Y(), c.Z()])
+
+
+def _item_page(proj, ext, balloons, size, title):
+    """The item view: the front view large, a numbered balloon for every part in tidy rows above and below it (sorted
+    left to right), each with a leader to the part's centre; the numbers are the parts list's items."""
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    d, xv = VIEWS["front"]
+    X, N = np.array(xv, float), np.array(d, float)
+    Y = np.cross(N, X)
+    lo, hi = ext
+    w, h = hi - lo
+    pts = []
+    for it, shp in balloons:
+        try:
+            c = _centroid(shp)
+        except Exception:
+            continue
+        pts.append((it, np.array([c @ X, c @ Y]) - lo))
+    top = sorted([p for p in pts if p[1][1] >= h / 2], key=lambda p: p[1][0])
+    bot = sorted([p for p in pts if p[1][1] < h / 2], key=lambda p: p[1][0])
+    r = 0.011 * max(w, h)
+    per_row = max(1, int(w / (2.6 * r)))
+    rows_t, rows_b = -(-len(top) // per_row), -(-len(bot) // per_row)
+    fig = plt.figure(figsize=(16.54, 11.69))
+    ax = fig.add_axes([0.03, 0.05, 0.94, 0.86])
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.text(0.03, 0.95, f"ITEM VIEW · {title}", fontsize=13, weight="bold")
+    fig.text(0.03, 0.935, "front view; every part numbered as in the parts list (next sheet); leaders end at the part's centre",
+             fontsize=8, color="#555")
+    pad = 3 * r
+    ax.set_xlim(-0.05 * w, 1.05 * w)
+    ax.set_ylim(-pad - rows_b * 2.6 * r - r, h + pad + rows_t * 2.6 * r + r)
+    ax.add_collection(LineCollection([q - lo for q in proj["hidden"] if len(q) > 1], colors="#999", linewidths=0.3,
+                                     linestyles=[(0, (4, 2))]))
+    ax.add_collection(LineCollection([q - lo for q in proj["visible"] if len(q) > 1], colors="#111", linewidths=0.55))
+
+    def place(group, y0, step):
+        for k, (it, p) in enumerate(group):
+            row, col = divmod(k, per_row)
+            n = min(per_row, len(group) - row * per_row)
+            x = (col + 0.5) * w / n
+            y = y0 + step * row * 2.6 * r
+            ax.plot([p[0], x], [p[1], y - np.sign(step) * r], color="#1f4fa0", lw=0.35)
+            ax.add_patch(plt.Circle((x, y), r, fc="white", ec="#1f4fa0", lw=0.6, zorder=5))
+            ax.text(x, y, str(it), ha="center", va="center", fontsize=6, color="#1f4fa0", zorder=6)
+    place(top, h + pad, 1)
+    place(bot, -pad, -1)
+    return fig
+
+
+def _bom_pages(rows, title):
+    """The parts list as table pages (A3 landscape, up to 40 rows a page)."""
+    import matplotlib.pyplot as plt
+    figs = []
+    cols = ["ITEM", "PART", "MATERIAL", "MOUNTED ON", "JOINT", "OPERATIONS (from the CAD program's plan)"]
+    for k in range(0, max(1, len(rows)), 40):
+        fig = plt.figure(figsize=(16.54, 11.69))
+        ax = fig.add_axes([0.04, 0.06, 0.92, 0.86])
+        ax.axis("off")
+        fig.text(0.04, 0.95, f"PARTS LIST · {title}" + (f"  (page {k // 40 + 1})" if len(rows) > 40 else ""), fontsize=13, weight="bold")
+        chunk = rows[k:k + 40] or [["-", "-", "-", "-", "-", "-"]]
+        t = ax.table(cellText=chunk, colLabels=cols, loc="upper left", cellLoc="left",
+                     colWidths=[0.05, 0.2, 0.1, 0.2, 0.08, 0.37])
+        t.auto_set_font_size(False)
+        t.set_fontsize(8)
+        t.scale(1, 1.35)
+        for (r, c), cell in t.get_celld().items():
+            cell.set_edgecolor("#999")
+            if r == 0:
+                cell.set_facecolor("#e8eef6")
+                cell.set_text_props(weight="bold")
+        figs.append(fig)
+    return figs
+
+
+def _connection_page(nodes, title):
+    """The connection diagram: a tree from the base outwards, every part a box (item + name), every link to what it
+    is mounted on labelled with its joint (from the CAD program's plan)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch
+    kids = {}
+    for n in nodes:
+        kids.setdefault(n["parent"] or "", []).append(n)
+    pos, row = {}, [0]
+
+    def walk(n, d):
+        ch = kids.get(n["name"], [])
+        if not ch:
+            pos[n["name"]] = (d, row[0])
+            row[0] += 1
+            return
+        for c in ch:
+            walk(c, d + 1)
+        pos[n["name"]] = (d, (pos[ch[0]["name"]][1] + pos[ch[-1]["name"]][1]) / 2)
+    for r in kids.get("", []):
+        walk(r, 0)
+    depth = max([p[0] for p in pos.values()] + [0])
+    rows = max(row[0], 1)
+    fig = plt.figure(figsize=(16.54, 11.69))
+    ax = fig.add_axes([0.03, 0.03, 0.94, 0.9])
+    ax.axis("off")
+    fig.text(0.03, 0.95, f"CONNECTION DIAGRAM · {title}", fontsize=13, weight="bold")
+    fig.text(0.03, 0.935, "each part is mounted on the part to its left; the label is the joint (from the CAD program's plan)",
+             fontsize=8, color="#555")
+    W, H = 0.8, 0.6
+    ax.set_xlim(-0.2, depth + 1.1)
+    ax.set_ylim(rows, -1)
+    fs = max(4.0, min(8.0, 260 / rows))
+    item = {n["name"]: n["item"] for n in nodes}
+    for n in nodes:
+        if n["parent"] and n["parent"] in pos and n["name"] in pos:
+            (x1, y1), (x2, y2) = pos[n["parent"]], pos[n["name"]]
+            mx = x1 + W + (x2 - x1 - W) / 2
+            ax.plot([x1 + W, mx, mx, x2], [y1, y1, y2, y2], color="#1f4fa0", lw=0.6)
+            ax.text(mx + 0.02, y2 - 0.12, JOINT_WORD.get(n["joint"], n["joint"] or ""), fontsize=fs * 0.8, color="#1f4fa0")
+    for name, (x, y) in pos.items():
+        ax.add_patch(FancyBboxPatch((x, y - H / 2), W, H, boxstyle="round,pad=0.0,rounding_size=0.05", fc="#f4f7fb", ec="#555", lw=0.5))
+        ax.text(x + 0.03, y, f"{item.get(name, '')}", fontsize=fs, va="center", color="#1f4fa0", weight="bold")
+        ax.text(x + 0.14, y, name[:24], fontsize=fs, va="center")
+    return fig
+
+
+def draw(shapes, title, out_base, notes=(), balloons=None, bom=None, graph=None):
+    """shapes: exact solids (model mm). Writes out_base.svg / .pdf / .png; returns paths, view extents, PNG data URL.
+    An assembly drawing when balloons / bom / graph are given: balloons [(item, shape)] numbered on the front view,
+    the parts list pages (bom: rows) and the connection diagram page (graph: nodes) added to the PDF."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -127,14 +264,25 @@ def draw(shapes, title, out_base, notes=()):
     if notes:
         fig.text(0.04, 0.03, "NOTES: " + "  ".join(notes), fontsize=7, color="#444")
     paths = {}
-    for ext_ in ("svg", "pdf", "png"):
+    for ext_ in ("svg", "png"):
         f = f"{out_base}.{ext_}"
         fig.savefig(f, dpi=110 if ext_ == "png" else 300)
         paths[ext_] = f
+    extra = (([_item_page(proj["front"], ext["front"], balloons, size, title)] if balloons else [])
+             + (_bom_pages(bom, title) if bom else []) + ([_connection_page(graph, title)] if graph else []))
+    from matplotlib.backends.backend_pdf import PdfPages
+    with PdfPages(f"{out_base}.pdf") as pdf:                # every sheet in one PDF
+        pdf.savefig(fig)
+        for i, fx in enumerate(extra):
+            pdf.savefig(fx)
+            fx.savefig(f"{out_base}_sheet{i + 2}.png", dpi=90)
+            plt.close(fx)
+    paths["pdf"] = f"{out_base}.pdf"
+    paths["sheets"] = [f"{out_base}.png"] + [f"{out_base}_sheet{i + 2}.png" for i in range(len(extra))]
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=60)
     plt.close(fig)
-    return {"svg": paths["svg"], "pdf": paths["pdf"], "png": paths["png"],
+    return {"svg": paths["svg"], "pdf": paths["pdf"], "png": paths["png"], "sheets": paths["sheets"],
             "png_data_url": "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode(),
             "views": {v: [round(float(W[v][0]), 1), round(float(W[v][1]), 1)] for v in VIEWS},
             "size_mm": (bb[3:] - bb[:3]).round(1).tolist()}

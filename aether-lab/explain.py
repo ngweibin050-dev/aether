@@ -27,7 +27,39 @@ import numpy as np
 import agent
 
 CAMERAS = ["front", "top", "iso", "section", "rear", "left"]
-KINDS = ["overview", "architecture", "why", "subsystem", "flow", "interfaces", "assembly", "assumptions"]
+KINDS = ["overview", "architecture", "why", "subsystem", "connection", "flow", "interfaces", "assembly", "assumptions"]
+JOINT_WORDS = {"fixed": "fixed (bolted / welded: does not move)", "rigid": "fixed (does not move)",
+               "revolute": "revolute (turns about an axis)", "continuous": "continuous (turns freely, e.g. a wheel)",
+               "prismatic": "prismatic (slides along an axis)", "slide": "prismatic (slides along an axis)",
+               "hinge": "revolute (a hinge: swings)", "ball": "ball joint (turns in every direction)",
+               "gear_mesh": "gear mesh (teeth drive each other)", "root": "the base everything else is mounted on"}
+
+
+def _connections(state, ids_by_name):
+    """How the parts connect, from the CAD program's plan (Muse Wonder planned every component with what it is mounted
+    on, the joint, and the evidence) and its constraints. Only for AI-written CAD-program models; [] otherwise."""
+    import json as _json
+    from pathlib import Path as _P
+    out, cons = [], []
+    for g in [p for p in state["parts"] if (p.get("eng") or {}).get("kind") == "cad program" and p["eng"].get("program")]:
+        f = _P(g["eng"]["program"]).parent / "plan.json"
+        if not f.exists():
+            continue
+        try:
+            plan = _json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        for c in plan.get("components") or []:
+            a, b = ids_by_name.get(c.get("name")), ids_by_name.get(c.get("parent"))
+            if a and b:
+                j = str(c.get("joint") or "fixed").lower()
+                out.append({"part": a, "mounted_on": b, "joint": JOINT_WORDS.get(j, j),
+                            "evidence": str(c.get("evidence") or "")[:120]})
+        for c in plan.get("constraints") or []:
+            a, b = ids_by_name.get(c.get("a")), ids_by_name.get(c.get("b"))
+            if a and b:
+                cons.append({"a": a, "b": b, "type": c.get("type")})
+    return out, cons
 GUESSED = ("assumed", "engineer", "added", "guess", "typical", "rule")
 PALETTE = ["#4cc9f0", "#f72585", "#ffd166", "#06d6a0", "#b388ff", "#ff8c42", "#90be6d", "#ef476f", "#118ab2", "#c9ada7"]
 
@@ -65,9 +97,15 @@ Answer with:
 - design_rationale: 2-4 short reasons WHY the machine is arranged this way (the engineering trade-offs you can see:
   load paths, packaging, symmetry, serviceability). This is your reasoning: write it as such ("likely", "so that").
 - assembly_order: the subsystem names in the order they would be assembled.
-- steps: 7 to 12 steps in this order of kinds: overview, architecture, why, one "subsystem" step per subsystem,
-  flow (how power or load travels from input to output), interfaces (where subsystems connect and how), assembly
-  (explode: true), assumptions (what was measured on the drawing and what was guessed, and why).
+- steps: 9 to 16 steps in this order of kinds: overview, architecture, why, one "subsystem" step per subsystem,
+  then (when the JSON has "connections") 3-6 "connection" steps, flow (how power or load travels from input to output),
+  interfaces (where subsystems connect and how), assembly (explode: true), assumptions (what was measured on the
+  drawing and what was guessed, and why).
+- "connection" steps teach HOW THE PARTS ARE JOINED, step by step like an engineer at the bench: start at the base (the
+  part whose joint is "the base everything else is mounted on") and walk outwards along "connections". Each step takes
+  one chain of 2-6 parts and says, for each link, which part is mounted on which, with which joint, and what that
+  joint lets it do (fixed = carries load, revolute = turns, prismatic = slides). Use the "constraints" (coaxial,
+  contact, clearance) to say what lines up with what. List exactly those parts in "parts".
 - quiz: 3 questions with 3 options each and the index (0-2) of the right one, about THIS model.
 
 Rules (checked by a program; a step that breaks one is rejected):
@@ -140,6 +178,10 @@ def facts(state, scale=None, geometry_of=None, cad_features=None):
                                              "sizes are model mm only: the drawing states no scale or dimension"
                                              + (f" ({scale.get('source')})" if (scale or {}).get("source") else ""))}
     fx = {"scale": sc, "parts": out, "gear_pairs": pairs, "shafts": shafts, "count_by_kind": kinds, "parts_total": len(out)}
+    conn, cons = _connections(state, {p["name"]: p["id"] for p in parts})
+    if conn:
+        fx["connections"] = conn[:200]
+        fx["constraints"] = cons[:80]
     if cad_features:
         fx["cad_features"] = cad_features[:40]
     return fx
@@ -202,6 +244,11 @@ def validate(plan, fx):
             bad.append("a size in mm without \"model scale, real size unknown\" (the drawing has no scale)")
         if s.get("camera") not in CAMERAS:
             bad.append(f"camera {s.get('camera')!r}")
+        if s.get("kind") == "connection" and fx.get("connections"):
+            linked = {frozenset((c["part"], c["mounted_on"])) for c in fx["connections"]}
+            ps = s.get("parts") or []
+            if not any(frozenset((a, b)) in linked for i, a in enumerate(ps) for b in ps[i + 1:]):
+                bad.append("a connection step must name parts that are connected in the model's plan")
         n = len([x for x in re.split(r"(?<=[.!?])\s+", (s.get("text") or "").strip()) if x])
         if not 2 <= n <= 5:
             bad.append(f"{n} sentences (2-5)")

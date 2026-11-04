@@ -18,7 +18,7 @@ const NAMES = {
   calculate: "Calculate", web_search: "Web search", inspect: "Inspect model", explain_machine: "Explain the machine",
   create_model: "Create model", add_parts: "Add parts", modify: "Change", remove: "Remove", export_model: "Export file",
   make_drawing: "Technical drawing", build_from_drawing: "Build from drawing", import_file: "Import file", undo: "Undo",
-  ask_user: "Question", open_panel: "Open panel",
+  ask_user: "Question", open_panel: "Open panel", build_brep_assembly: "B-rep assembly",
 };
 const KIND_NAME = { machine: "machine drawing (one view)", three_view: "three-view sheet", part: "photo of one part" };
 function summary(t) {
@@ -68,6 +68,7 @@ export const STEP = {
   "illustration · Muse Image": ["Muse Image", "illustration"], sam_3_1: ["SAM 3.1", "outline"],
   voice: ["Muse Voice Transcribe", "speech to text"],
   check_drawing: ["Muse Spark", "check the drawing: what is missing for a reliable model"],
+  build_brep_assembly: ["OpenCascade", "B-rep assembly: exact solids, contacts, mates"],
   build_cad: ["Muse Wonder", "plan and write the CAD program"], edit_cad: ["Muse Wonder", "change the CAD program"],
   set_cad_param: ["AETHER engine", "re-run the CAD program with the new value"],
   build_from_drawing: ["Muse Wonder", "build CAD from the drawing"], explain_machine: ["Muse Spark", "explain the machine"],

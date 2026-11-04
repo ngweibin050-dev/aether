@@ -118,6 +118,9 @@ HOW TO HANDLE EVERY MESSAGE (decide the intent first, silently):
 13. "Undo", "go back", "that was wrong, revert": undo.
 14. Desk / hologram / sharpness questions: the physics tools (desk_score, focus_sweep, window_check, eye_view ...).
 15. Opening a panel or view ("show the CAD panel", "cut it in half", "explode it"): open_panel / set_view.
+15b. "B-rep assembly", "check interference / contacts / mates", "which parts really touch": build_brep_assembly. Do it
+    directly (it changes nothing in the model, so never ask first), then report solids valid, interferences, contacts
+    and mates from its result in 2-3 sentences, and say the panel's Connections tab shows them per joint.
 16. Something AETHER cannot do: say so plainly and offer the closest thing it can do.
 
 AMBIGUITY: if a request could DESTROY or REPLACE work and the target is unclear, ask (ask_user, 2-4 short options).
@@ -238,6 +241,10 @@ NEW_SCHEMAS = [
     ("ask_user", "Ask the user one short question with 2-4 options (shown as buttons). Use when a destructive request "
      "is ambiguous. Ends your turn.", {"question": {"type": "string"},
                                         "options": {"type": "array", "items": {"type": "string"}}}, ["question", "options"]),
+    ("build_brep_assembly", "Build the scene's machine as a B-rep assembly in OpenCascade: every part an exact solid, "
+     "each solid validated, every pair of parts checked for contact / interference (passing through), mates found; "
+     "the connection diagram then shows which planned joints the geometry confirms. Opens the B-rep assembly panel. "
+     "Takes about 1-4 minutes for 100+ parts.", {}, []),
     ("open_panel", "Open a panel in the app: assembly (B-rep tree, mates, checks), drawing (balloons on the read drawing), "
      "optics (desk simulation figure), cad (CAD document), physics.",
      {"panel": {"type": "string", "enum": ["assembly", "drawing", "optics", "cad", "physics"]}}, ["panel"]),
@@ -1025,18 +1032,6 @@ def build_from_drawing(state, ctx, file, kind="auto", hint=None, answers=None, a
         if a:
             out["drawing_check"] = {"object": a.get("object"), "views": a.get("views"), "missing": [g["what"] for g in a["missing"]]}
         return out
-    measured = (a or {}).get("kind_measured")
-    if START_CAD_JOB and (kind == "three_view" or (kind == "auto" and measured == "three_view")):
-        # the CAD pipeline takes about 2 minutes: it runs in the background and the user keeps working meanwhile
-        job = START_CAD_JOB(url, hint, decisions, f["name"])
-        out = {"started_in_background": True, "model": job["model"], "takes": "about 2 minutes",
-               "note": "the model appears on the desk by itself when it is done (with a message in the chat); the "
-                       "user can keep working meanwhile. Do not say it is built yet."}
-        if a:
-            still = [g["what"] for g in a["missing"] if not (L and g["what"].lower().startswith(("size", "scale", "real", "dimension", "overall")))]
-            if still:
-                out["will_assume"] = still
-        return out
     before = {m["id"] for m in roots(state)}
     keep = [p for p in state["parts"]]
     reply, trace, images, _ = agent.photo_to_design(state, [], url, hint, 80.0, ctx["out_dir"], ctx.get("on_step"),
@@ -1353,7 +1348,6 @@ def cad_feature(state, ctx, model, features):
     return out
 
 
-START_CAD_JOB = None         # set by the server: a three-view drawing -> CAD model in the background
 CAD_REIMPORT = None          # set by the server: re-import the open CAD document in place (same model, same pose)
 
 
@@ -1369,7 +1363,8 @@ def _program_result(r):
     return {"rounds": r.get("rounds"), "plan_components": r.get("plan_components"),
             "kept": {k: (r.get("best") or {}).get(k) for k in ("round", "iou", "mean_iou", "object", "length_mm", "critic",
                                                                "critic_scores", "gates")},
-            "parts": [p["name"] for p in (r.get("best") or {}).get("parts") or []], "seconds": r.get("seconds")}
+            "parts": [p["name"] for p in (r.get("best") or {}).get("parts") or []], "seconds": r.get("seconds"),
+            **({"edit_result": r["edit_result"]} if r.get("edit_result") else {})}
 
 
 def build_cad(state, ctx, description=None, file=None, name=None, rounds=3, _gated=False):
@@ -1415,8 +1410,9 @@ def edit_cad(state, ctx, model, instruction, rounds=3):
                   rounds=int(rounds), base_program=Path(e["program"]).read_text(encoding="utf-8"),
                   base_length_mm=e.get("length_mm"), base_plan=str(Path(e["program"]).with_name("plan.json")))
     if not r.get("best"):
-        return {"changed": False, "kept_version": e["version"], "why": "no revised program produced valid solids; the "
-                "model is unchanged", **_program_result(r)}
+        why = (r.get("edit_result") or {}).get("why") or "no revised program produced valid solids"
+        return {"changed": False, "kept_version": e["version"], "why": why + "; the model is unchanged. Tell the user "
+                "what still failed (edit_result) and offer a more specific instruction.", **_program_result(r)}
     imp = lab.import_cad(state, r["meshes"], [], g["name"], g["eng"]["cad_document"],
                          provenance={**e, "version": v, "program": str(out / "program.py"), "report": str(out / "report.json"),
                                      "step": str(out / "model.step"), "glb": str(out / "model.glb"),
@@ -1505,6 +1501,17 @@ def run_tool(state, ctx, name, args):
         return undo(state)
     if name == "redo":
         return steps.redo(state)
+    if name == "build_brep_assembly":
+        if not ctx.get("asm_build"):
+            return {"error": "the B-rep assembly can only be built from the app"}
+        import contextlib
+        with (ctx.get("unlocked") or contextlib.nullcontext)():   # the build takes the scene lock itself
+            r = ctx["asm_build"]()
+        ctx.setdefault("ui", []).append({"open_panel": "assembly"})
+        s = (r or {}).get("summary") or {}
+        return {"built": True, **{k: s.get(k) for k in ("parts", "built", "valid_solids", "invalid_solids", "contacts",
+                                                         "interferences", "interference_mm3", "mates", "mates_satisfied")},
+                "seconds": (s.get("seconds") or {}).get("total"), "panel": "B-rep assembly opened (Connections tab)"}
     if name == "open_panel":
         ctx.setdefault("ui", []).append({"open_panel": args["panel"]})
         return {"opened": args["panel"]}

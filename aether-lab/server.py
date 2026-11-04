@@ -82,10 +82,24 @@ def lean(state):
 def restore(parts):
     """Parts from the UI: put the geometry back that lean() left out."""
     out = []
+    # a duplicate made in the app has a new id: it takes the geometry of the part it was copied from (the same CAD
+    # component / B-rep file); without this it was saved with no mesh and the project could not be opened again
+    src = {}
+    for q in STATE["parts"]:
+        e = q.get("eng") or {}
+        if q["id"] in HEAVY:
+            if e.get("brep"):
+                src.setdefault(e["brep"], q["id"])
+            if e.get("cad_component"):
+                src.setdefault((e.get("cad_document"), e["cad_component"]), q["id"])
     for p in parts:
         prm = p.get("params") or {}
-        if prm.get("_geometry") == "server" and p.get("id") in HEAVY:
-            p = {**p, "params": {**{k: v for k, v in prm.items() if k != "_geometry"}, **HEAVY[p["id"]]}}
+        if prm.get("_geometry") == "server":
+            e = p.get("eng") or {}
+            sid = p.get("id") if p.get("id") in HEAVY else (
+                src.get(e.get("brep")) or src.get((e.get("cad_document"), e.get("cad_component"))))
+            if sid:
+                p = {**p, "params": {**{k: v for k, v in prm.items() if k != "_geometry"}, **HEAVY[sid]}}
         out.append(p)
     return out
 HISTORY = _PROJECT.get("history") or []
@@ -392,6 +406,32 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "no drawing read in this session"})
             head, b64 = url.split(",", 1)
             return self._send(200, base64.b64decode(b64), head.split(";")[0].split(":")[-1] or "image/png")
+        if path == "/api/brep/topology":
+            pid = self.path.split("id=")[1].split("&")[0] if "id=" in self.path else ""
+            p = next((x for x in STATE["parts"] if x["id"] == pid), None)
+            f = ((p or {}).get("eng") or {}).get("brep")
+            if not p:
+                return self._send(404, {"error": "select a part first"})
+            if p["type"] == "group":
+                return self._send(404, {"error": "a group has no B-rep of its own: select one of its parts"})
+            if not f or not Path(f).is_file():
+                return self._send(404, {"error": f"'{p['name']}' has no exact B-rep file (only AI-written CAD parts carry one)"})
+            import cad_client
+            try:
+                return self._send(200, {"part": p["name"], **cad_client.call("topology", brep=f, timeout=3)})
+            except cad_client.Busy:
+                return self._send(409, {"busy": True, "error": "The CAD worker is busy (a B-rep assembly or CAD build is "
+                                                               "running): the topology appears as soon as it is free."})
+            except Exception as e:
+                return self._send(409, {"error": str(e)[:300]})
+        if path == "/api/asm/connections":
+            sel = (self.path.split("sel=")[1].split("&")[0] if "sel=" in self.path else "")
+            g = _program_model(sel) if sel else None
+            g = g or _program_model()
+            if not g:
+                return self._send(404, {"error": "no AI-written CAD model in the scene"})
+            with LOCK:
+                return self._send(200, connection_graph(g))
         if path == "/api/asm/report":
             if (ASSEMBLY.get("step") or {}).get("roundtrip") == "running":     # the background STEP round trip
                 import cad_client
@@ -513,6 +553,7 @@ class Handler(BaseHTTPRequestHandler):
                             att = body.get("attachments") or []
                             ctx = chat_ctx(att)
                             ctx["unlocked"] = _unlocked        # a long CAD job lets the app keep editing meanwhile
+                            ctx["asm_build"] = lambda: asm_route("/api/asm/build", {}, own_progress=False)
                             reply, trace, images, HISTORY, extras = assistant.turn(STATE, HISTORY, body.get("text") or "", ctx)
                             CHAT.append({"role": "user", "text": body.get("text") or "",
                                          "files": [{"name": n, "kind": _kind(n), "url": f"/api/files/files/{n}"} for n in att]})
@@ -557,16 +598,20 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path == "/api/scene":          # bulk edits from the UI (delete, duplicate, colour, hide...)
                     before = history.snapshot(STATE)
                     new = restore(body["parts"])
-                    reset = lab.guard_cad_leaves(STATE["parts"], new)
-                    if reset:
-                        print(f"/api/scene: CAD components moved one by one were put back: {reset[:6]}", flush=True)
+                    # every move from the app is kept, also all of a model's parts at once (box-select + G); a model
+                    # whose parts all carry the same transform is folded into its group at load (lab.fold_cad_leaves)
+                    moved = lab.moved_program_parts(STATE["parts"], new)
                     STATE["parts"] = new
                     STATE["selected"] = body.get("selected")
                     if "view" in body:
                         STATE["view"] = body["view"]
                     STATE["version"] += 1
                     _record(before, body.get("label") or "edit in the app")
-                    return self._send(200, {"state": lean(STATE)})
+                    note = None
+                    if moved:
+                        note = (f"Moved {', '.join(moved[:3])}{' …' if len(moved) > 3 else ''} in the scene. The CAD program "
+                                "and its STEP keep the original placement: ask Muse Spark to change the program to make it permanent.")
+                    return self._send(200, {"state": lean(STATE), **({"note": note} if note else {})})
                 if self.path in ("/api/undo", "/api/history/undo"):   # Ctrl+Z, the History panel, "undo this" in the chat
                     r = history.undo(STATE, body.get("id"))
                     if r.get("undone") and body.get("id") and self.path == "/api/undo":
@@ -626,7 +671,9 @@ def cad_route(path, body):
     import base64
     import cad_client
     out = CAD_DIR
-    if path == "/api/cad/from_sheet":
+    if path == "/api/cad/from_sheet":            # retired: the rule-based car pipeline (cad/vehicle.py) is not used
+        raise ValueError("retired: every drawing is now built as an AI-written CAD program; upload it in the chat")
+    if path == "/api/cad/from_sheet_legacy":     # kept unreachable from the app, for the archived evidence only
         out.mkdir(parents=True, exist_ok=True)
         raw = base64.b64decode(body["image"].split(",", 1)[-1])
         sheet = out / "sheet.png"
@@ -723,17 +770,20 @@ def asm_brief():
             "records": r["records"], "step": ASSEMBLY["step"]}
 
 
-def asm_route(path, body):
+def asm_route(path, body, own_progress=True):
+    """own_progress=False when a chat turn runs the build (its own steps show it)."""
     import cad_client
     if path == "/api/asm/build":
         with LOCK:
             parts = [dict(p) for p in STATE["parts"]]
-        PROGRESS.update(running=True, steps=[{"label": "brep_assembly", "state": "run", "t0": time.time(), "who": "OpenCascade"}])
+        if own_progress:
+            PROGRESS.update(running=True, steps=[{"label": "brep_assembly", "state": "run", "t0": time.time(), "who": "OpenCascade"}])
         try:
             r = cad_client.call("asm_build", parts=parts, out_dir=str(OUT / "assembly"))
         finally:
-            PROGRESS["running"] = False
-            PROGRESS["steps"][-1].update(state="ok", s=round(time.time() - PROGRESS["steps"][-1]["t0"], 1))
+            if own_progress:
+                PROGRESS["running"] = False
+                PROGRESS["steps"][-1].update(state="ok", s=round(time.time() - PROGRESS["steps"][-1]["t0"], 1))
         with LOCK:
             ASSEMBLY.update(report={k: v for k, v in r.items() if k != "meshes"}, meshes=r["meshes"], step=None,
                             geo={p["id"]: _geo_key(p) for p in parts if p["type"] != "group"},
@@ -1066,67 +1116,6 @@ def start_cad_detail(name):
 agent.ON_CAD_DETAIL = start_cad_detail
 
 
-def start_cad_job(data_url, hint, decisions, source_file):
-    """A three-view drawing -> CAD model in the BACKGROUND (about 2 minutes): the chat turn that asked for it ends at
-    once, so the user keeps working (other models, questions, edits) meanwhile. The pipeline runs without the scene
-    lock; only the import into the scene takes it, briefly. When it lands: an undo step, a chat message (shown by the
-    app's job poll), the project saved, and the detail pass (pockets, imprints) starts."""
-    import base64
-    import io
-    import uuid
-    import cad_client
-    from PIL import Image
-    jid = "cad_" + uuid.uuid4().hex[:6]
-    name = f"{(hint or 'model')[:40]} (CAD from three views)"
-    JOBS[jid] = {"label": f"Building {hint or 'the model'} from the drawing (CAD)", "state": "running", "t0": time.time(),
-                 "kind": "cad_build"}
-
-    def run():
-        try:
-            out = CAD_DIR
-            out.mkdir(parents=True, exist_ok=True)
-            sheet = out / "sheet.png"
-            Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
-            r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), defer_detail=True, decisions=decisions,
-                                timeout=1800)
-            with LOCK:
-                before = assistant.snapshot(STATE)
-                imp, doc = _cad_import(name)
-                g = next((p for p in STATE["parts"] if p["id"] == imp["id"]), None)
-                if g is not None:
-                    g.setdefault("eng", {})["source_file"] = source_file
-                e = _record(before, f"build {name} from {source_file}", "build")
-                undo_id = e and e["id"]
-                L = ((decisions or {}).get("overall_length_mm") or {}).get("value")
-                agent.LAST_REPORT.clear()
-                agent.LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": bool(L),
-                                          "scale_source": f"given by the user: overall length {L:.0f} mm" if L else
-                                          "assumed: overall length 4500 mm (no dimension on the sheet)"})
-                rep_ = r.get("report") or {}
-                msg = {"role": "ai", "text": (
-                    f"**{name}** is built and on the desk, beside your other models. "
-                    f"{len(doc['features'])} CAD features, {len([c for c in doc['components'] if not c.get('group')])} solid parts"
-                    + (f"; real size from you: {L:.0f} mm long." if L else "; real size assumed (4.5 m long) until you give one.")
-                    + " Pockets and imprints (windows, lights, grille) are still being added in the background."),
-                    "extras": {"changes": [f"Added {name} to the desk"], "undo_id": undo_id}}
-                CHAT.append(msg)
-                STATE["version"] += 1
-            _save_undo()
-            DIRTY.set()
-            JOBS[jid].update(state="done", s=round(time.time() - JOBS[jid]["t0"], 1), message=msg, model=name,
-                             all_valid=rep_.get("all_valid"))
-            start_cad_detail(name)
-        except Exception as e:
-            traceback.print_exc()
-            msg = {"role": "ai", "text": f"Building the CAD model from {source_file} failed: {type(e).__name__}: {str(e)[:300]}"}
-            CHAT.append(msg)
-            JOBS[jid].update(state="error", error=str(e)[:300], message=msg)
-            DIRTY.set()
-    threading.Thread(target=run, daemon=True).start()
-    return {"job": jid, "model": name}
-
-
-assistant.START_CAD_JOB = start_cad_job
 
 
 def _program_model(sel=""):
@@ -1140,6 +1129,51 @@ def _program_model(sel=""):
                 return r
         return None
     return progs[-1] if progs else None
+
+
+def _ops(method):
+    from feature_ops import ops_of                  # shared with the CAD worker's drawing (parts list)
+    return ops_of(method)
+
+
+def connection_graph(g):
+    """A CAD-program model as an engineer's connection diagram: every part (item number, material), what it is mounted
+    on with which joint and the evidence (Muse Wonder's plan), the plan's constraints, and for each connection what the
+    B-rep assembly check found (contact / interference / clear) when it has been built for these parts."""
+    e = g["eng"]
+    d = Path(e["program"]).parent
+    try:
+        plan = json.loads((d / "plan.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        plan = {}
+    sub = lab.subtree(STATE, g["id"])
+    by_name = {p["name"]: p for p in sub if p["type"] == "cad"}
+    comps = [c for c in plan.get("components") or [] if c.get("name") in by_name]
+    item = {c["name"]: i + 1 for i, c in enumerate(comps)}
+    pairs = {}
+    rep = ASSEMBLY.get("report") or {}
+    for pr in rep.get("pairs") or []:
+        pairs[frozenset((pr["a"], pr["b"]))] = pr["status"]
+    checked = bool(rep) and any(p["id"] in (rep.get("records") or {}) for p in by_name.values())
+    nodes, edges = [], []
+    for c in comps:
+        p = by_name[c["name"]]
+        nodes.append({"id": p["id"], "item": item[c["name"]], "name": c["name"], "material": c.get("material"),
+                      "parent": by_name[c["parent"]]["id"] if c.get("parent") in by_name else None,
+                      "joint": c.get("joint") or ("root" if c.get("parent") in (None, "-", "") else "fixed"),
+                      "ops": _ops(c.get("method")), "evidence": (c.get("evidence") or "")[:160]})
+        q = by_name.get(c.get("parent"))
+        if q is not None:
+            st = pairs.get(frozenset((p["id"], q["id"]))) if checked else None
+            edges.append({"a": p["id"], "b": q["id"], "joint": c.get("joint") or "fixed",
+                          "brep": st or ("clear" if checked else "not checked"), "evidence": (c.get("evidence") or "")[:160]})
+    cons = []
+    for c in plan.get("constraints") or []:
+        a, b = by_name.get(c.get("a")), by_name.get(c.get("b"))
+        if a and b:
+            cons.append({"a": a["id"], "b": b["id"], "type": c.get("type"), "value": c.get("value")})
+    return {"model": g["name"], "model_id": g["id"], "nodes": nodes, "edges": edges, "constraints": cons,
+            "brep_checked": checked, "unknowns": plan.get("unknowns") or []}
 
 
 def _program_doc(g):
@@ -1169,7 +1203,9 @@ def _program_doc(g):
                         "kind": "parameter" if (v.get("used", True) or stale) else "not read by the geometry",
                         "locked": v.get("used") is False and not stale,
                         "note": v.get("evidence")} for k, v in params.items() if isinstance(v, dict)],
-        "features": [{"id": c["name"], "label": c["name"], "op": c.get("method") or "",
+        "features": [{"id": c["name"], "label": c["name"], "op": c.get("method") or "", "ops": _ops(c.get("method")),
+                      "parent": c.get("parent") if c.get("parent") not in (None, "-", "") else None,
+                      "joint": c.get("joint"),
                       "inputs": [c["parent"]] if c.get("parent") not in (None, "-", "") else [],
                       "params": [], "status": "ok" if c["name"] in built else "failed_optional", "evidence": c.get("evidence"),
                       "material": c.get("material")} for c in plan.get("components") or []],

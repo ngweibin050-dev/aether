@@ -18,7 +18,7 @@ Files are in `tests/inputs/`. The full original sheet is kept next to each cropp
 | `heldout/CC0_Cobra_four_view.png` | **Car four-view sheet** (top, side, rear, front), the public input for the CAD pipeline and the CAR demo. Converted from the SVG: Wikimedia's PNG render at 1920 px, red lines turned black, the drawing frame removed, strokes thickened to about 5 px (a 5×5 minimum filter), cropped. Its first CAD run failed at view detection (8 views found). Two general fixes followed in `cad/observations.py`: a straight row inside a view is not a ground line, and a drawing wholly inside another view's box belongs to that view. Its numbers are from the first full run after those fixes; nothing else was tuned on it | "Shelby cobra blueprint i 01.svg" by Igor Križanovskij (Open Clip Art) — https://commons.wikimedia.org/wiki/File:Shelby_cobra_blueprint_i_01.svg | CC0 1.0 (public domain dedication) |
 
 **Not redistributed: the car sheet behind the main CAD evidence.** The car sheet in `docs/EVIDENCE.md` §1–2, §6–7 and
-`docs/STORY.md` is a third-party line drawing of a commercial car. It was used for measurement only and is not in this
+`docs/archive/STORY.md` is a third-party line drawing of a commercial car. It was used for measurement only and is not in this
 repository (`.gitignore`). The CC0 sheet above is the reproducible public input.
 
 **Third-party software on Modal only**: `fast-simplification==0.1.13` (MIT licence,

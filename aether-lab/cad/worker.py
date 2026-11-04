@@ -185,7 +185,7 @@ def cmd_program_build(a):
         base_plan = json.load(open(a["base_plan"], encoding="utf-8"))
     rep = G.build(a.get("sheet"), a["out_dir"], request=a.get("request") or "", rounds=int(a.get("rounds", 5)),
                   base_program=a.get("base_program"), base_length_mm=a.get("base_length_mm"), base_plan=base_plan, log=_log)
-    out = {k: rep.get(k) for k in ("seconds", "best", "edit", "error")}
+    out = {k: rep.get(k) for k in ("seconds", "best", "edit", "error", "edit_result")}
     out["plan_components"] = len((rep.get("plan") or {}).get("components") or [])
     out["unknowns"] = (rep.get("plan") or {}).get("unknowns") or []
     out["rounds"] = [{k: r.get(k) for k in ("round", "error", "iou", "mean_iou", "invalid", "object", "model_s", "run_s")}
@@ -234,6 +234,84 @@ def cmd_program_meshes(a):
                         "n": _num(N, 3), "l": _num(E, 2), "brep": p["brep"],
                         "assembly_parent": p.get("assembly_parent")}
     return {"meshes": out}
+
+
+def cmd_topology(a):
+    """{brep} -> the part's B-rep topology, face by face, read from its exact solid: for each face its surface type,
+    area, centre, a display mesh, its own boundary edges (polylines, with curve type) and its vertices; the counts of
+    solids / shells / faces / edges / vertices. The topology view pulls the faces apart along their centres."""
+    import numpy as np
+    from OCP.BRep import BRep_Builder, BRep_Tool
+    from OCP.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
+    from OCP.BRepGProp import BRepGProp
+    from OCP.BRepTools import BRepTools
+    from OCP.GCPnts import GCPnts_TangentialDeflection
+    from OCP.GProp import GProp_GProps
+    from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_SHELL, TopAbs_SOLID, TopAbs_VERTEX
+    from OCP.TopExp import TopExp, TopExp_Explorer
+    from OCP.TopTools import TopTools_IndexedMapOfShape
+    from OCP.TopoDS import TopoDS, TopoDS_Shape
+    from cad import tessellate as T
+    sh = TopoDS_Shape()
+    BRepTools.Read_s(sh, a["brep"], BRep_Builder())
+    count = {}
+    for name, kind in (("solids", TopAbs_SOLID), ("shells", TopAbs_SHELL), ("faces", TopAbs_FACE), ("edges", TopAbs_EDGE),
+                       ("vertices", TopAbs_VERTEX)):
+        m = TopTools_IndexedMapOfShape()
+        TopExp.MapShapes_s(sh, kind, m)
+        count[name] = m.Extent()
+    V, F, _, fid = T.mesh(sh, 0.2, 0.35, fast=True)
+    V = np.asarray(V, float)
+    centre = V.mean(0) if len(V) else np.zeros(3)
+    size = float(np.ptp(V, 0).max()) if len(V) else 1.0
+    stype = lambda s: str(s.GetType()).split("_")[-1].split(".")[-1]            # GeomAbs_Cylinder -> Cylinder
+    faces, k = [], 0
+    ex = TopExp_Explorer(sh, TopAbs_FACE)
+    while ex.More() and k < int(a.get("max_faces", 600)):
+        f = TopoDS.Face_s(ex.Current())
+        g = GProp_GProps()
+        BRepGProp.SurfaceProperties_s(f, g)
+        c = g.CentreOfMass()
+        sel = np.nonzero(np.asarray(fid) == k)[0]
+        tri = np.asarray(F)[sel]
+        used = np.unique(tri.ravel()) if len(tri) else np.zeros(0, int)
+        remap = {int(o): i for i, o in enumerate(used)}
+        edges, verts = [], []
+        ee = TopExp_Explorer(f, TopAbs_EDGE)
+        while ee.More():
+            e = TopoDS.Edge_s(ee.Current())
+            if not BRep_Tool.Degenerated_s(e):
+                cu = BRepAdaptor_Curve(e)
+                try:
+                    d = GCPnts_TangentialDeflection(cu, 0.25, max(size / 400, 0.05))
+                    pts = [[round(d.Value(i).X(), 2), round(d.Value(i).Y(), 2), round(d.Value(i).Z(), 2)]
+                           for i in range(1, d.NbPoints() + 1)]
+                except Exception:
+                    pts = []
+                if len(pts) > 1:
+                    edges.append({"type": stype(cu), "pts": pts})
+            ee.Next()
+        vx = TopExp_Explorer(f, TopAbs_VERTEX)
+        seen = set()
+        while vx.More():
+            p = BRep_Tool.Pnt_s(TopoDS.Vertex_s(vx.Current()))
+            key = (round(p.X(), 3), round(p.Y(), 3), round(p.Z(), 3))
+            if key not in seen:
+                seen.add(key)
+                verts.append(list(key))
+            vx.Next()
+        faces.append({"type": stype(BRepAdaptor_Surface(f)), "area_mm2": round(g.Mass(), 2),
+                      "centre": [round(c.X(), 2), round(c.Y(), 2), round(c.Z(), 2)],
+                      "v": V[used].round(2).ravel().tolist() if len(used) else [],
+                      "f": [remap[int(x)] for x in tri.ravel()] if len(tri) else [],
+                      "edges": edges, "vertices": verts})
+        k += 1
+        ex.Next()
+    kinds = {}
+    for f in faces:
+        kinds[f["type"]] = kinds.get(f["type"], 0) + 1
+    return {"count": count, "face_types": kinds, "faces": faces, "centre": centre.round(2).tolist(), "size_mm": round(size, 2),
+            "truncated": count["faces"] > len(faces)}
 
 
 def cmd_remesh_breps(a):
@@ -505,7 +583,25 @@ def cmd_export_parts(a):
     if a["kind"] == "drawing":
         from cad import drawing as D
         notes = [f"{len(left_out)} part(s) without exact B-rep not drawn"] if left_out else []
-        r = D.draw(list(shapes.values()), a.get("title") or "AETHER model", a["path"], notes)
+        balloons = bom = graph = None
+        g = next((p for p in a["parts"] if (p.get("eng") or {}).get("kind") == "cad program" and p["eng"].get("program")), None)
+        if g:                                            # an AI-written CAD program: an assembly drawing from its plan
+            try:
+                plan = json.load(open(os.path.join(os.path.dirname(g["eng"]["program"]), "plan.json"), encoding="utf-8"))
+            except (OSError, ValueError):
+                plan = {}
+            id_of = {n: i for i, n in names.items()}
+            comps = [c for c in plan.get("components") or [] if c.get("name") in id_of]
+            from feature_ops import ops_of
+            graph = [{"item": k + 1, "name": c["name"], "parent": c.get("parent") if c.get("parent") in id_of else None,
+                      "joint": c.get("joint") or "fixed"} for k, c in enumerate(comps)]
+            bom = [[str(k + 1), c["name"], str(c.get("material") or "-"),
+                    str(c.get("parent")) if c.get("parent") in id_of else "- (base)",
+                    D.JOINT_WORD.get(c.get("joint") or "fixed", c.get("joint") or ""),
+                    ", ".join(ops_of(c.get("method"))) or "-"] for k, c in enumerate(comps)]
+            balloons = [(k + 1, shapes[id_of[c["name"]]]) for k, c in enumerate(comps)]
+            notes.append(f"Assembly drawing: sheet 2 item view ({len(comps)} items), parts list, connection diagram.")
+        r = D.draw(list(shapes.values()), a.get("title") or "AETHER model", a["path"], notes, balloons=balloons, bom=bom, graph=graph)
         return {**r, "solids": len(shapes), "left_out": left_out}
     raise RuntimeError(f"unknown export kind {a['kind']}")
 
@@ -709,7 +805,7 @@ def cmd_remove_features(a):
     return {"ok": st["state"] == "ok", "removed": [f["id"] for f in gone], "seconds": round(time.time() - t, 1)}
 
 
-CMDS = {"remesh_breps": cmd_remesh_breps, "program_rerun": cmd_program_rerun, "program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
+CMDS = {"topology": cmd_topology, "remesh_breps": cmd_remesh_breps, "program_rerun": cmd_program_rerun, "program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
         "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "asm_build": cmd_asm_build,
         "asm_step": cmd_asm_step, "asm_step_status": cmd_asm_step_status, "asm_section": cmd_asm_section}
 

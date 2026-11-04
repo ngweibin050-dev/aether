@@ -60,6 +60,9 @@ def _run(name, job, stopped=None, on_wait=None, on_progress=None):
                 res = call.get(timeout=2)
                 drain()
                 return res
+            except modal.exception.ConnectionError:     # a network blip while polling: the job keeps running
+                time.sleep(3)
+                continue
             except TimeoutError:
                 drain()
                 if stopped and stopped():

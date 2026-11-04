@@ -1,57 +1,43 @@
-# AETHER Lab — Built During Meta AI Builders Hackathon 2026
+# AETHER Lab — Built During the Meta Global AI Developer Hackathon 2026
 
-**Builder:** Ng Wei Bin (individual submission)  
-**Event build window in the participant's saved rules:** 26 October – 4 November 2026  
-**Repository snapshot covered by this timeline:** up to 4 November 2026 (see the last rows of the table)
+**Builder:** Ng Wei Bin (individual submission)
+**Event build window (from the participant's saved rules):** 26 October – 4 November 2026
 
-> **Scope note:** This file records the AETHER Lab software work. The repository also contains earlier AETHER background research and a historical AETHER Window prototype. Not every file in the repository was first created during the event. See the root-level `HACKATHON_PROVENANCE.md` for the explicit separation.
+> This file records the AETHER Lab software work. The repository also holds earlier AETHER background research and a
+> historical AETHER Window prototype; see [`../AETHER_HACKATHON_PROVENANCE.md`](../AETHER_HACKATHON_PROVENANCE.md) for
+> the separation. Times are Malaysia time (UTC+8); commit links open on GitHub.
 
-## Event-period product timeline
+## Timeline
 
-GitHub API timestamps are stored in UTC; the Malaysia times below are UTC+8.
-
-| Date (MYT) | Evidence in Git history | Product work recorded |
+| Date (MYT) | Commits | Work |
 |---|---|---|
-| 29 Oct, 23:51 | [`da980b2`](https://github.com/ngweibin050-dev/aether/commit/da980b228f7043a77393bf72dd5f2bab4d4c22b4) | First AETHER Lab generation: initial physics/optics engine, Muse Spark tool-calling agent, local server, Modal compute app, first physics tests and initial viewer. |
-| 30 Oct, 07:54 | [`55fcb07`](https://github.com/ngweibin050-dev/aether/commit/55fcb073a6d4f03e00e34ad70ac24cc0b135fadb) | Second generation: expanded geometry, compute backend and additional physics/visibility functionality. |
-| 30 Oct, 15:55 | [`b26d0a3`](https://github.com/ngweibin050-dev/aether/commit/b26d0a37b1a30aa9845f449ff9a857022637ce0d) | Third generation: React/Three.js interface, wave-optics/retina work, 3D reconstruction and rebuild path, three-view processing, segmentation integration and live Meta API test. |
-| 31 Oct | See commits and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Input routing, stable two-pass drawing reads and reconciliation, parameter validation, Modal engine fingerprint/redeploy handling, reference-run harness and recorded evaluation outputs. |
-| 1 Nov, through the snapshot above | See commits and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Explanation player and validation, Muse Image concept illustrations, Muse Wonder completion, gear-pair handling, plausibility filtering, three-view fixes, GLB/STL export, build report, demo menu and clearly labelled recorded fallback. |
+| 29 Oct, 23:51 | [`da980b2`](https://github.com/ngweibin050-dev/aether/commit/da980b228f7043a77393bf72dd5f2bab4d4c22b4) | First AETHER Lab generation: physics / optics engine, Muse Spark tool-calling agent, local server, Modal compute app, first tests and viewer |
+| 30 Oct | [`55fcb07`](https://github.com/ngweibin050-dev/aether/commit/55fcb073a6d4f03e00e34ad70ac24cc0b135fadb), [`b26d0a3`](https://github.com/ngweibin050-dev/aether/commit/b26d0a37b1a30aa9845f449ff9a857022637ce0d) | Geometry and compute backend; React / Three.js interface; 3D rebuild; three-view processing; SAM 3.1 integration; live Meta API test |
+| 31 Oct | see [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Input routing, two-pass drawing reads, parameter validation, Modal engine redeploy, reference-run harness |
+| 1 Nov | see [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Explanation player and validation, Muse Wonder completion, gear pairs, exports, build report, demo menu with labelled recorded fallback, replay site |
+| 1 Nov 19:42 – 2 Nov 08:35 | [`a0de429`](https://github.com/ngweibin050-dev/aether/commit/a0de429) … [`cb4c771`](https://github.com/ngweibin050-dev/aether/commit/cb4c771) (PR #1) | First CAD kernel: three-view sheet → parametric OpenCascade B-rep, `.aethercad` document, STEP with fresh-process round trip, CAD test suite |
+| 2 Nov – 4 Nov 00:31 | [`ca2c985`](https://github.com/ngweibin050-dev/aether/commit/ca2c985) … [`8033c6d`](https://github.com/ngweibin050-dev/aether/commit/8033c6d) | CAD becomes the main path; patent machines become exact solids (`cad/assembly.py`); chat assistant (`assistant.py`); projects with autosave |
+| 4 Nov, 09:29 | [`2e41fa8`](https://github.com/ngweibin050-dev/aether/commit/2e41fa8) | Drawing intake questions (`intake.py`), refinement on the real surface (`refine.py`), persistent undo (`history.py`), evidence page, plain-Muse-Spark baseline, external export checks |
+| 4 Nov, 16:04 | [`d6d92b3`](https://github.com/ngweibin050-dev/aether/commit/d6d92b3) | **AI-written CAD:** `cad/codegen.py`, where Muse Wonder plans and writes a CadQuery program for any object, run in a sandbox and revised; one orchestrator with `build_cad` / `edit_cad`; car-only rules retired; 14 acceptance scenarios |
+| 4 Nov, 19:58 – 22:01 | [`2a6e03e`](https://github.com/ngweibin050-dev/aether/commit/2a6e03e), [`6141658`](https://github.com/ngweibin050-dev/aether/commit/6141658) | Quality loop (instruction files, structured plan with constraints and unknowns, gates in `cad/quality.py`, real renders, Muse Spark critic, building blocks), parameters with provenance and `set_cad_param`, CAD jobs on Modal CPU (`modal_cad.py`, live progress, cancel), lighter display meshes, project and UI fixes |
+| 4 Nov, 22:48 | [`912a6e5`](https://github.com/ngweibin050-dev/aether/commit/912a6e5) | Ground-truth benchmark (`tests/ground_truth/`, `docs/GROUND_TRUTH.md`) with a one-shot baseline; parameter corrections fixed (model-written `P()` removed in the sandbox); renderer cache fix |
+| after 22:48 (uncommitted at the time of writing) | — | B-rep assembly of AI-written parts; connection diagram; B-rep topology; CAD feature tree; assembly drawing (item view, parts list, connection diagram); relation-based explanations; checked edits (`cad/codegen.py` edit mode); `build_brep_assembly` tool; X-ray, selection and move fixes; documentation. Committed with its real date and time |
 
-| 1 Nov, 19:42 – 2 Nov, 08:35 | [`a0de429`](https://github.com/ngweibin050-dev/aether/commit/a0de429) … [`cb4c771`](https://github.com/ngweibin050-dev/aether/commit/cb4c771) (branch `feature/true-cad-kernel`, merged as PR #1) | **True CAD kernel:** a three-view sheet now becomes a parametric OpenCascade B-rep (`cad/`). This added the pinned CadQuery/OCP worker, the `.aethercad` document with its feature history and provenance, the AI stages S1–S8, the region features (imprints and pockets), STEP export with a fresh-process round trip, per-view reprojection, and the CAD test suite. |
-| 2 Nov – 4 Nov, 00:31 | [`ca2c985`](https://github.com/ngweibin050-dev/aether/commit/ca2c985) … [`8033c6d`](https://github.com/ngweibin050-dev/aether/commit/8033c6d) | CAD became the main path. Machines rebuilt from patent figures now become exact solids (`cad/assembly.py`). Added the chat assistant (`assistant.py`) and projects with autosave (`projects.py`). |
-| 4 Nov, 09:29 | [`2e41fa8`](https://github.com/ngweibin050-dev/aether/commit/2e41fa8) | Intake questions (`intake.py`), refinement placed on the real surface (`refine.py`), an undo history that survives a restart (`history.py`); evidence page (`docs/EVIDENCE.md`, `python -m tests.evidence`), plain-Muse-Spark baseline, external export checks, the end-to-end story test (`docs/STORY.md`), and car body surface fairing. |
-| 4 Nov (after 09:29) | this commit | View detection fix (a straight body side inside a plan view is no longer read as a ground line), a CC0 car sheet as a new test input, the recorded CAD demo, and README / architecture rewritten around the CAD workflow. |
-| 4 Nov, afternoon | this commit | **AI-written CAD and one orchestrator.**
-| 4 Nov, evening | this commit | **Quality and evidence loop for the AI-written CAD.**
-- Instruction files `prompts/cad_engineer.md` and `prompts/cad_critic.md`.
-- A structured component plan (joints, evidence, constraints, unknowns).
-- Quality gates in `cad/quality.py`: floating parts, stickers, box share, overlaps, plan coverage, and mechanical constraints verified on the geometry.
-- Real renders (`cad/render_views.py`) and a Muse Spark critic deciding which round is kept.
-- General building blocks (`cad/sandbox_lib.py`).
-- One-scale IoU with proportion errors.
-- Parameters with provenance and `set_cad_param`, a re-run without any AI rewrite.
-- The drawing check before every build.
-- The five-object benchmark (`tests/cad_quality_bench.py`, `docs/CAD_QUALITY.md`).
-- EVIDENCE.md split into current, generalisation and historical results. |
-- `cad/codegen.py`: Muse Wonder plans and writes a CadQuery program for any object; it is run in a sandbox, checked against the drawing view by view, and revised.
-- New chat tools `build_cad` and `edit_cad`; every drawing upload is routed to them, and the car-only rules are retired.
-- Tests and records: the audit (`docs/AI_ORCHESTRATION_AUDIT.md`), 14 / 14 acceptance tests (`tests/acceptance_ai.py`, `docs/ACCEPTANCE.md`), and the roadster cycles (`docs/ai_cad_runs/`). |
+## Background material, not AETHER Lab product code
 
-Only completed work up to the snapshot date is listed. Later work must be added with its actual date after it is completed.
+- The initial push (25 October 2026) holds early AETHER concept material and physics / simulation work.
+  `theory/AETHER_Physics_Record.md` dates its research to 23–26 October 2026: pre-event background.
+- An earlier **AETHER Window** prototype (24–25 October) is visible in snapshot
+  [`babf2a1`](https://github.com/ngweibin050-dev/aether/tree/babf2a1c3cc999803e317046b5b6d2a43f732f53/aether-window) and was
+  dropped on 27 October ([`f55de6e`](https://github.com/ngweibin050-dev/aether/commit/f55de6e48656cbe2bb0e18f7f2ea4217404c45a5)).
+  It is disclosed as earlier work, not claimed as an event-built feature.
+- Other `theory/` and `references/` files span pre-event and event-period research; check each file's date before
+  describing it as event-created.
 
-## Background material — not AETHER Lab product code
+## Evidence boundary
 
-- The initial project/research push is dated 25 October 2026. It contains early AETHER concept material and physics/simulation work.
-- `theory/AETHER_Physics_Record.md` labels its research period as 23–26 October 2026. It is pre-event background/context and must not be described as an AETHER Lab feature built during the hackathon.
-- The repository history includes an earlier AETHER Window prototype. The [project decision record](https://github.com/ngweibin050-dev/aether/blob/babf2a1c3cc999803e317046b5b6d2a43f732f53/proposal/AETHER_Decision_Log.md), recorded in that snapshot, dates its design/implementation iterations to 24–25 October. Its source is visible in the 26 October snapshot [`babf2a1`](https://github.com/ngweibin050-dev/aether/tree/babf2a1c3cc999803e317046b5b6d2a43f732f53/aether-window); the subsequent 27 October change-of-direction commit [`f55de6e`](https://github.com/ngweibin050-dev/aether/commit/f55de6e48656cbe2bb0e18f7f2ea4217404c45a5) says that this was the wrong demonstration window and that the hackathon demo would be redone. AETHER Window is disclosed as earlier work, not claimed as event-built AETHER Lab functionality.
-- Other theory and reference files span both pre-event and event-period work. Check each file's date/source before describing it as event-created.
-
-## Technical and evidence boundary
-
-- AETHER Lab is software; no physical holographic display has been built.
-- Optical results are simulations, not physical measurements.
-- Patent drawings without dimensions produce model-scale geometry; inferred depths and hidden parts are estimates/guesses and must be labelled as such.
-- `docs/RESULTS.md` contains the detailed benchmark procedure, runs, known failure cases and hold-out distinctions. Do not quote a post-fix result as held out if that input was used to develop the fix.
-- `docs/INPUTS.md` identifies the drawing sources and attribution.
-- `docs/CHANGELOG.md` is the detailed change record. Add entries with real dates and test results; do not backdate them.
+- AETHER Lab is software. No physical holographic display has been built; optical results are simulations.
+- Drawings without dimensions give model-scale geometry. Inferred depths and hidden parts are labelled as such.
+- Measured results: [`docs/GROUND_TRUTH.md`](docs/GROUND_TRUTH.md), [`docs/CAD_QUALITY.md`](docs/CAD_QUALITY.md),
+  [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md), [`docs/EVIDENCE.md`](docs/EVIDENCE.md); results of the earlier pipelines
+  are kept in [`docs/archive/`](docs/archive/).

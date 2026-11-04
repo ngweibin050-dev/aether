@@ -457,6 +457,8 @@ def world_matrix(part, by_id):
 
 def local_mesh(part, cache=None):
     if part["type"] in ("mesh", "cad"):   # imported mesh, or a tessellation of a validated CAD B-rep (cad/)
+        if "vertices" not in (part.get("params") or {}):     # a part saved without its mesh: nothing to draw, but the
+            return np.zeros((0, 3)), np.zeros((0, 3), int)     # project still opens (it crashed the server at start)
         return np.asarray(part["params"]["vertices"], float).reshape(-1, 3), \
             np.asarray(part["params"]["faces"], int).reshape(-1, 3)
     if part["type"] == "group":

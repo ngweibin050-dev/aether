@@ -81,7 +81,7 @@ Everything below was measured with the earlier pipeline: `cad/vehicle.py` + `cad
 
 ### 1. Drawing -> CAD (three-view sheet)
 
-Source: `output/cad/current/report.json` (the CAD build itself; details in `docs/CAD_RESULTS.md`). This build is from before the body surface fairing of section 6, which moves the silhouette agreement by at most 0.008.
+Source: `output/cad/current/report.json` (the CAD build itself; details in `docs/archive/CAD_RESULTS.md`). This build is from before the body surface fairing of section 6, which moves the silhouette agreement by at most 0.008.
 
 | view | silhouette IoU | boundary distance mm (mean) |
 |---|---|---|
@@ -122,7 +122,7 @@ Plain Spark answers load and look plausible from the top, but in 2 of 3 the body
 
 ### 3. Drawing -> mechanism (patent drawings)
 
-`tests/run_reference.py`, the last 3 saved runs per public input (full history: `docs/RESULTS.md`).
+`tests/run_reference.py`, the last 3 saved runs per public input (full history: `docs/archive/RESULTS.md`).
 
 | input | runs | drawing lines on built parts % (recall) | built outlines on ink % (precision) | time s |
 |---|---|---|---|---|
@@ -172,7 +172,7 @@ The body is one B-spline surface through the sections measured from the drawing;
 
 ### 7. One workflow, end to end
 
-`tests/e2e_story.py`: a test server with its own project and CAD folder, driven through the app's HTTP API. Details: `docs/STORY.md`.
+`tests/e2e_story.py`: a test server with its own project and CAD folder, driven through the app's HTTP API. Details: `docs/archive/STORY.md`.
 
 | # | step | result | seconds |
 |---|---|---|---|

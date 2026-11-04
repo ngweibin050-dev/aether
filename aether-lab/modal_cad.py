@@ -63,7 +63,7 @@ def _meshes(report_path):
 
 
 def _summary(rep):
-    out = {k: rep.get(k) for k in ("seconds", "best", "edit", "error")}
+    out = {k: rep.get(k) for k in ("seconds", "best", "edit", "error", "edit_result")}
     out["plan_components"] = len((rep.get("plan") or {}).get("components") or [])
     out["unknowns"] = (rep.get("plan") or {}).get("unknowns") or []
     out["rounds"] = [{k: r.get(k) for k in ("round", "error", "iou", "mean_iou", "invalid", "object", "model_s", "run_s")}

@@ -21,6 +21,7 @@ against m (z1 + z2) / 2, contact ratio), Planar face-to-face contact.
 from __future__ import annotations
 
 import math
+import os
 import time
 
 import numpy as np
@@ -336,6 +337,15 @@ def _group_of(part):
 
 
 # ------------------------------------------------------------------------------------------------ build
+def _read_brep(f):
+    from OCP.BRep import BRep_Builder
+    from OCP.BRepTools import BRepTools
+    from OCP.TopoDS import TopoDS_Shape
+    s = TopoDS_Shape()
+    BRepTools.Read_s(s, f, BRep_Builder())
+    return s
+
+
 def build(parts, log=print):
     """parts: the scene's parts (engine format). Returns (shapes {id: world TopoDS_Shape}, local {id: shape in the
     part's own frame, unscaled}, records {id: build record})."""
@@ -348,12 +358,14 @@ def build(parts, log=print):
                "polygon_edges": 0, "eng": p.get("eng") or {},
                "params": {k: v for k, v in (p.get("params") or {}).items() if isinstance(v, (int, float))}}
         records[p["id"]] = rec
-        if p["type"] in NO_BREP or p["type"] not in BUILDERS:
+        brep = (p.get("eng") or {}).get("brep") if p["type"] == "cad" else None
+        own = bool(brep) and os.path.isfile(brep)           # an AI-written CAD-program part: its exact solid on disk
+        if not own and (p["type"] in NO_BREP or p["type"] not in BUILDERS):
             rec.update(built=False, reason=NO_BREP.get(p["type"], f"no B-rep builder for part type {p['type']!r}"))
             continue
         t0 = time.time()
         try:
-            loc = BUILDERS[p["type"]](rec, **(p.get("params") or {}))
+            loc = _read_brep(brep) if own else BUILDERS[p["type"]](rec, **(p.get("params") or {}))
             if loc is None or loc.IsNull():
                 raise RuntimeError("empty shape")
             M = G.world_matrix(p, by_id)

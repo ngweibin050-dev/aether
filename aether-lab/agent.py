@@ -432,53 +432,6 @@ def _spark_name_regions(name):
     return namer
 
 
-def _sheet_to_cad(state, history, data_url, prompt, out_dir, step, decisions=None):
-    """A multi-view sheet -> genuine parametric CAD (cad/ package, isolated OpenCascade worker): drawing interpretation,
-    Muse Spark / Muse Wonder / SAM 3.1 stages (typed JSON only), a feature-based .aethercad document, validated B-rep,
-    STEP round trip, three-view reprojection. The scene receives the B-rep's tessellation for display and physics."""
-    import base64
-    import io
-    from pathlib import Path
-    import cad_client
-    from PIL import Image
-    out = Path(os.environ.get("AETHER_CAD_DIR") or Path(out_dir) / "cad" / "current")
-    out.mkdir(parents=True, exist_ok=True)
-    sheet = out / "sheet.png"
-    Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[-1]))).convert("RGB").save(sheet)
-    step({"stage": "tool", "tool": "cad_pipeline", "who": "AETHER CAD (Muse Spark + Muse Wonder + SAM 3.1 + OpenCascade)"})
-    try:
-        r = cad_client.call("build", sheet=str(sheet), out_dir=str(out), defer_detail=True, decisions=decisions)
-    except Exception as e:
-        step({"stage": "done", "tool": "cad_pipeline", "error": str(e)[:300]})
-        return (f"The CAD reconstruction failed: {e}", [{"tool": "cad_pipeline", "args": {}, "result": {"error": str(e)}}], {}, history)
-    step({"stage": "done", "tool": "cad_pipeline", "error": None if r["status"].get("state") == "ok" else r["status"].get("error")})
-    m = cad_client.call("meshes")
-    doc = cad_client.call("document")
-    imp = lab.import_cad(state, m["meshes"], m["groups"], f"{prompt[:40]} (CAD from three views)", doc["document_id"],
-                         provenance={"maturity": doc["maturity"]})
-    imp["display_fit"] = _fit_to_desk(state, imp["id"])     # display scale only; the CAD document stays in real mm
-    if ON_CAD_DETAIL:                                        # progressive build: pockets / imprints arrive afterwards
-        ON_CAD_DETAIL(f"{prompt[:40]} (CAD from three views)")
-    rep = r.get("report") or {}
-    LAST_REPORT.clear()
-    L = ((decisions or {}).get("overall_length_mm") or {}).get("value")
-    LAST_REPORT.update({"kind": "three-view CAD", "image_data_url": data_url, "scale_known": bool(L),
-                        "scale_source": f"given by the user: overall length {L:.0f} mm" if L else
-                        "assumed: overall length 4500 mm (no dimension on the sheet)",
-                        "view_match_iou_pct": {k: round(100 * v, 1) for k, v in (rep.get("reprojection_iou") or {}).items()}})
-    feats = [f for f in doc["features"]]
-    text = (f"Built a parametric CAD model ({len(feats)} features, {len([c for c in doc['components'] if not c.get('group')])} "
-            f"solid components) from the sheet. Maturity: {doc['maturity'].replace('_', ' ')}. All solids valid: "
-            f"{rep.get('all_valid')}. STEP round trip: {'passed' if rep.get('step_all_pass') else 'not passed'}. "
-            "Reprojection IoU per view: " + ", ".join(f"{k} {v:.3f}" for k, v in (rep.get("reprojection_iou") or {}).items())
-            + (f". Real size from you: {L:.0f} mm overall length" if L else ". Real size is assumed (4.5 m overall length) until you enter a real dimension")
-            + "; the cross-sections between "
-              "the end views and every recess depth are inferred or assumed and labelled so in the CAD panel.")
-    trace = [{"tool": "cad_pipeline", "args": {}, "result": {"build": r, "import": imp,
-                                                            "document": {k: doc[k] for k in ("title", "maturity", "status")}}}]
-    return text, trace, {}, history
-
-
 READ_DRAWING = """You are a senior mechanical engineer reading a mechanical drawing ({w} x {h} px){where}. Read it the way
 you would before building the machine: EVERY separate component, not just the big ones. Answer with one JSON object:
 {{"view": "front" | "side" | "top" | "isometric" | "section" | "photo",

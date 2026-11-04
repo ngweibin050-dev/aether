@@ -39,7 +39,17 @@ fails. No object type and no sentence has a built-in workflow. The audit behind 
    │     quality bar  prompts/cad_engineer.md (assemblies of real parts, shut lines, glass and lamps as parts,
    │                  smooth surfaces, nothing floating) — an editable file, enforced by the gates and the critic
    │     → program.py (the model's editable source) + model.step + model.glb, one version folder per change
-   ├─ drawings               make_drawing: orthographic views with hidden lines from the exact B-rep, SVG + PDF
+   │     edit         an EDIT is not a rebuild: Muse Wonder plans the smallest change (parts to change, relations that
+   │                  must hold); the writer may change only those parts; code verifies the relations, compares every
+   │                  other part's exact geometry with the previous version, and checks the gates got no worse;
+   │                  Muse Spark judges before / after close-ups; the edit is applied only if all of that passes
+   ├─ correct a value        set_cad_param: the same program re-run with the engineer's value, no AI call (~10 s)
+   ├─ B-rep assembly         build_brep_assembly: every part an exact solid; contacts, interference, mates
+   │                         (cad/assembly.py); the connection diagram, each part's topology (faces / edges /
+   │                         vertices, worker `topology`) and the CAD feature tree are built on it
+   ├─ drawings               make_drawing: orthographic views with hidden lines from the exact B-rep; for an
+   │                         AI-written model also an item view with balloons, a parts list and the connection
+   │                         diagram, as one PDF (cad/drawing.py)
    ├─ inspection / analysis  inspect, analyze (volume, area, mass, centre of mass), list_parts
    ├─ explanation            explain_machine: the Explain panel, every part id and number checked against the model
    ├─ holography             make_hologram, propagate, focus_sweep, eye_view, speckle_compare ... (engine/, compute.py)
@@ -74,6 +84,12 @@ fails. No object type and no sentence has a built-in workflow. The audit behind 
   have an assumed real size.
 - **Exports come from the B-rep.** STEP is written from the solids. GLB, STL and 3MF are tessellated from
   them, with materials for display only: glass is translucent, chrome is shiny.
+- **Edits are checked, not trusted.** An edit is planned as the smallest change and judged against the model as it
+  was: the relations it promised are measured, every part outside it must keep its exact geometry, defects may not
+  increase, and the model is replaced only when all of that holds. A first build and an edit are checked for
+  different things, because they can fail in different ways.
+- **No object recipes.** The instruction files describe engineering principles for any object, with examples from
+  machines, mechanisms, vehicles and products; nothing in the build or edit path knows a particular object.
 - **What is not there yet:** a general motion or collision solver. Asked to simulate, the AI says what it
   can and cannot compute.
 
@@ -90,9 +106,10 @@ Each cloud job runs in its own container with 8 cores, so jobs never queue, and 
 worker, Stop ends the worker process, and a fresh worker starts on the next request. The Meta key reaches the cloud
 only as the Modal secret `aether-meta`. `cad_remote.py` routes every job.
 
-**The rule-based pipeline is no longer used.** `cad/vehicle.py`, `cad/planner.py` and `cad/pipeline.py` are
-the earlier car-only rules. Uploads no longer use them: `build_from_drawing` sends every drawing to
-`build_cad`. They stay in the repository only because the earlier evidence in `docs/EVIDENCE.md` §1–2 was
+**The rule-based pipeline is retired.** `cad/vehicle.py`, `cad/planner.py` and `cad/pipeline.py` are the earlier
+car-only rules. Nothing in the app or the assistant can reach them: `build_from_drawing` sends every drawing to
+`build_cad`, the old background job and its route were removed (the route now answers that it is retired), and the
+dead agent entry point was deleted. The files stay only because the archived evidence (`docs/archive/`) was
 measured with them.
 
 **Where each Meta model is used**

@@ -70,7 +70,12 @@ export default function Interaction() {
     const onUp = (e) => {
       if (rdown && e.button === 2) {
         const r = rdown; rdown = null;
-        if (Math.hypot(e.clientX - r.x, e.clientY - r.y) < 5) st().setMenu({ kind: "context", x: e.clientX, y: e.clientY });
+        if (Math.hypot(e.clientX - r.x, e.clientY - r.y) < 5) {
+          // right-clicking a part acts on THAT part: select it first (a part already in a multi-selection keeps it)
+          const h = pick(e.clientX, e.clientY);
+          if (h?.id && !st().selection.includes(h.id)) st().select(h.id);
+          st().setMenu({ kind: "context", x: e.clientX, y: e.clientY });
+        }
         return;
       }
       if (!down) return;

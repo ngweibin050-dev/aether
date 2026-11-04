@@ -115,7 +115,8 @@ export default function CadPanel() {
               {params.length > 160 && <div className="py-1 text-slate-500">… {params.length - 160} more: filter to find them</div>}
             </div>
           </>}
-          {tab === "features" && <div className="mt-2 space-y-0.5">
+          {tab === "features" && doc.kind === "program" && <ProgramTree features={doc.features} />}
+          {tab === "features" && doc.kind !== "program" && <div className="mt-2 space-y-0.5">
             {doc.features.map((f) => (
               <div key={f.id} className="border-b border-white/[0.05] py-1" title={`${f.op}\ninputs: ${f.inputs.join(", ") || "-"}\nparameters: ${f.params.join(", ")}`}>
                 <div className="flex items-center gap-2"><span className={`font-mono text-[10px] ${ST[f.status] || "text-slate-400"}`}>●</span>
@@ -153,4 +154,47 @@ export default function CadPanel() {
       </div>
     </FloatPanel>
   </>);
+}
+
+// The CAD feature tree of an AI-written program, the way CAD tools show one: the model, its parts nested under what
+// they are mounted on (with the joint), and under each part its modelling operations in order (Loft, Split, Fillet...).
+const JOINT = { root: "base", fixed: "fixed", revolute: "turns", continuous: "turns", prismatic: "slides", slide: "slides", hinge: "hinge", ball: "ball" };
+const OP_ICON = { Loft: "◇", "Split panels": "⫽", Fillet: "◜", Chamfer: "◺", Recess: "▭", Pocket: "▭", Revolve: "↻", Sweep: "∿",
+  Extrude: "⬆", Mirror: "⇋", Shell: "▢", Cut: "✂", Hole: "○", Union: "∪", Box: "■", Cylinder: "▮", Sphere: "●", Torus: "◎", Pattern: "⁂" };
+
+function ProgramTree({ features }) {
+  const kids = useMemo(() => {
+    const m = {};
+    for (const f of features) (m[f.parent || ""] ||= []).push(f);
+    return m;
+  }, [features]);
+  const roots = kids[""] || [];
+  return (
+    <div className="mt-2 font-mono text-[11px]">
+      <div className="mb-1 text-[10px] text-slate-500">{features.length} parts · nested by what each is mounted on · its operations below it</div>
+      {roots.map((f) => <FeatNode key={f.id} f={f} kids={kids} depth={0} />)}
+    </div>);
+}
+
+function FeatNode({ f, kids, depth }) {
+  const [open, setOpen] = useState(depth < 1);
+  const [ops, setOps] = useState(false);
+  const st = useStore();
+  const ch = kids[f.id] || [];
+  const pick = () => { const p = (st.state?.parts || []).find((q) => q.name === f.id); if (p) st.select(p.id); };
+  return (
+    <div>
+      <div className="flex items-center gap-1 rounded py-[3px] hover:bg-white/[0.04]" style={{ paddingLeft: depth * 12 }} title={f.op}>
+        <button className={`w-3 text-slate-500 ${ch.length ? "" : "invisible"}`} onClick={() => setOpen(!open)}>{open ? "▾" : "▸"}</button>
+        <span className={f.status === "ok" ? "text-cyan-glow" : "text-slate-600"}>▣</span>
+        <button className="truncate text-left text-slate-200 hover:text-white" onClick={pick}>{f.label}</button>
+        {f.joint && <span className="shrink-0 rounded border border-white/10 px-1 text-[9px] text-slate-400">{JOINT[f.joint] || f.joint}</span>}
+        {f.ops?.length > 0 && <button className="ml-auto shrink-0 text-[9.5px] text-slate-500 hover:text-cyan-glow" onClick={() => setOps(!ops)}>
+          {ops ? "hide" : `${f.ops.length} op${f.ops.length > 1 ? "s" : ""}`}</button>}
+      </div>
+      {ops && f.ops.map((o, i) => (
+        <div key={i} className="flex items-center gap-1.5 py-[1px] text-[10.5px] text-slate-400" style={{ paddingLeft: depth * 12 + 30 }}>
+          <span className="w-3 text-center text-cyan-glow/70">{OP_ICON[o] || "•"}</span>{i + 1}. {o}</div>))}
+      {open && ch.map((c) => <FeatNode key={c.id} f={c} kids={kids} depth={depth + 1} />)}
+    </div>);
 }

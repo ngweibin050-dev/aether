@@ -1,6 +1,6 @@
 """The whole AETHER story, end to end, through the app's own HTTP API (what the UI calls), timed and checked:
 
-    python -m tests.e2e_story            # ~20-30 min, costs Meta API calls; writes docs/STORY.md + output/e2e_story/
+    python -m tests.e2e_story            # ~20-30 min, costs Meta API calls; writes docs/archive/STORY.md + output/e2e_story/
 
 A test server is started on port 8777 with its OWN project (output/projects/e2e-story, made fresh) and its own CAD
 folder (AETHER_CAD_DIR=output/cad/e2e), so nothing of the user's work is touched.
@@ -209,7 +209,7 @@ def main():
              "| # | step | result | seconds | what happened |", "|---|---|---|---|---|"]
         L += [f"| {s['n']} | {s['step']} | {'PASS' if s['pass'] else 'FAIL'} | {s['seconds']} | {str(s['detail']).replace('|', '/')[:400]} |"
               for s in STEPS]
-        (ROOT / "docs" / "STORY.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+        (ROOT / "docs" / "archive" / "STORY.md").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

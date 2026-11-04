@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import * as THREE from "three";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
 import { useStore } from "../store";
 import FloatPanel, { PanelIcon } from "./FloatPanel";
 import Icon from "./Icon";
@@ -213,7 +216,7 @@ export default function AssemblyPanel() {
   const active = useStore((s) => s.state?.selected);
   const hasMachine = useStore((s) => (s.state?.parts || []).some((p) => p.eng));
   const st = useStore();
-  const [tab, setTab] = useState("tree");
+  const [tab, setTab] = useState("connections");
   useEffect(() => { if (open) st.loadAsm(); }, [open]);   // eslint-disable-line react-hooks/exhaustive-deps
   const pick = (id) => { st.select(id); setTab("props"); };
   const s = asm?.summary;
@@ -238,18 +241,182 @@ export default function AssemblyPanel() {
             <span className="col-span-2 text-slate-500">built {asm.built_at} · {s.seconds.total} s</span>
           </div>}
         </div>
-        {asm && <>
-          <div className="mt-2 flex gap-1">
-            {[["tree", "Assembly"], ["mates", "Mates"], ["checks", "Checks"], ["props", "Properties"], ["step", "STEP"]].map(([k, t]) =>
+        {hasMachine && <>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {[["connections", "Connections"], ["topology", "Topology"], ["tree", "Assembly"], ["mates", "Mates"], ["checks", "Checks"],
+              ["props", "Properties"], ["step", "STEP"]].map(([k, t]) =>
               <button key={k} onClick={() => setTab(k)} className={`btn !px-2 !py-0.5 text-[11px] ${tab === k ? "!border-cyan-glow/50 text-cyan-glow" : ""}`}>{t}</button>)}
           </div>
-          {tab === "tree" && <Tree asm={asm} sel={active} onPick={pick} />}
-          {tab === "mates" && <Mates asm={asm} onPick={pick} />}
-          {tab === "checks" && <Checks asm={asm} onPick={pick} />}
-          {tab === "props" && <Props asm={asm} id={active} />}
-          {tab === "step" && <Step asm={asm} />}
+          {tab === "connections" && <Connections sel={active} onPick={(id) => st.select(id)} built={asm?.built_at} />}
+          {tab === "topology" && <Topology id={active} />}
+          {!asm && !["connections", "topology"].includes(tab) && <div className="mt-2 text-[11px] text-slate-400">Build the B-rep assembly to see this.</div>}
+          {asm && tab === "tree" && <Tree asm={asm} sel={active} onPick={pick} />}
+          {asm && tab === "mates" && <Mates asm={asm} onPick={pick} />}
+          {asm && tab === "checks" && <Checks asm={asm} onPick={pick} />}
+          {asm && tab === "props" && <Props asm={asm} id={active} />}
+          {asm && tab === "step" && <Step asm={asm} />}
         </>}
       </div>
     </FloatPanel>
   </>);
+}
+
+// Connection diagram: how the parts are joined, as an engineer draws it. A tree from the base outwards (what each part
+// is mounted on, Muse Wonder's plan), each link labelled with its joint and coloured by what the exact B-rep check
+// found for that pair: green = the solids touch, red = they pass through each other, amber = planned as joined but
+// not touching, grey = not checked yet (build the B-rep assembly).
+const LINK = { contact: ["#34d399", "touch (B-rep)"], interference: ["#f87171", "pass through (B-rep)"],
+  clear: ["#fbbf24", "planned joined, not touching"], "not checked": ["#64748b", "not checked yet"] };
+const JWORD = { root: "base", fixed: "fixed", revolute: "turns", continuous: "turns", prismatic: "slides", slide: "slides", hinge: "hinge", ball: "ball" };
+
+function Connections({ sel, onPick, built }) {
+  const [g, setG] = useState(null);
+  const [err, setErr] = useState(null);
+  const ver = useStore((s) => s.state?.version);
+  useEffect(() => {
+    fetch(`/api/asm/connections?sel=${encodeURIComponent(sel || "")}`).then((r) => r.json())
+      .then((j) => { if (j.error) { setErr(j.error); setG(null); } else { setErr(null); setG(j); } }).catch((e) => setErr(String(e)));
+  }, [sel, ver, built]);
+  const lay = useMemo(() => {
+    if (!g) return null;
+    const kids = {};
+    for (const n of g.nodes) (kids[n.parent || ""] ||= []).push(n);
+    const pos = {};
+    let row = 0;
+    const walk = (n, d) => {                     // children first, the parent centred on them (a tidy tree)
+      const ch = kids[n.id] || [];
+      if (!ch.length) { pos[n.id] = { x: d, y: row++ }; return; }
+      ch.forEach((c) => walk(c, d + 1));
+      pos[n.id] = { x: d, y: (pos[ch[0].id].y + pos[ch[ch.length - 1].id].y) / 2 };
+    };
+    (kids[""] || []).forEach((r) => walk(r, 0));
+    const depth = Math.max(0, ...Object.values(pos).map((p) => p.x));
+    return { pos, rows: row, depth };
+  }, [g]);
+  if (err) return <div className="mt-2 text-[11px] text-slate-400">{err}</div>;
+  if (!g || !lay) return <div className="mt-2 text-[11px] text-slate-400">Loading…</div>;
+  const W = 118, H = 20, GX = 150, GY = 26, PAD = 6;
+  const byId = Object.fromEntries(g.nodes.map((n) => [n.id, n]));
+  const counts = g.edges.reduce((a, e) => ({ ...a, [e.brep]: (a[e.brep] || 0) + 1 }), {});
+  return (
+    <div className="mt-2">
+      <div className="mb-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px]">
+        {Object.entries(LINK).map(([k, [c, t]]) => counts[k] ? <span key={k} style={{ color: c }}>━ {t} {counts[k]}</span> : null)}
+      </div>
+      {!g.brep_checked && <div className="mb-1.5 text-[10.5px] text-amber-300">Lines are the plan's claims: build the B-rep assembly to check which parts really touch.</div>}
+      <div className="scroll-thin max-h-[60vh] overflow-auto rounded-lg border border-white/10 bg-[#070b14]">
+        <svg width={PAD * 2 + lay.depth * GX + W} height={PAD * 2 + lay.rows * GY} className="block">
+          {g.edges.map((e) => {
+            const a = lay.pos[e.a], b = lay.pos[e.b];
+            if (!a || !b) return null;
+            const x1 = PAD + b.x * GX + W, y1 = PAD + b.y * GY + H / 2, x2 = PAD + a.x * GX, y2 = PAD + a.y * GY + H / 2, mx = x1 + (x2 - x1) / 2;
+            const c = (LINK[e.brep] || LINK["not checked"])[0];
+            return (<g key={e.a + e.b}>
+              <path d={`M${x1},${y1} H${mx} V${y2} H${x2}`} fill="none" stroke={c} strokeWidth={1.3} opacity={0.85}>
+                <title>{`${byId[e.a]?.name} → mounted on ${byId[e.b]?.name}\njoint: ${e.joint}\nB-rep: ${e.brep}\n${e.evidence}`}</title></path>
+              <text x={mx + 3} y={y2 - 3} fontSize={8} fill={c} fontFamily="monospace">{JWORD[e.joint] || e.joint}</text>
+            </g>);
+          })}
+          {g.nodes.map((n) => {
+            const p = lay.pos[n.id];
+            if (!p) return null;
+            const on = n.id === sel;
+            return (<g key={n.id} transform={`translate(${PAD + p.x * GX},${PAD + p.y * GY})`} className="cursor-pointer" onClick={() => onPick(n.id)}>
+              <rect width={W} height={H} rx={4} fill={on ? "#0e3a4a" : "#0d1524"} stroke={on ? "#5fe1ff" : "#26364d"} />
+              <text x={5} y={13.5} fontSize={9} fill="#7dd3fc" fontFamily="monospace">{n.item}</text>
+              <text x={24} y={13.5} fontSize={9.5} fill="#e2e8f0">{n.name.length > 17 ? n.name.slice(0, 16) + "…" : n.name}</text>
+              <title>{`${n.item}. ${n.name}\nmaterial: ${n.material || "-"}\noperations: ${(n.ops || []).join(", ") || "-"}\n${n.evidence}`}</title>
+            </g>);
+          })}
+        </svg>
+      </div>
+      {g.constraints.length > 0 && <div className="mt-2 font-mono text-[10px] text-slate-400">
+        <div className="mb-0.5 text-slate-300">Constraints in the plan ({g.constraints.length})</div>
+        {g.constraints.slice(0, 40).map((c, i) => <div key={i}>{byId[c.a]?.name} <span className="text-cyan-glow">{c.type}</span> {byId[c.b]?.name}</div>)}
+      </div>}
+    </div>);
+}
+
+// B-rep topology of one part, read from its exact solid by OpenCascade: every face pulled away from the part's centre
+// (the slider), each carrying its own boundary edges (lines) and vertices (dots), coloured by surface type. The counts
+// are the solid's real topology (TopExp), not of the display mesh.
+const FACE_COL = { Plane: "#5b8def", Cylinder: "#34d399", Cone: "#fbbf24", Sphere: "#f472b6", Torus: "#a78bfa",
+  BSplineSurface: "#22d3ee", BezierSurface: "#22d3ee", SurfaceOfRevolution: "#fb923c", SurfaceOfExtrusion: "#facc15", OffsetSurface: "#94a3b8" };
+const faceCol = (t) => FACE_COL[t] || "#94a3b8";
+
+function TopoFace({ f, centre, k, size }) {
+  const off = useMemo(() => {
+    const d = new THREE.Vector3(f.centre[0] - centre[0], f.centre[1] - centre[1], f.centre[2] - centre[2]);
+    if (d.length() < 1e-6) d.set(0, 0, 1);
+    return d.normalize().multiplyScalar(k * size * 0.35);
+  }, [f, centre, k, size]);
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(f.v, 3));
+    g.setIndex(f.f);
+    g.computeVertexNormals();
+    return g;
+  }, [f]);
+  const lines = useMemo(() => {
+    const seg = [];
+    for (const e of f.edges) for (let i = 0; i < e.pts.length - 1; i++) seg.push(...e.pts[i], ...e.pts[i + 1]);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(seg, 3));
+    return g;
+  }, [f]);
+  const dots = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(f.vertices.flat(), 3));
+    return g;
+  }, [f]);
+  useEffect(() => () => { geom.dispose(); lines.dispose(); dots.dispose(); }, [geom, lines, dots]);
+  return (
+    <group position={off}>
+      <mesh geometry={geom}><meshStandardMaterial color={faceCol(f.type)} side={THREE.DoubleSide} transparent opacity={0.55} metalness={0.1} roughness={0.6} /></mesh>
+      <lineSegments geometry={lines}><lineBasicMaterial color="#e6f6ff" /></lineSegments>
+      <points geometry={dots}><pointsMaterial color="#ffffff" size={5} sizeAttenuation={false} /></points>
+    </group>);
+}
+
+function Topology({ id }) {
+  const [t, setT] = useState(null);
+  const [err, setErr] = useState(null);
+  const [k, setK] = useState(0.6);
+  useEffect(() => {
+    if (!id) { setT(null); setErr("Select a part (click it, or pick it in the outliner)."); return; }
+    setErr(null); setT(null);
+    let stop = false, timer = null;
+    const load = () => fetch(`/api/brep/topology?id=${encodeURIComponent(id)}`).then((r) => r.json())
+      .then((j) => { if (stop) return; if (j.busy) { setErr(j.error); timer = setTimeout(load, 4000); } else if (j.error) setErr(j.error); else { setErr(null); setT(j); } })
+      .catch((e) => !stop && setErr(String(e)));
+    load();
+    return () => { stop = true; clearTimeout(timer); };
+  }, [id]);
+  if (err) return <div className="mt-2 text-[11px] text-slate-400">{err}</div>;
+  if (!t) return <div className="mt-2 text-[11px] text-slate-400">Reading the B-rep…</div>;
+  const c = t.count;
+  return (
+    <div className="mt-2">
+      <div className="mb-1 font-display text-[12.5px] font-bold text-white">{t.part}</div>
+      <div className="mb-1.5 grid grid-cols-5 gap-1 text-center font-mono text-[10px]">
+        {[["solids", c.solids], ["shells", c.shells], ["faces", c.faces], ["edges", c.edges], ["vertices", c.vertices]].map(([n, v]) =>
+          <div key={n} className="rounded border border-white/10 bg-white/[0.03] py-1"><div className="text-[13px] text-cyan-glow">{v}</div>{n}</div>)}
+      </div>
+      <div className="relative h-[300px] overflow-hidden rounded-lg border border-white/10 bg-[#070b14]">
+        <Canvas dpr={[1, 1.5]} camera={{ fov: 35, near: 0.1, far: 1e7, position: [t.centre[0] + t.size_mm * 1.6, t.centre[1] - t.size_mm * 2.0, t.centre[2] + t.size_mm * 1.3], up: [0, 0, 1] }}>
+          <ambientLight intensity={0.7} /><directionalLight position={[1, -1, 2]} intensity={1.2} />
+          {t.faces.map((f, i) => <TopoFace key={i} f={f} centre={t.centre} k={k} size={t.size_mm} />)}
+          <OrbitControls target={t.centre} makeDefault />
+        </Canvas>
+        <div className="pointer-events-none absolute bottom-1.5 left-2 font-mono text-[9.5px] text-slate-400">drag to orbit · wheel to zoom</div>
+      </div>
+      <label className="mt-1.5 flex items-center gap-2 font-mono text-[10.5px] text-slate-300">explode faces
+        <input type="range" min={0} max={1.5} step={0.05} value={k} onChange={(e) => setK(+e.target.value)} className="flex-1" /></label>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-[10px]">
+        {Object.entries(t.face_types).map(([n, v]) => <span key={n} style={{ color: faceCol(n) }}>■ {n} {v}</span>)}
+        <span className="text-slate-300">— edge</span><span className="text-white">● vertex</span>
+      </div>
+      {t.truncated && <div className="mt-1 text-[10px] text-amber-300">Showing the first {t.faces.length} of {c.faces} faces.</div>}
+      <div className="mt-1 text-[10px] text-slate-500">Read from the part's exact solid (OpenCascade). Each face carries its own boundary edges and corner vertices, so a shared edge appears on both faces when they are pulled apart.</div>
+    </div>);
 }

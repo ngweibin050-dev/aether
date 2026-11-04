@@ -80,6 +80,22 @@ def current_section():
               "| # | test | tools the AI called | result |", "|---|---|---|---|"]
         L += [f"| {r['n']} | {r['test']} | {', '.join(r['tools']) or '-'} | {'PASS' if r['pass'] else 'FAIL'} |" for r in acc]
         L.append("")
+    gt = _load(ROOT / "tests" / "ground_truth" / "scores.json") or {}
+    if gt:                                       # numbers copied from score.py's output, never typed
+        L += ["**Ground truth (`tests/ground_truth/`, docs/GROUND_TRUTH.md)**: three parts with known dimensions, drawn; "
+              "AETHER got only the drawing. Max overall-size error, largest feature-diameter error, holes found, silhouette "
+              "IoU (front / top / side):", "",
+              "| part | method | max size error mm | worst diameter error mm | holes found | IoU |", "|---|---|---|---|---|---|"]
+        for key, s in gt.items():
+            part, kind = key.split("/")
+            if s.get("no_solid") or s.get("missing"):
+                L.append(f"| {part} | {kind} | no solid | - | - | - |")
+                continue
+            errs = [abs(f["error_mm"]) for f in s["features"] if f["error_mm"] is not None]
+            holes = f"{sum(f['count_found'] for f in s['features'])} / {sum(f['count_truth'] for f in s['features'])}"
+            L.append(f"| {part} | {kind} | {s['max_size_error_mm']} | {max(errs) if errs else '-'} | {holes} | "
+                     f"{' / '.join(f'{x:.2f}' for x in s['iou_front_top_side'])} |")
+        L.append("")
     runs = ROOT / "docs" / "ai_cad_runs"
     if (runs / "README.md").exists():
         L += ["**The CC0 roadster, cycle by cycle** (`docs/ai_cad_runs/`; silhouette IoU per view with each view fitted to "
@@ -160,7 +176,7 @@ def main():
         L.append(f"| Downloads opened outside AETHER (trimesh {exp.get('trimesh')}) | {sum(x['pass'] for x in f)} / {len(f)} files: "
                  "triangles equal, size within 0.004 mm | AETHER's own counts |")
     L += ["", "### 1. Drawing -> CAD (three-view sheet)", "",
-          "Source: `output/cad/current/report.json` (the CAD build itself; details in `docs/CAD_RESULTS.md`). This build "
+          "Source: `output/cad/current/report.json` (the CAD build itself; details in `docs/archive/CAD_RESULTS.md`). This build "
           "is from before the body surface fairing of section 6, which moves the silhouette agreement by at most 0.008.", ""]
     if cad["iou"]:
         L += ["| view | silhouette IoU | boundary distance mm (mean) |", "|---|---|---|"]
@@ -199,7 +215,7 @@ def main():
               "profile never turned upright (side view: wheels and interior only), and nothing in an answer says which "
               "one is right. AETHER measures the sheet and checks every view.", "",
           "### 3. Drawing -> mechanism (patent drawings)", "",
-          "`tests/run_reference.py`, the last 3 saved runs per public input (full history: `docs/RESULTS.md`).", "",
+          "`tests/run_reference.py`, the last 3 saved runs per public input (full history: `docs/archive/RESULTS.md`).", "",
           "| input | runs | drawing lines on built parts % (recall) | built outlines on ink % (precision) | time s |",
           "|---|---|---|---|---|"]
     L += [f"| {t} | {n} | {r} | {p} | {s} |" for t, n, r, p, s in machines]
@@ -225,7 +241,7 @@ def main():
     if story:
         L += ["", "### 7. One workflow, end to end", "",
               "`tests/e2e_story.py`: a test server with its own project and CAD folder, driven through the app's HTTP API. "
-              "Details: `docs/STORY.md`.", "", "| # | step | result | seconds |", "|---|---|---|---|"]
+              "Details: `docs/archive/STORY.md`.", "", "| # | step | result | seconds |", "|---|---|---|---|"]
         L += [f"| {x['n']} | {x['step']} | {'PASS' if x['pass'] else 'FAIL'} | {x['seconds']} |" for x in story]
     L += ["", "## Reproduce", "",
           "| command | needs |", "|---|---|",

@@ -222,6 +222,7 @@ export const useStore = create((set, get) => ({
   async pushParts(parts, selected, label) {
     const j = await api("/api/scene", { parts, selected, label });
     get().applyState(j.state);
+    if (j.note) get().notify(j.note, "info");
   },
   // one edit of the scene = one step of the project's history (label: what the History panel and "undo" say)
   async commitParts(parts, selected = get().state.selected, label = "edit in the app") {
@@ -442,6 +443,7 @@ export const useStore = create((set, get) => ({
       if (x.explain) { set({ explain: x.explain, explainStep: 0 }); get().setPanel("explain", true); }   // "explain / teach me": the panel opens
       const PANEL = { assembly: "asm", drawing: "drawing", optics: "optics", cad: "cad", physics: "physics" };
       for (const u of x.ui || []) if (u.open_panel && PANEL[u.open_panel]) get().setPanel(PANEL[u.open_panel], true);
+      if ((j.trace || []).some((t) => t.tool === "build_brep_assembly")) get().loadAsm();   // the chat built it: show it
       set((s) => ({ chat: [...s.chat, ...(j.trace?.length ? [{ role: "steps", trace: j.trace }] : []),
         ...(j.reply || x.question ? [{ role: "ai", text: j.reply, extras: x, img: j.images?.drawing }] : [])] }));
     } catch (e) {
@@ -558,6 +560,17 @@ export const useStore = create((set, get) => ({
   },
 }));
 
+// a part counts as selected for the highlight when it, or a group above it, is selected (clicking a model's group
+// shows all its parts lit); the selection itself stays the group, so a move is applied once, through the group
+let _parentsOf = { parts: null, map: null };
+export const inSelection = (s, id) => {
+  if (!s.selection.length) return false;
+  if (s.selection.includes(id)) return true;
+  const parts = s.state?.parts || [];
+  if (_parentsOf.parts !== parts) _parentsOf = { parts, map: new Map(parts.map((p) => [p.id, p.parent])) };
+  for (let p = _parentsOf.map.get(id), n = 0; p && n < 12; p = _parentsOf.map.get(p), n++) if (s.selection.includes(p)) return true;
+  return false;
+};
 export const selectedPart = (s) => s.state?.parts.find((p) => p.id === s.state.selected) || null;
 export const HEAVY = ["desk_score", "make_hologram", "propagate", "focus_sweep", "eye_view", "desk_check", "search_column_width", "speckle_compare", "export_film"];
 export const isBusy = (s) => HEAVY.some((k) => s.busy[k]) || s.busy.chat;

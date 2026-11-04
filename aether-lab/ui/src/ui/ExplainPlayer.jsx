@@ -17,7 +17,7 @@ import { L, useLayout } from "./layout";
 const STEP_MS = 10000;
 const ISO = { theta: -Math.PI / 4, phi: Math.PI / 3 };
 const KIND = { overview: "Overview", architecture: "Architecture", why: "Why this design", subsystem: "Subsystem",
-  flow: "Power / load path", interfaces: "Interfaces", assembly: "Assembly", assumptions: "Measured vs assumed" };
+  connection: "How it connects", flow: "Power / load path", interfaces: "Interfaces", assembly: "Assembly", assumptions: "Measured vs assumed" };
 
 function animateExplode(from, to, ms = 2600) {
   const st = useStore.getState(), t0 = performance.now();

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { selectedPart, useStore } from "../store";
+import { inSelection, selectedPart, useStore } from "../store";
 import FloatPanel, { PanelIcon } from "./FloatPanel";
 import { L } from "./layout";
 import Icon from "./Icon";
@@ -38,7 +38,7 @@ function Vec({ label, value, onCommit, step }) {
 }
 
 function Row({ p, depth, kids }) {
-  const sel = useStore((s) => s.selection.includes(p.id));
+  const sel = useStore((s) => inSelection(s, p.id));
   const active = useStore((s) => s.state.selected === p.id);
   const st = useStore.getState();
   const [open, setOpen] = useState(depth < 1);

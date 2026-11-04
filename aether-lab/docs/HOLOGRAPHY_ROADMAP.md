@@ -140,7 +140,7 @@ for 160 × 160 on a CPU), tracking error beyond 0.3 mm, real liquid-crystal quan
 ## 4. What AETHER Lab already proves in software (measured)
 
 AETHER Lab (`aether-lab/`, built 27 Oct – 3 Nov 2026) is the software half of the desk: it produces the 3D content and
-predicts how it would look on the desk. All numbers below are from `aether-lab/docs/RESULTS.md` (live runs with Meta's
+predicts how it would look on the desk. All numbers below are from `aether-lab/docs/archive/RESULTS.md` (live runs with Meta's
 API and a Modal T4 GPU) or from the test suite (`python tests/test_physics.py`, 35 tests passing on 1 Nov).
 
 | What | Measured |

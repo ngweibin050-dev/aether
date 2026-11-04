@@ -433,20 +433,45 @@ def import_cad(state, meshes, groups, name, document_id, replace=False, provenan
 
 
 def guard_cad_leaves(old_parts, new_parts):
-    """A CAD component is display geometry of the B-rep in its document's frame: it stays at identity under its
-    group (moving / scaling the MODEL moves the group). An edit from the UI that moved or scaled the components one by
-    one (seen once: every component of a car at scale pi) is put back; returns the names that were reset."""
+    """Moving, turning or scaling one CAD component (or a few) is the user's edit and stays. Only the accident this
+    guard was made for is put back: an edit that changed EVERY component of a model at once (seen once: every
+    component of a car at scale pi), where moving the model means moving its group. Returns the names reset."""
     old = {p["id"]: p for p in old_parts}
-    reset = []
+    by_id = {p["id"]: p for p in new_parts}
+
+    def root(p):
+        while p.get("parent") in by_id:
+            p = by_id[p["parent"]]
+        return p["id"]
+    leaves, moved = {}, {}
     for p in new_parts:
         o = old.get(p["id"])
         if p.get("type") != "cad" or o is None:
             continue
-        for k in ("position", "rotation", "scale"):
-            if p.get(k) != o.get(k):
-                p[k] = o.get(k)
+        r = root(p)
+        leaves.setdefault(r, []).append(p)
+        if any(p.get(k) != o.get(k) for k in ("position", "rotation", "scale")):
+            moved.setdefault(r, []).append(p)
+    reset = []
+    for r, ps in moved.items():
+        if len(ps) > 1 and len(ps) == len(leaves[r]):            # the whole model's components at once: put back
+            for p in ps:
+                for k in ("position", "rotation", "scale"):
+                    p[k] = old[p["id"]].get(k)
                 reset.append(p["name"])
     return sorted(set(reset))
+
+
+def moved_program_parts(old_parts, new_parts):
+    """Names of AI-written CAD-program components the edit moved, turned or scaled (their program keeps the old place)."""
+    old = {p["id"]: p for p in old_parts}
+    out = []
+    for p in new_parts:
+        o = old.get(p["id"])
+        if o is not None and p.get("type") == "cad" and (p.get("eng") or {}).get("brep") \
+                and any(p.get(k) != o.get(k) for k in ("position", "rotation", "scale")):
+            out.append(p["name"])
+    return out
 
 
 def fold_cad_leaves(state):

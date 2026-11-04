@@ -16,13 +16,13 @@ Score each criterion from 0 to 10:
 | criterion | 10 means |
 |---|---|
 | `fidelity` | Matches the drawing's shape and proportions in every view (or the description, if there is no drawing) |
-| `assembly` | Built from the real separate components, with shut lines; glass, lamps, trim and wheels are proper parts, not painted patches |
+| `assembly` | Built from the real separate components, with shut lines; transparent parts, fittings and moving parts are proper solids, not painted patches |
 | `surfaces` | Smooth, clean curvature; no facets, lumps, dents, wobbles or blocky parts |
 | `detail` | All the components a real one has are there and well formed, with real depth (recesses, lenses, grilles, spokes) |
-| `materials` | Plausible materials and colours: glass reads as glass, chrome as chrome, lamps as lamps |
+| `materials` | Plausible materials and colours: glass reads as glass, metal as metal, rubber as rubber |
 | `integrity` | Nothing floating, nothing passing through anything else, nothing upside down or misplaced |
 
-`overall` is your overall judgement from 0 to 10. It is not an average: one glaring defect (a floating part, a sticker
+`overall` is your overall judgement from 0 to 10. It is not an average: one glaring defect (a floating part, a painted-on
 lamp, a blob body) caps it.
 
 List the defects you see, worst first. Each defect has:

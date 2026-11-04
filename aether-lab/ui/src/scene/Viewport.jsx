@@ -6,7 +6,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import * as THREE from "three";
 import { beamMaterial, holoMaterial, holoSweep, holoTime } from "./holo";
-import { useStore } from "../store";
+import { inSelection, useStore } from "../store";
 import { objects, view } from "./registry";
 import { Nav } from "./nav";
 import { explodeOffset } from "./modal";
@@ -80,7 +80,8 @@ const regionDefault = (n) => REGION_DEFAULT[n] || (/light|lamp/.test(n) ? REGION
 function PartNode({ part, childrenOf }) {
   const ref = useRef();
   const mesh = useStore((s) => s.meshes[part.id]);
-  const isSel = useStore((s) => s.selection.includes(part.id));
+  const isSel = useStore((s) => inSelection(s, part.id));            // lit: selected itself or through its group
+  const isPicked = useStore((s) => s.selection.includes(part.id));    // selected itself: stays solid in x-ray
   const isActive = useStore((s) => s.state?.selected === part.id);
   const shading = useStore((s) => s.shading);
   const xray = useStore((s) => s.view.xray);
@@ -131,7 +132,7 @@ function PartNode({ part, childrenOf }) {
   const kids = childrenOf[part.id] || [];
   const hiddenByIsolate = isolate.length && !part._inIsolate;
   const clip = section ? [clipPlane] : null;
-  const ghost = xray && !isSel;
+  const ghost = xray && !isPicked;     // a selected model (its group) is still seen through in x-ray, tinted
   // in the hologram look the selection turns amber (Iron Man style) so it stands out from the cyan light
   const sel = shading === "holo" ? (isActive ? "#ffd58a" : isSel ? "#ffb347" : null) : isActive ? "#8ff3ff" : isSel ? "#3fc6ff" : null;
 
@@ -149,9 +150,12 @@ function PartNode({ part, childrenOf }) {
   else if (holo)
     material = <primitive object={holo} attach="material" />;
   else
-    material = <meshStandardMaterial vertexColors={!!mesh?.r} color={mesh?.r ? "#ffffff" : part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")}
-      metalness={part.material === "glass" ? 0.9 : 0.62} roughness={part.material === "glass" ? 0.06 : 0.34} envMapIntensity={part.material === "glass" ? 1.1 : 0.55}
-      emissive={sel || "#000000"} emissiveIntensity={sel ? 0.22 : 0} transparent={ghost} opacity={ghost ? 0.22 : 1}
+    // x-ray: the other parts as see-through blue glass, 12 % each (parts stack: 117 layers at 35 % read as solid white;
+    // dark metal at 22 % read as invisible); their edges are drawn light (EdgeLines below) and carry the shape
+    material = <meshStandardMaterial vertexColors={!!mesh?.r && !ghost} color={ghost ? "#6f9cc4" : mesh?.r ? "#ffffff" : part.color || (part.type === "mesh" ? "#b9c4d6" : "#cfd8e4")}
+      metalness={ghost ? 0.05 : part.material === "glass" ? 0.9 : 0.62} roughness={ghost ? 0.5 : part.material === "glass" ? 0.06 : 0.34}
+      envMapIntensity={ghost ? 0.3 : part.material === "glass" ? 1.1 : 0.55}
+      emissive={sel || "#000000"} emissiveIntensity={sel ? 0.22 : 0} transparent={ghost} opacity={ghost ? 0.12 : 1}
       depthWrite={!ghost} clippingPlanes={clip} polygonOffset={!!mesh?.l} polygonOffsetFactor={1.5} polygonOffsetUnits={2} />;
 
   return (
@@ -177,8 +181,8 @@ function PartNode({ part, childrenOf }) {
           )}
           {shading !== "wire" && (
             <EdgeLines geom={geom} lines={mesh.l} clip={clip}
-              color={sel || (shading === "holo" ? "#8ff0ff" : mesh.l ? "#1a2533" : "#e6f6ff")}
-              opacity={mesh.l ? (ghost ? 0.3 : 0.85) : sel ? 0.95 : shading === "holo" ? (ghost ? 0.25 : 0.6) : ghost ? 0.4 : 0.12} />
+              color={sel || (shading === "holo" ? "#8ff0ff" : ghost ? "#9fd8ff" : mesh.l ? "#1a2533" : "#e6f6ff")}
+              opacity={ghost ? (shading === "holo" ? 0.3 : 0.6) : mesh.l ? 0.85 : sel ? 0.95 : shading === "holo" ? 0.6 : 0.12} />
           )}
         </>
       )}

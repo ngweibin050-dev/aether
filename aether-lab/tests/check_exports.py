@@ -8,7 +8,7 @@
    bracket of standard parts (ISO 4017 bolt, 6204 bearing). Our own numbers go in a manifest: triangles, size (mm).
 2. In the isolated environment: tests/check_exports_load.py opens every file with trimesh alone (not our code) and
    compares triangles and size with the manifest. Results: output/exports_check/results.json.
-STEP is checked by the CAD pipeline's own round trip (re-read in a fresh OpenCascade process: docs/CAD_RESULTS.md)."""
+STEP is checked by the CAD pipeline's own round trip (re-read in a fresh OpenCascade process: docs/archive/CAD_RESULTS.md)."""
 import json
 import subprocess
 import sys
