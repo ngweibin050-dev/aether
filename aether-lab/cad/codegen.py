@@ -79,7 +79,7 @@ def measure(sheet):
 
 ALLOWED_CALL_NAMES = {"range", "len", "min", "max", "abs", "float", "int", "list", "dict", "tuple", "enumerate", "zip",
                       "sorted", "sum", "round", "isinstance", "reversed", "any", "all", "map", "filter", "print", "pow",
-                      "ValueError", "Exception", "bool", "str", "set"}
+                      "ValueError", "Exception", "bool", "str", "set", "hasattr", "TypeError", "RuntimeError"}
 BANNED_NAMES = {"open", "exec", "eval", "compile", "__import__", "getattr", "setattr", "delattr", "globals", "locals",
                 "vars", "input", "breakpoint", "help", "exit", "quit", "memoryview", "type", "object", "super",
                 "classmethod", "staticmethod", "property"}
@@ -126,6 +126,13 @@ from OCP.BRepTools import BRepTools
 from OCP.GProp import GProp_GProps
 from OCP.BRepGProp import BRepGProp
 job = json.load(open(sys.argv[1], encoding="utf-8"))
+sys.path.insert(0, job["lab_root"])
+from cad import sandbox_lib as SL
+# a common slip: Workplane has union / cut / intersect; .fuse is the Shape name for union. Accept both.
+if not hasattr(cq.Workplane, "fuse"):
+    cq.Workplane.fuse = lambda self, *o, **k: self.union(*o, **k)
+if not hasattr(cq.Workplane, "wrapped"):        # .wrapped is the Shape's OCP handle; on a Workplane, its first solid's
+    cq.Workplane.wrapped = property(lambda self: self.val().wrapped)
 P = job["profiles"]; Lmm = float(job["length_mm"]); U = np.linspace(0, 1, len(P.get("side_top") or [0, 0]))
 def _f(key):
     if key not in P:
@@ -143,7 +150,19 @@ def end_half_width(view, h):
 SAFE = {k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k) for k in job["allowed"]}
 g = {"__builtins__": SAFE, "cq": cq, "math": math, "LENGTH": Lmm, "WIDTH": float(job["dims"]["width"]) * Lmm,
      "HEIGHT": float(job["dims"]["height"]) * Lmm, "side_top": side_top, "side_bottom": side_bottom,
-     "half_width": half_width, "end_half_width": end_half_width}
+     "half_width": half_width, "end_half_width": end_half_width, **SL.NAMES}
+OVR = job.get("overrides") or {}
+USED = set()
+def P(name):
+    """a named parameter of the program: the user's override if there is one, else PARAMS[name]['value']"""
+    USED.add(name)
+    if name in OVR:
+        return float(OVR[name])
+    t = g.get("PARAMS") or {}
+    if name not in t:
+        raise KeyError(f"P('{name}'): no such parameter in PARAMS")
+    return float(t[name]["value"] if isinstance(t[name], dict) else t[name])
+g["P"] = P
 out = {"parts": [], "error": None}
 try:
     exec(compile(open(job["program"], encoding="utf-8").read(), "program.py", "exec"), g)
@@ -157,20 +176,41 @@ try:
             sh = vals[0] if len(vals) == 1 else cq.Compound.makeCompound(vals)
         w = sh.wrapped
         ok = bool(BRepCheck_Analyzer(w).IsValid())
+        repaired = False
+        if not ok:                                       # OpenCascade's own shape repair before the part is given up
+            from OCP.ShapeFix import ShapeFix_Shape
+            fx = ShapeFix_Shape(w)
+            fx.Perform()
+            if BRepCheck_Analyzer(fx.Shape()).IsValid():
+                w, ok, repaired = fx.Shape(), True, True
         gp = GProp_GProps(); BRepGProp.VolumeProperties_s(w, gp)
         f = f"{job['out']}/part_{i:02d}.brep"
         BRepTools.Write_s(w, f)
         out["parts"].append({"name": str(p.get("name", f"part {i}"))[:60], "colour": str(p.get("colour", "#b9c3cf"))[:9],
-                             "material": str(p.get("material", "paint"))[:20], "brep": f, "valid": ok,
+                             "material": str(p.get("material", "paint"))[:20], "brep": f, "valid": ok, "repaired": repaired,
                              "volume_mm3": float(gp.Mass())})
 except Exception as e:
     tb = traceback.format_exc().strip().splitlines()
     out["error"] = "\n".join([l for l in tb if "program.py" in l][-3:] + tb[-1:])[:1500]
+def _param_table():
+    t = g.get("PARAMS") or {}
+    rows = {}
+    for k, v in (t.items() if isinstance(t, dict) else []):
+        v = v if isinstance(v, dict) else {"value": v}
+        try:
+            val = float(OVR.get(k, v.get("value")))
+        except (TypeError, ValueError):
+            continue
+        rows[str(k)[:60]] = {"value": val, "unit": str(v.get("unit", "mm"))[:10],
+                             "provenance": "user" if k in OVR else str(v.get("provenance", "assumed"))[:20],
+                             "evidence": str(v.get("evidence", ""))[:200], "used": k in USED}
+    return rows
+out["params"] = _param_table()
 json.dump(out, open(job["result"], "w", encoding="utf-8"))
 '''
 
 
-def run_program(code, meas, length_mm, out_dir, timeout=240):
+def run_program(code, meas, length_mm, out_dir, timeout=420, overrides=None):
     """Run a checked program in a separate process. Returns {"parts": [...], "error": str|None, "seconds"}."""
     out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
@@ -186,8 +226,10 @@ def run_program(code, meas, length_mm, out_dir, timeout=240):
     open(child, "w", encoding="utf-8").write(CHILD)
     job = os.path.join(out_dir, "_job.json")
     res = os.path.join(out_dir, "_result.json")
-    json.dump({"profiles": meas["profiles"], "dims": meas["dims"], "length_mm": length_mm, "program": prog,
-               "out": out_dir.replace("\\", "/"), "result": res, "allowed": sorted(ALLOWED_CALL_NAMES)},
+    json.dump({"lab_root": os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+               "profiles": meas["profiles"], "dims": meas["dims"], "length_mm": length_mm, "program": prog,
+               "out": out_dir.replace("\\", "/"), "result": res, "allowed": sorted(ALLOWED_CALL_NAMES),
+               "overrides": overrides or {}},
               open(job, "w", encoding="utf-8"))
     t0 = time.time()
     if os.path.exists(res):
@@ -220,45 +262,73 @@ def load_parts(r):
     return out
 
 
-def model_masks(parts, shapes):
-    """Silhouettes of the parts (model frame: x length, y width, z up) at the drawing views' pixel sizes."""
+def _meshes(parts):
     from . import tessellate as T
-    meshes = [T.mesh(p["shape"], 2.0, 0.5)[:2] for p in parts]
+    return [T.mesh(p["shape"], 2.0, 0.5)[:2] for p in parts]
+
+
+AXES2 = {"side": (0, 2), "top": (0, 1), "end_a": (1, 2), "end_b": (1, 2)}
+
+
+def model_masks(parts, shapes, k=None, meshes=None):
+    """Silhouettes of the parts (model frame: x length, y width, z up) on canvases the size of the drawing's views.
+    k = None: each view stretched to fill its canvas (shape only: the old, lenient score). k = px per mm: ONE scale for
+    every view, the model centred on the canvas, nothing stretched (shape AND proportions)."""
+    meshes = meshes or _meshes(parts)
     allV = np.vstack([V for V, _ in meshes if len(V)])
-    axes = {"side": (0, 2), "top": (0, 1), "end_a": (1, 2), "end_b": (1, 2)}
     out = {}
     for v, (h, w) in shapes.items():
-        a, b = axes[v]
+        a, b = AXES2[v]
         lo, hi = allV[:, [a, b]].min(0), allV[:, [a, b]].max(0)
+        if k is None:
+            sx, sy = (w - 1) / max(hi[0] - lo[0], 1e-9), (h - 1) / max(hi[1] - lo[1], 1e-9)
+            ox, oy = 0.0, 0.0
+        else:
+            sx = sy = k
+            ox, oy = (w - 1 - (hi[0] - lo[0]) * k) / 2, (h - 1 - (hi[1] - lo[1]) * k) / 2
         im = Image.new("1", (w, h))
         dr = ImageDraw.Draw(im)
         for V, F in meshes:
             if not len(V):
                 continue
             P = V[:, [a, b]]
-            px = (P[:, 0] - lo[0]) / max(hi[0] - lo[0], 1e-9) * (w - 1)
-            py = (hi[1] - P[:, 1]) / max(hi[1] - lo[1], 1e-9) * (h - 1)
+            px = (P[:, 0] - lo[0]) * sx + ox
+            py = (hi[1] - P[:, 1]) * sy + oy
             for t in F:
                 dr.polygon([(px[i], py[i]) for i in t], fill=1)
         out[v] = np.asarray(im, bool)
-    return out
+    return out, allV.max(0) - allV.min(0)
+
+
+def _best_iou(d, m):
+    best, bm = -1.0, m
+    for fx in (False, True):
+        for fy in (False, True):
+            q_ = m[:, ::-1] if fx else m
+            q_ = q_[::-1, :] if fy else q_
+            q = float((d & q_).sum() / max((d | q_).sum(), 1))
+            if q > best:
+                best, bm = q, q_
+    return best, bm
 
 
 def score(parts, meas, out_dir, tag):
-    """IoU per view (mirror images tried, as the drawing does not say which way the model faces) + overlay images."""
+    """Agreement with the drawing, three ways (mirror images tried: the drawing does not say which way the model faces):
+    - iou: silhouette IoU per view with ONE scale for all views (px per mm from the side view's length), the model only
+      centred, never stretched: shape and proportions together. This is the score that decides.
+    - iou_shape: each view stretched to its drawing box (shape only; the earlier, lenient score), for reference.
+    - proportions: height / length and width / length of the model vs the drawing, error in %.
+    Returns (iou, overlay images, extra)."""
     dm = meas["masks"]
-    mm = model_masks(parts, {v: m.shape for v, m in dm.items()})
-    res, imgs = {}, {}
+    meshes = _meshes(parts)
+    fit, ext = model_masks(parts, {v: m.shape for v, m in dm.items()}, None, meshes)
+    k = (dm["side"].shape[1] - 1) / max(float(ext[0]), 1e-9)          # the side view's length fixes the one scale
+    one, _ = model_masks(parts, {v: m.shape for v, m in dm.items()}, k, meshes)
+    res, shape_only, imgs = {}, {}, {}
     for v, d in dm.items():
-        best, bm = -1.0, None
-        for fx in (False, True):
-            for fy in (False, True):
-                m = mm[v][:, ::-1] if fx else mm[v]
-                m = m[::-1, :] if fy else m
-                q = float((d & m).sum() / max((d | m).sum(), 1))
-                if q > best:
-                    best, bm = q, m
-        res[v] = round(best, 4)
+        q, bm = _best_iou(d, one[v])
+        res[v] = round(q, 4)
+        shape_only[v] = round(_best_iou(d, fit[v])[0], 4)
         rgb = np.full(d.shape + (3,), 255, np.uint8)
         rgb[d & bm] = (190, 200, 210)
         rgb[d & ~bm] = (220, 50, 50)
@@ -266,65 +336,115 @@ def score(parts, meas, out_dir, tag):
         f = os.path.join(out_dir, f"check_{tag}_{v}.png")
         Image.fromarray(rgb).save(f)
         imgs[v] = f
-    return res, imgs
+    L, W, H = (float(x) for x in ext)
+    dh = dm["side"].shape[0] / dm["side"].shape[1]
+    dw = meas["dims"]["width"] / meas["dims"]["length"]
+    prop = {"height_to_length_pct": round(100 * abs(H / L - dh) / dh, 1), "width_to_length_pct": round(100 * abs(W / L - dw) / dw, 1)}
+    return res, imgs, {"iou_shape": shape_only, "proportion_error": prop}
 
 
 # ------------------------------------------------------------------------------------------------ 2 + 5. plan, write, revise
 
+PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts")
+
+
+def _prompt(name):
+    """The instruction files (prompts/*.md): the quality bar the model works to, editable without touching code."""
+    with open(os.path.join(PROMPTS, name), encoding="utf-8") as f:
+        return f.read()
+
+
+PLAN_SCHEMA = {"type": "object", "additionalProperties": False,
+               "required": ["object", "length_mm", "faces", "components", "constraints", "unknowns"],
+               "properties": {"object": {"type": "string", "maxLength": 160},
+                              "length_mm": {"type": "number", "minimum": 5, "maximum": 50000},
+                              "faces": {"type": "string", "maxLength": 400},
+                              "constraints": {"type": "array", "maxItems": 80, "items": {
+                                  "type": "object", "additionalProperties": False, "required": ["type", "a", "b", "value"],
+                                  "properties": {"type": {"type": "string", "enum": ["coaxial", "contact", "clearance", "meshes"]},
+                                                 "a": {"type": "string", "maxLength": 60},
+                                                 "b": {"type": "string", "maxLength": 60},
+                                                 "value": {"type": "number", "minimum": 0, "maximum": 1000}}}},
+                              "unknowns": {"type": "array", "maxItems": 30, "items": {
+                                  "type": "object", "additionalProperties": False,
+                                  "required": ["what", "why", "would_resolve", "critical"],
+                                  "properties": {"what": {"type": "string", "maxLength": 160},
+                                                 "why": {"type": "string", "maxLength": 240},
+                                                 "would_resolve": {"type": "string", "maxLength": 200},
+                                                 "critical": {"type": "boolean"}}}},
+                              "components": {"type": "array", "maxItems": 260, "items": {
+                                  "type": "object", "additionalProperties": False,
+                                  "required": ["name", "parent", "joint", "evidence", "material", "colour", "method"],
+                                  "properties": {"name": {"type": "string", "maxLength": 60},
+                                                 "parent": {"type": "string", "maxLength": 60},
+                                                 "joint": {"type": "string", "enum": ["fixed", "rotates", "slides",
+                                                                                      "clearance", "root"]},
+                                                 "evidence": {"type": "string", "maxLength": 120},
+                                                 "material": {"type": "string", "enum": ["paint", "glass", "chrome", "metal",
+                                                                                         "rubber", "plastic", "light", "leather"]},
+                                                 "colour": {"type": "string", "maxLength": 9},
+                                                 "method": {"type": "string", "maxLength": 200}}}}}}
+
 CODE_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["object", "plan", "length_mm", "code"],
-               "properties": {"object": {"type": "string", "maxLength": 120},
+               "properties": {"object": {"type": "string", "maxLength": 160},
                               "plan": {"type": "string", "maxLength": 3000},
-                              "length_mm": {"type": "number", "minimum": 10, "maximum": 50000},
-                              "code": {"type": "string", "maxLength": 60000}}}
+                              "length_mm": {"type": "number", "minimum": 5, "maximum": 50000},
+                              "code": {"type": "string", "maxLength": 90000}}}
 
-RULES = """You are AETHER's CAD engineer. Build the object on this drawing as a CadQuery (OpenCascade) program.
+_SCORE = {"type": "number", "minimum": 0, "maximum": 10}
+CRITIC_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["scores", "overall", "defects"],
+                 "properties": {"scores": {"type": "object", "additionalProperties": False,
+                                           "required": ["fidelity", "assembly", "surfaces", "detail", "materials", "integrity"],
+                                           "properties": {k: _SCORE for k in ("fidelity", "assembly", "surfaces", "detail",
+                                                                              "materials", "integrity")}},
+                                "overall": _SCORE,
+                                "defects": {"type": "array", "maxItems": 12, "items": {
+                                    "type": "object", "additionalProperties": False, "required": ["part", "problem", "fix"],
+                                    "properties": {"part": {"type": "string", "maxLength": 80},
+                                                   "problem": {"type": "string", "maxLength": 300},
+                                                   "fix": {"type": "string", "maxLength": 300}}}}}}
 
-Program rules (it is checked, then run in a sandbox):
-- `cq` (cadquery) and `math` are already available. Do NOT import anything. No file access, no names starting with _.
+PROGRAM_API = """THE PROGRAM (it is checked, then run in a sandbox):
+- `cq` (cadquery) and `math` are available. Do NOT import anything. No file access, no names starting with _.
+  The `code` field is plain Python source only: no Markdown fences, no prose.
 - Define `parts`: a list of dicts {"name": str, "shape": a cq.Workplane or cq.Shape holding ONE closed solid,
-  "colour": "#rrggbb", "material": one of paint, glass, chrome, metal, rubber, plastic, light, leather}.
-- Units mm. Frame: X along the object's length from its FRONT end (x = 0) to its rear end (x = LENGTH); Y across
+  "colour": "#rrggbb", "material": paint | glass | chrome | metal | rubber | plastic | light | leather}.
+  Use the component names of the plan EXACTLY (one part per component; split a component into several parts only
+  by suffixing its name, e.g. "door_left.glass").
+- Units mm. Frame: X along the object's length from its FRONT end (x = 0) to its rear (x = LENGTH); Y across
   (y = 0 the symmetry plane); Z up from the ground (z = 0).
-- MEASURED data from the drawing are given as functions (all in mm, use them, do not guess what they give):
-  LENGTH, WIDTH, HEIGHT; side_top(u), side_bottom(u): the side view's upper and lower outline at u = x / LENGTH
-  measured from the LEFT end of the side view AS DRAWN (if the drawn front is on the right, use u = 1 - x / LENGTH);
-  half_width(u): the plan view's half-width at the same u (plan drawn with the same left/right as the side view);
-  end_half_width("end_a" | "end_b", h): an end view's half-width at height h.
-- Build the main body from these profiles (e.g. loft through cross-sections whose width and height follow them; keep
-  sections convex and well-formed so the loft is valid), then add EVERY visible feature as its own part, at the
-  place the drawing shows it: wheels (tyre + rim), windscreen frame and glass, roll bar, seats, steering wheel,
-  lights, grille, bumpers, mirrors, exhaust, handles ... whatever THIS drawing shows. Open things stay open (a
-  cockpit is a hollow cut into the body, not covered).
-- Prefer robust operations: box, cylinder, sphere, extrude, revolve, loft of a few wires, sweep of a circle along a
-  spline, union/cut, fillet with small radii only where it is safe. Every part must be a valid solid.
-
-- QUALITY (the model is judged on renders next to the drawing, like a product designer would):
-  * Smooth surfaces: build curved bodies by lofting SMOOTH section wires (spline / ellipse / rounded wires, made with
-    cq.Workplane(...).spline(...) or .ellipse(...)) with ruled=False, about 8-14 sections; never polyline sections or
-    ruled lofts (they show facets). Fillet edges a real object would have rounded (small radii, where safe).
-  * Real shapes, not blocks: round things are revolved profiles with rounded edges; thin things (glass, frames, panels)
-    are thin and follow the surface they sit on; openings are cut into the parent (a recess, a cavity), not painted on.
-  * Everything attached, nothing floating: each part touches or slightly overlaps the part it is mounted on.
-  * Sizes and positions come from the measured outlines wherever the drawing shows them; check every part against
-    each view (side, top, end views) before answering.
+- PARAMETERS WITH EVIDENCE: start the program with
+    PARAMS = {"name": {"value": number, "unit": "mm" | "deg" | "count", "provenance": "measured" | "read" |
+              "inferred" | "assumed", "evidence": "where it comes from"}, ...}
+  for every key dimension of the object (overall sizes, wheelbase / pitch / centre distances, diameters, wall and
+  panel thicknesses, clearances, counts). measured = from the measured outline functions, read = a dimension written
+  on the drawing, inferred = engineering reasoning from what is drawn, assumed = a default because nothing shows it.
+  The geometry reads them with P("name") (never repeats the number), so an engineer can correct one value and the
+  whole model recomputes.
+- Building blocks you can call (general CAD operations; read their behaviour here):
+  smooth_loft(sections, axis="x"): sections [(t, [(a, b), ...]), ...] closed loops across the axis -> smooth solid.
+  split_panels(body, lines, gap=3.5): lines [(view, [(a, b), ...]), ...] with view "side" (x, z) | "top" (x, y) |
+    "front" (y, z) -> list of panels with real shut lines, sorted by centre x then z. Name each panel.
+  recess(body, view, outline, depth, from_side="min") -> (body_with_opening, floor): an opening `depth` mm deep cut
+    into the outer surface seen in that view ("front": (y, z) from the front, "side": (x, z) from the -y side unless
+    from_side="max", "top": (x, y) from below unless "max"); put the housing / lens / plate at `floor`.
+  revolve_profile(points_rh, axis_origin, axis_dir): closed profile [(r, h), ...] revolved 360 deg (tyres, rims, knobs).
+  sweep_tube(points3d, r): a round tube along a smooth curve (frames, belts, arms, pipes).
+  fillet_safe(obj, r, selector=None): round edges; returns the input unchanged if the kernel cannot.
 """
 
-RULES_NO_DRAWING = RULES.split("- MEASURED data")[0].replace("Build the object on this drawing", "Design the object the "
-    "user describes") + """- There is no drawing: use real engineering sizes and proportions for this kind of object
-  (say in the plan where each comes from). Model every part the real object has, each as its own part.
-- Prefer robust operations: box, cylinder, sphere, extrude, revolve, loft of a few wires, sweep of a circle along a
-  spline, union/cut, fillet with small radii only where it is safe. Every part must be a valid solid.
-
-- QUALITY (the model is judged on renders next to the drawing, like a product designer would):
-  * Smooth surfaces: build curved bodies by lofting SMOOTH section wires (spline / ellipse / rounded wires, made with
-    cq.Workplane(...).spline(...) or .ellipse(...)) with ruled=False, about 8-14 sections; never polyline sections or
-    ruled lofts (they show facets). Fillet edges a real object would have rounded (small radii, where safe).
-  * Real shapes, not blocks: round things are revolved profiles with rounded edges; thin things (glass, frames, panels)
-    are thin and follow the surface they sit on; openings are cut into the parent (a recess, a cavity), not painted on.
-  * Everything attached, nothing floating: each part touches or slightly overlaps the part it is mounted on.
-  * Sizes and positions come from the measured outlines wherever the drawing shows them; check every part against
-    each view (side, top, end views) before answering.
+MEASURED_API = """MEASURED data from the drawing are functions in the program (mm; use them, do not guess what they give):
+  LENGTH, WIDTH, HEIGHT; side_top(u), side_bottom(u): the side view's upper / lower outline at u = x / LENGTH measured
+  from the LEFT end of the side view AS DRAWN (if the drawn front is on the right, use u = 1 - x / LENGTH);
+  half_width(u): the plan view's half-width at the same u; end_half_width("end_a" | "end_b", h): an end view's
+  half-width at height h.
 """
+
+
+
+# the full instruction text for a drawing / no drawing (the engineer file + the program's interface)
+RULES = _prompt("cad_engineer.md") + "\n" + PROGRAM_API + "\n" + MEASURED_API
+RULES_NO_DRAWING = _prompt("cad_engineer.md") + "\n" + PROGRAM_API
 
 
 def _prof_text(meas):
@@ -388,21 +508,102 @@ def render(parts, path, size=(960, 540), view="iso"):
     return path
 
 
-def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode="live", log=print, target=0.95,
-          base_program=None, base_length_mm=None):
-    """The loop for any request: a drawing (sheet), a description (request), or a change to an existing program
-    (base_program + request). Returns the report; writes program.py, model.step, model.glb, report.json.
-    Kept: with a drawing, the valid round with the best mean IoU; without one, or when editing, the newest valid round
-    (an edit may rightly change the outline). A round that fails never replaces a valid one."""
+def _comps(parts):
+    return [{"id": f"p{i:03d}_" + "".join(ch if ch.isalnum() else "_" for ch in p["name"])[:40], "name": p["name"],
+             "shape": p["shape"], "colour": p.get("colour"), "material": p.get("material"), "parent": None, "extras": {}}
+            for i, p in enumerate(parts)]
+
+
+def review_renders(parts, rdir, tag, log=print):
+    """Renders for the critic and the writer: the real viewer (headless Chrome + three.js) when available, the
+    built-in software renderer otherwise."""
     from . import export as EX
+    from . import render_views as RV
+    glb = os.path.join(rdir, "model.glb")
+    with open(glb, "wb") as f:
+        f.write(EX.glb(_comps(parts)))
+    pics = None
+    try:
+        pics = RV.render(glb, rdir, views=("iso", "iso_rear", "side", "front", "rear", "cockpit"))
+    except Exception as e:                                   # noqa: BLE001 - fall back, say so
+        log(f"real renders failed ({type(e).__name__}: {e}); software renderer used")
+    if not pics:
+        pics = {v: render(parts, os.path.join(rdir, f"soft_{tag}_{v}.png"), view=v) for v in ("iso", "rear_iso", "side", "front", "top")}
+    return pics
+
+
+def critique(ai, k, sheet, plan, pics, gate, iou, log=print):
+    """The critic (Muse Spark, a separate reviewer from the writer): rubric scores 0-10 and named defects with fixes."""
+    content = [{"type": "text", "text": _prompt("cad_critic.md")
+                + "\n\nThe component list it was meant to implement: " + ", ".join(c["name"] for c in plan["components"])[:6000]
+                + f"\nCode-checked facts: {gate['summary']}. Floating: {gate['floating'][:15]}. Stickers/slivers: "
+                  f"{gate['slivers'][:15]}. Box-like: {gate['box_like'][:20]}. Wrong overlaps: {gate['overlaps'][:10]}. "
+                  f"Planned but missing: {gate['missing_from_plan'][:20]}."
+                + (f" Silhouette IoU per view vs the drawing: {iou}." if iou else "")
+                + "\nAnswer with the JSON object only."}]
+    if sheet:
+        content += [{"type": "text", "text": "The drawing:"}, _image(Image.open(sheet), 1100)]
+    for v, f in pics.items():
+        content += [{"type": "text", "text": f"Render, view {v}:"}, _image(f, 1000)]
+    try:
+        ans, _ = ai.ask_json("C2_critic", f"round{k}", AI.SPARK, content, CRITIC_SCHEMA, seed=k, timeout=240)
+        return ans
+    except AI.ModelUnavailable as e:
+        log(f"critic unavailable: {e}")
+        return None
+
+
+def make_plan(ai, model, sheet, meas, measured, why_not, request, base_plan, log=print):
+    """C0: the component list (the model's own bill of materials) before any code."""
+    text = _prompt("cad_engineer.md") + ("\n\nSTEP 1 of 2: plan the model. List EVERY component you will build (an "
+                                         "assembly of real parts, as the instructions above describe), each with its parent "
+                                         "(the part it is mounted on; '-' for the root), its joint to the parent (fixed, "
+                                         "rotates, slides, clearance = deliberately not touching, root), its evidence (which "
+                                         "drawn views show it, or 'estimate'), material, colour and the CAD method "
+                                         "(which operation, from which measured outline or estimate). Also say which way the "
+                                         "object faces in each drawn view (`faces`) and its real overall length. List "
+                                         "the mechanical `constraints` code will verify on your geometry (coaxial: a shaft and its bearing / hub; "
+                                         "contact: a part and what it sits on; clearance with its value in mm; meshes: two "
+                                         "gears), using component names exactly; value 0 where it has none. List "
+                                         "the `unknowns`: what the evidence CANNOT determine (hidden geometry, missing "
+                                         "dimensions, ambiguous views), why, what would resolve it (a dimension, another "
+                                         "view, a photo), and whether it is critical to the result. Do not hide an "
+                                         "unknown behind a confident guess.")
+    if request:
+        text += "\nThe user asked: " + request
+    if measured:
+        text += "\n\n" + _prof_text(meas)
+    elif sheet:
+        text += f"\n\nA drawing is attached; its views could not be measured automatically ({why_not}). Read it yourself."
+    if base_plan:
+        text += ("\n\nThe CURRENT component list of the model is below. Revise it for what the user asked (add, split, "
+                 "refine components; keep what is right):\n" + json.dumps(base_plan["components"])[:30000])
+    content = [{"type": "text", "text": text}] + ([_image(Image.open(sheet))] if sheet else [])
+    ans, _ = ai.ask_json("C0_plan", "plan", model, content, PLAN_SCHEMA, seed=1, timeout=400, effort="medium")
+    log(f"plan: {ans['object']}, {len(ans['components'])} components")
+    return ans
+
+
+def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode="live", log=print, target=8.5,
+          base_program=None, base_length_mm=None, base_plan=None):
+    """The loop for any request: a drawing (sheet), a description (request), or a change to an existing program
+    (base_program [+ base_plan] + request).
+
+    C0 plan (Muse Wonder: the component list) -> per round: C1 write the program (Muse Wonder) -> run it in the sandbox
+    -> code checks (valid solids, quality gates, coverage of the plan, IoU per view) -> real renders -> C2 critic (Muse
+    Spark, rubric) -> feedback for the next round.
+    Kept: the valid round with the best critic score that passes the hard gates (no floating parts, no stickers, no
+    wrong overlaps) if any round does, and whose mean IoU is within 0.03 of the best checked round's (with a drawing).
+    A round that fails never replaces a valid one. Stops early at critic overall >= target with clean gates."""
+    from . import export as EX
+    from . import quality as Q
     out_dir = os.path.abspath(out_dir)
     os.makedirs(out_dir, exist_ok=True)
     t0 = time.time()
-    none = {"profiles": {}, "dims": {"length": 1.0, "height": 0.0, "width": 0.0}, "masks": {}}
+    meas = {"profiles": {}, "dims": {"length": 1.0, "height": 0.0, "width": 0.0}, "masks": {}}
     measured, why_not = False, None
-    meas = none
     if sheet:
-        try:                                     # the outlines are measured where the sheet has the 4 standard views
+        try:
             meas, measured = measure(sheet), True
             log(f"measured {len(meas['masks'])} views")
         except Exception as e:                   # any other sheet: the model reads it from the picture, renders check it
@@ -411,98 +612,197 @@ def build(sheet, out_dir, request="", rounds=5, model=None, stored=None, ai_mode
     ai = AI.AI(list(stored or []), ai_mode, log=lambda e: log(f"    {e.get('who', '')} {e['stage']} {e['key']} {e['state']}"
                                                                   + (f" {e.get('s')} s" if e.get("s") else "")))
     model = model or AI.WONDER
-    text = RULES if measured else RULES_NO_DRAWING
+    rep = {"sheet": sheet, "measured": measured, "not_measured_why": why_not, "request": request,
+           "edit": bool(base_program), "rounds": []}
+    try:
+        plan = make_plan(ai, model, sheet, meas, measured, why_not, request, base_plan, log)
+    except AI.ModelUnavailable as e:
+        rep.update(error=f"plan: {e}"[:400], seconds=round(time.time() - t0, 1), hypotheses=ai.store)
+        return rep
+    rep["plan"] = plan
+    names = [c["name"] for c in plan["components"]]
+    text = (_prompt("cad_engineer.md") + "\n\n" + PROGRAM_API + ("\n" + MEASURED_API if measured else "")
+            + "\nSTEP 2 of 2: write the program that builds EVERY component of this plan (names exactly as listed):\n"
+            + json.dumps(plan)[:40000])
     if request:
         text += "\nThe user asked: " + request
     if measured:
         text += "\n\n" + _prof_text(meas)
     elif sheet:
-        text += ("\n\nA DRAWING IS ATTACHED, but its views could not be measured automatically (" + str(why_not) + "): the "
-                 "profile functions are not available. Read the views, proportions and any dimensions from the drawing "
-                 "image yourself and say in the plan which sizes you read and which you estimated.")
+        text += f"\n\nA drawing is attached; its views could not be measured automatically ({why_not}): read sizes from it."
     if base_program:
-        text += ("\n\nThis is the CURRENT program of the model (it built a valid model). Change it to do what the user "
-                 f"asked, keep everything else, and answer with the whole revised program. length_mm was {base_length_mm}."
-                 f"\n```python\n{base_program[:40000]}\n```")
-    text += ("\n\nFirst write `plan`: what the object is, " + ("which way it faces in each view, " if sheet else "")
-             + "and every part you will build with where its size comes from (measured, or your engineering estimate). "
-               "Then `code`. Give `length_mm`: the real overall length you assume.")
+        text += ("\n\nThe CURRENT program of the model (it built a valid model): revise it to implement the plan, keep "
+                 f"what is right. length_mm was {base_length_mm}.\n```python\n{base_program[:40000]}\n```")
+    text += "\n\nAnswer with `object`, a short `plan` (what changed / how), `length_mm` and `code`."
     content = [{"type": "text", "text": text}] + ([_image(Image.open(sheet))] if sheet else [])
-    rounds_log, best, history, valid = [], None, [], []
-    keep_newest = (not measured) or bool(base_program)
+    valid, best, history = [], None, []
     for k in range(1, rounds + 1):
         msg = content if k == 1 else content + history
         t = time.time()
         try:
-            ans, rec = ai.ask_json("C1_cad_program", f"round{k}", model, msg, CODE_SCHEMA, seed=k, timeout=400,
+            ans, rec = ai.ask_json("C1_cad_program", f"round{k}", model, msg, CODE_SCHEMA, seed=k, timeout=500,
                                    effort="medium")
         except AI.ModelUnavailable as e:
-            rounds_log.append({"round": k, "error": f"model: {e}"[:400]})
+            rep["rounds"].append({"round": k, "error": f"model: {e}"[:400]})
             break
         t_model = round(time.time() - t, 1)
         rdir = os.path.join(out_dir, f"round{k}")
         r = run_program(ans["code"], meas, float(ans["length_mm"]), rdir)
         entry = {"round": k, "model": rec.get("model"), "model_s": t_model, "run_s": r["seconds"],
                  "object": ans["object"], "plan": ans["plan"], "length_mm": ans["length_mm"], "error": r["error"],
-                 "parts": [{k2: p[k2] for k2 in ("name", "material", "valid", "volume_mm3")} for p in r["parts"]]}
-        fb = []
-        if r["error"] is None:
-            parts = load_parts(r)
-            bad = [p["name"] for p in parts if not p["valid"] or p["volume_mm3"] <= 0]
-            iou, imgs = score(parts, meas, out_dir, f"r{k}") if measured else ({}, {})
-            pics = {v: render(parts, os.path.join(out_dir, f"render_r{k}_{v}.png"), view=v)
-                    for v in ("iso", "rear_iso", "side", "front", "top")}
-            entry.update(iou=iou, mean_iou=round(float(np.mean(list(iou.values()))), 4) if iou else None, invalid=bad,
-                         renders=pics)
-            log(f"round {k}: {len(parts)} parts, invalid {len(bad)}, IoU {iou}")
-            ok = not bad
-            if ok:
-                top = max([v["entry"]["mean_iou"] for v in valid] + [entry["mean_iou"] or 0.0]) if iou else None
-                valid.append({"entry": entry, "parts": parts, "code": ans["code"], "dir": rdir})
-                if not iou:                                  # no drawing: the newest valid round
-                    best = valid[-1]
-                elif keep_newest:                            # an edit: the newest valid round unless it regressed > 0.03
-                    best = max((v for v in valid if v["entry"]["mean_iou"] >= top - 0.03), key=lambda v: v["entry"]["round"])
-                else:                                        # a build from the drawing: the best checked round
-                    best = max(valid, key=lambda v: v["entry"]["mean_iou"])
-            fb = [{"type": "text", "text": (
-                f"Round {k} result, checked by code: {len(parts)} parts built"
-                + (f"; INVALID solids (must be fixed): {bad}" if bad else "")
-                + (f". Silhouette IoU vs the drawing per view: {iou} (1.0 = identical). In each overlay: grey = drawn and "
-                   "built, RED = drawn but NOT built (missing), MAGENTA = built but NOT drawn (wrong / too big)" if iou else "")
-                + ". Parts: " + ", ".join(p["name"] for p in parts)
-                + ". Below: shaded renders of YOUR model. Judge it like a demanding design reviewer: shapes, proportions, "
-                  "missing details, anything crude, floating or intersecting wrongly. Fix it, keep what is right, add the "
-                  "detail the object should have. Answer with the whole revised program.")}]
-            for v, f in imgs.items():
-                fb += [{"type": "text", "text": f"{v} overlay:"}, _image(f, 900)]
-            for v, f in pics.items():
-                fb += [{"type": "text", "text": f"render {v}:"}, _image(f, 900)]
-            if ok and iou and entry["mean_iou"] >= target and k >= 2:
-                rounds_log.append(entry)
-                break
-        else:
+                 "parts": [{k2: p[k2] for k2 in ("name", "material", "valid", "volume_mm3")} for p in r["parts"]],
+                 "params": r.get("params") or {}}
+        if r["error"] is not None:
             log(f"round {k}: error: {r['error'][:200]}")
             fb = [{"type": "text", "text": f"Round {k}: the program failed: {r['error']}\nFix it and answer with the whole "
                                            "revised program."}]
-        rounds_log.append(entry)
-        history = [{"type": "text", "text": f"Your round {k} program:\n```python\n{ans['code'][:40000]}\n```"}] + fb
-    rep = {"sheet": sheet, "measured": measured, "not_measured_why": why_not, "request": request,
-           "edit": bool(base_program), "rounds": rounds_log,
-           "seconds": round(time.time() - t0, 1), "hypotheses": ai.store}
+            if best:                                     # do not let errors snowball: show the best working program too
+                fb.append({"type": "text", "text": (
+                    f"For reference, your best WORKING program so far (round {best['entry']['round']}, critic "
+                    f"{(best['entry'].get('critic') or {}).get('overall')}). If the failing change is hard to fix, start "
+                    f"again from it and change less at once:\n```python\n{strip_fence(best['code'])[:50000]}\n```")})
+        else:
+            allp = load_parts(r)
+            bad = [p["name"] for p in allp if not p["valid"] or p["volume_mm3"] <= 0]
+            parts = [p for p in allp if p["name"] not in bad]        # an invalid part is left out, and reported
+            t = time.time()
+            gate = Q.gates(parts, names, free={c["name"] for c in plan["components"]
+                                              if c.get("joint") in ("rotates", "clearance", "slides", "root")},
+                           cons=plan.get("constraints"))
+            if bad:
+                gate["invalid_left_out"] = bad
+                gate["hard_fail"] = True
+                gate["summary"] += f"; INVALID solids left out: {len(bad)}"
+            iou, imgs, extra = score(parts, meas, out_dir, f"r{k}") if measured else ({}, {}, {})
+            pics = review_renders(parts, rdir, f"r{k}", log)
+            crit = critique(ai, k, sheet, plan, pics, gate, iou, log)
+            entry.update(iou=iou, mean_iou=round(float(np.mean(list(iou.values()))), 4) if iou else None, invalid=bad, **extra,
+                         gates=gate, critic=crit, renders=pics, check_s=round(time.time() - t, 1))
+            log(f"round {k}: {len(parts)} parts, invalid {len(bad)}, {gate['summary']}, IoU {iou}, critic "
+                f"{(crit or {}).get('overall')}")
+            if parts:                                    # a candidate: only valid solids; _pick prefers clean rounds
+                valid.append({"entry": entry, "parts": parts, "code": ans["code"], "dir": rdir})
+                best = _pick(valid)
+            fb = [{"type": "text", "text": (
+                f"Round {k} result, checked by code: {len(parts)} parts"
+                + (f"; INVALID solids (must be fixed): {bad}" if bad else "")
+                + f". Quality gates: {gate['summary']}. Floating (must touch what holds them): {gate['floating'][:20]}. "
+                  f"Stickers/slivers (must be real parts with depth): {gate['slivers'][:20]}. Box-like parts (replace by "
+                  f"real shapes where the object is curved): {gate['box_like'][:30]}. Wrong overlaps (one passes through "
+                  f"the other): {gate['overlaps'][:12]}. Planned but missing: {gate['missing_from_plan'][:30]}. "
+                  f"Constraints that FAILED on the geometry: {[c for c in gate.get('constraints', []) if not c['ok']][:15]}. "
+                  f"PARAMS declared but NOT read by the geometry (a correction to them would change nothing: use P(name) "
+                  f"where the value matters, or remove them): {[k for k, v in (r.get('params') or {}).items() if not v.get('used')][:20]}."
+                + (f" Silhouette IoU per view vs the drawing, ONE scale for all views (proportions count): {iou}; "
+                   f"proportion errors: {extra.get('proportion_error')} (grey = drawn and built, RED = drawn not built, "
+                   "MAGENTA = built not drawn)." if iou else "")
+                + (f"\nThe critic's scores: {crit['scores']}, overall {crit['overall']}. Its defects, worst first: "
+                   + json.dumps(crit["defects"]) if crit else "")
+                + "\nFix every defect and every gate failure, keep what is right, and answer with the whole revised program.")}]
+            for v, f in imgs.items():
+                fb += [{"type": "text", "text": f"{v} overlay:"}, _image(f, 900)]
+            for v, f in list(pics.items())[:4]:
+                fb += [{"type": "text", "text": f"render {v}:"}, _image(f, 900)]
+            rep["rounds"].append(entry)
+            if crit and crit["overall"] >= target and not gate["hard_fail"] and k >= 2:
+                log(f"round {k}: critic {crit['overall']} >= {target} with clean gates: done")
+                history = []
+                break
+            history = [{"type": "text", "text": f"Your round {k} program:\n```python\n{ans['code'][:60000]}\n```"}] + fb
+            continue
+        rep["rounds"].append(entry)
+        history = [{"type": "text", "text": f"Your round {k} program:\n```python\n{ans['code'][:60000]}\n```"}] + fb
+    rep.update(seconds=round(time.time() - t0, 1), hypotheses=ai.store)
     if best:
-        comps = [{"id": f"p{i:02d}_" + "".join(ch if ch.isalnum() else "_" for ch in p["name"])[:40], "name": p["name"],
-                  "shape": p["shape"], "colour": p["colour"], "material": p["material"], "parent": None, "extras": {}}
-                 for i, p in enumerate(best["parts"])]
+        comps = _comps(best["parts"])
         open(os.path.join(out_dir, "program.py"), "w", encoding="utf-8").write(strip_fence(best["code"]))
+        json.dump(plan, open(os.path.join(out_dir, "plan.json"), "w", encoding="utf-8"), indent=1)
         EX.write_step(comps, os.path.join(out_dir, "model.step"))
         open(os.path.join(out_dir, "model.glb"), "wb").write(EX.glb(comps))
-        rep["best"] = {k2: best["entry"][k2] for k2 in ("round", "iou", "mean_iou", "object", "length_mm")}
-        rep["best"]["parts"] = [{"id": c["id"], "name": c["name"], "colour": c["colour"], "material": c["material"],
-                                 "brep": p["brep"]} for c, p in zip(comps, best["parts"])]
-        rep["best"]["program"] = os.path.join(out_dir, "program.py")
+        e = best["entry"]
+        par = {c["name"]: c.get("parent") for c in plan["components"]}
+        json.dump(e.get("params") or {}, open(os.path.join(out_dir, "params.json"), "w", encoding="utf-8"), indent=1)
+        rep["best"] = {"params": e.get("params") or {}, "round": e["round"], "iou": e.get("iou"), "mean_iou": e.get("mean_iou"), "iou_shape": e.get("iou_shape"),
+                       "proportion_error": e.get("proportion_error"), "object": e["object"],
+                       "length_mm": e["length_mm"], "critic": (e.get("critic") or {}).get("overall"),
+                       "critic_scores": (e.get("critic") or {}).get("scores"), "gates": e["gates"]["summary"],
+                       "parts": [{"id": c["id"], "name": c["name"], "colour": c["colour"], "material": c["material"],
+                                  "brep": p["brep"], "assembly_parent": par.get(c["name"].split(".")[0])}
+                                 for c, p in zip(comps, best["parts"])],
+                       "program": os.path.join(out_dir, "program.py"), "plan": os.path.join(out_dir, "plan.json")}
     json.dump(rep, open(os.path.join(out_dir, "report.json"), "w", encoding="utf-8"), indent=1, default=str)
     return rep
+
+
+def rerun(program_dir, out_dir, overrides, sheet=None, length_mm=None, log=print):
+    """A parameter correction: the SAME program re-run with the user's values (no model call), checked like a round
+    (valid solids, quality gates, IoU with a drawing). Written as a new version only if every solid is valid; the
+    previous version is never touched. Returns the report (best = None when the correction broke the model)."""
+    from . import export as EX
+    from . import quality as Q
+    out_dir = os.path.abspath(out_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    code = open(os.path.join(program_dir, "program.py"), encoding="utf-8").read()
+    old = {}
+    if os.path.exists(os.path.join(program_dir, "params.json")):
+        old = json.load(open(os.path.join(program_dir, "params.json"), encoding="utf-8"))
+    ovr = {**{k: v["value"] for k, v in old.items() if v.get("provenance") == "user"}, **overrides}
+    unknown = [k for k in overrides if k not in old]
+    if unknown:
+        return {"best": None, "error": f"no such parameter: {unknown}; the model has {sorted(old)}"}
+    unused = [k for k in overrides if not old[k].get("used", True)]
+    if unused:
+        return {"best": None, "error": f"the geometry does not read {unused} (declared but unused), so changing it would "
+                                       f"change nothing; parameters that drive the geometry: "
+                                       f"{sorted(k for k, v in old.items() if v.get('used', True))}. Use edit_cad to make it drive the model."}
+    meas = {"profiles": {}, "dims": {"length": 1.0, "height": 0.0, "width": 0.0}, "masks": {}}
+    measured = False
+    if sheet:
+        try:
+            meas, measured = measure(sheet), True
+        except Exception:
+            pass
+    r = run_program(code, meas, float(length_mm or 1000.0), os.path.join(out_dir, "run"), overrides=ovr)
+    rep = {"overrides": ovr, "error": r["error"], "best": None}
+    if r["error"]:
+        return rep
+    parts = load_parts(r)
+    bad = [p["name"] for p in parts if not p["valid"]]
+    if bad:
+        rep["error"] = f"the corrected values make invalid solids: {bad}; the model is unchanged"
+        return rep
+    gate = Q.gates(parts)
+    iou, _, extra = score(parts, meas, out_dir, "rerun") if measured else ({}, {}, {})
+    comps = _comps(parts)
+    open(os.path.join(out_dir, "program.py"), "w", encoding="utf-8").write(code)
+    for f in ("plan.json",):
+        if os.path.exists(os.path.join(program_dir, f)):
+            open(os.path.join(out_dir, f), "w", encoding="utf-8").write(open(os.path.join(program_dir, f), encoding="utf-8").read())
+    json.dump(r.get("params") or {}, open(os.path.join(out_dir, "params.json"), "w", encoding="utf-8"), indent=1)
+    EX.write_step(comps, os.path.join(out_dir, "model.step"))
+    open(os.path.join(out_dir, "model.glb"), "wb").write(EX.glb(comps))
+    plan = {}
+    if os.path.exists(os.path.join(out_dir, "plan.json")):
+        plan = json.load(open(os.path.join(out_dir, "plan.json"), encoding="utf-8"))
+    par = {c["name"]: c.get("parent") for c in plan.get("components") or []}
+    rep["best"] = {"params": r.get("params") or {}, "round": 0, "iou": iou, "mean_iou": round(float(np.mean(list(iou.values()))), 4) if iou else None,
+                   **extra, "object": "", "length_mm": length_mm, "gates": gate["summary"],
+                   "parts": [{"id": c["id"], "name": c["name"], "colour": c["colour"], "material": c["material"],
+                              "brep": p["brep"], "assembly_parent": par.get(c["name"].split(".")[0])} for c, p in zip(comps, parts)],
+                   "program": os.path.join(out_dir, "program.py"), "plan": os.path.join(out_dir, "plan.json")}
+    json.dump(rep, open(os.path.join(out_dir, "report.json"), "w", encoding="utf-8"), indent=1, default=str)
+    return rep
+
+
+def _pick(valid):
+    """Which valid round to keep: clean hard gates first; among those, mean IoU within 0.03 of the best checked IoU
+    (with a drawing); then the best critic score (IoU as the tie-break). The model's own confidence never counts."""
+    clean = [v for v in valid if not v["entry"]["gates"]["hard_fail"]] or valid
+    ious = [v["entry"]["mean_iou"] for v in clean if v["entry"].get("mean_iou") is not None]
+    if ious:
+        clean = [v for v in clean if v["entry"].get("mean_iou") is None or v["entry"]["mean_iou"] >= max(ious) - 0.03]
+    return max(clean, key=lambda v: ((v["entry"].get("critic") or {}).get("overall", -1), v["entry"].get("mean_iou") or 0,
+                                     v["entry"]["round"]))
 
 
 if __name__ == "__main__":

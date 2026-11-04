@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from tests import e2e_story as E  # noqa: E402  (server start / stop, http, chat helpers)
 
 E.SLUG = "_acceptance-ai"
-E.PORT = 8778                                                      # its own port
+E.PORT = 8782                                                      # its own port
 E.BASE = f"http://127.0.0.1:{E.PORT}"
 E.OUT = ROOT / "output" / "acceptance"
 E.CAD = ROOT / "output" / "cad" / "acceptance"
@@ -50,7 +50,7 @@ def record(n, title, request, r, ok, check, artifacts=()):
 def run(n, title, request, check_fn, attachments=()):
     t0 = time.time()
     try:
-        r = E.chat(request, attachments)
+        r = E.http("/api/chat", {"text": request, "attachments": list(attachments)}, timeout=3600)   # a build: up to ~40 min
         ok, check, arts = check_fn(r)
     except Exception as e:                                       # noqa: BLE001
         r, ok, check, arts = {}, False, f"{type(e).__name__}: {str(e)[:300]}", []

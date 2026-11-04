@@ -23,6 +23,17 @@ GitHub API timestamps are stored in UTC; the Malaysia times below are UTC+8.
 | 4 Nov, 09:29 | [`2e41fa8`](https://github.com/ngweibin050-dev/aether/commit/2e41fa8) | Intake questions (`intake.py`), refinement placed on the real surface (`refine.py`), an undo history that survives a restart (`history.py`); evidence page (`docs/EVIDENCE.md`, `python -m tests.evidence`), plain-Muse-Spark baseline, external export checks, the end-to-end story test (`docs/STORY.md`), and car body surface fairing. |
 | 4 Nov (after 09:29) | this commit | View detection fix (a straight body side inside a plan view is no longer read as a ground line), a CC0 car sheet as a new test input, the recorded CAD demo, and README / architecture rewritten around the CAD workflow. |
 | 4 Nov, afternoon | this commit | **AI-written CAD and one orchestrator.**
+| 4 Nov, evening | this commit | **Quality and evidence loop for the AI-written CAD.**
+- Instruction files `prompts/cad_engineer.md` and `prompts/cad_critic.md`.
+- A structured component plan (joints, evidence, constraints, unknowns).
+- Quality gates in `cad/quality.py`: floating parts, stickers, box share, overlaps, plan coverage, and mechanical constraints verified on the geometry.
+- Real renders (`cad/render_views.py`) and a Muse Spark critic deciding which round is kept.
+- General building blocks (`cad/sandbox_lib.py`).
+- One-scale IoU with proportion errors.
+- Parameters with provenance and `set_cad_param`, a re-run without any AI rewrite.
+- The drawing check before every build.
+- The five-object benchmark (`tests/cad_quality_bench.py`, `docs/CAD_QUALITY.md`).
+- EVIDENCE.md split into current, generalisation and historical results. |
 - `cad/codegen.py`: Muse Wonder plans and writes a CadQuery program for any object; it is run in a sandbox, checked against the drawing view by view, and revised.
 - New chat tools `build_cad` and `edit_cad`; every drawing upload is routed to them, and the car-only rules are retired.
 - Tests and records: the audit (`docs/AI_ORCHESTRATION_AUDIT.md`), 14 / 14 acceptance tests (`tests/acceptance_ai.py`, `docs/ACCEPTANCE.md`), and the roadster cycles (`docs/ai_cad_runs/`). |

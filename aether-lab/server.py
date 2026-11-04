@@ -97,7 +97,9 @@ DEMOS = {"D": ("tests/inputs/US929594_fig1.png", "machine", 300, "Metal drawing 
          "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)"),
          "CAR": ("tests/inputs/heldout/CC0_Cobra_four_view.png", "three_view", 4000, "Roadster four-view sheet → CAD written by Muse",
                  "Shelby Cobra blueprint, Igor Križanovskij, CC0 (Wikimedia Commons)")}
-DEMOS = {"CAR": DEMOS.pop("CAR"), **DEMOS}       # the CAD demo first
+DEMOS["P"] = ("tests/inputs/US929594_fig1.png", "machine", 1100, "1909 patent, one view → CAD with its unknowns",
+              "US Patent 929,594, Fig. 1 (public domain)")
+DEMOS = {"P": DEMOS.pop("P"), "CAR": DEMOS.pop("CAR"), **DEMOS}       # the CAD-program demos first
 REC = OUT / "recorded"                           # the last successful live demo runs, replayed ONLY with a "recorded" label
 CAD_FILES = ("model.aethercad", "sheet.png", "report.json", "model.step", "model.glb")   # a recorded CAD run's folder
 

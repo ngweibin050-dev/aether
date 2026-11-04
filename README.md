@@ -1,8 +1,12 @@
-# AETHER Lab — the AI is the engineer, OpenCascade is the instrument
+# AETHER Lab — reconstruct undocumented machines into traceable, editable CAD
 
 **Meta Global AI Developer Hackathon 2026 · Indie Developer track · Ng Wei Bin (solo) · built Oct 26 – Nov 4**
 
-Upload an engineering drawing, or just describe the object. **Muse plans the model and writes the CAD program
+Many machines exist only as old drawings: one view, no scale, hidden parts, the maker long gone. AETHER turns that
+incomplete evidence into **editable OpenCascade CAD that says what it measured, what it inferred and what it cannot
+determine**, then lets an engineer correct it by conversation.
+
+Upload an engineering drawing (or describe the object). **Muse plans the model and writes the CAD program
 itself**: a CadQuery program on OpenCascade, for any object, with no built-in recipe for cars, presses or clamps.
 AETHER runs the program in a sandbox and checks every solid. With a drawing, it also compares every view against
 it, and Muse revises the program until the checks are as good as it can get them.
@@ -60,19 +64,35 @@ sheet and checks every view, so the model reasons and the code verifies. Script:
 
 ## Measured results
 
-**AI-written CAD, public CC0 roadster sheet** ([aether-lab/docs/ai_cad_runs](aether-lab/docs/ai_cad_runs/README.md): 5 cycles, every round, every program; kept: cycle 4):
+**The loop, measured** ([CAD_QUALITY.md](aether-lab/docs/CAD_QUALITY.md); the same five objects after every change):
 
-| | side | top | front | rear | mean | solids |
-|---|---|---|---|---|---|---|
-| earlier car-only rules (`cad/vehicle.py`, no longer used) | 0.905 | 0.971 | 0.775 | 0.781 | 0.858 | 9 / 9 |
-| Muse-written CAD program, cycle 1 | 0.821 | 0.971 | 0.913 | 0.909 | 0.903 | 34 / 34 |
-| Muse-written CAD program, cycle 4 (the demo) | 0.865 | 0.962 | 0.885 | 0.873 | 0.896 | 44 / 44 |
+| object | input | solids | gates on the kept round | IoU, one scale (side / top / ends) | critic (0-10) |
+|---|---|---|---|---|---|
+| 1909 drawing press | ONE sectional patent view | 67 | all 28 mechanical constraints pass, 2 overlaps | - (one view) | 5 |
+| engine | description | 90 | clean except 5 of 27 constraints | - | 5 |
+| clamp | description | 22 | clean | - | 5 |
+| roadster | CC0 four-view drawing | 99 | 5 floating, 8 of 29 constraints | 0.87 / 0.94 / 0.86 / 0.88 | 3 |
+| car | four-view drawing (third-party, local only) | 118 | 55 % box-like, 15 floating | 0.91 / 0.94 / 0.83 / 0.83 | 2 |
 
-The program builds things the rules never could: an open cockpit with seats and a steering wheel, the
-windscreen frame and its glass, the roll bar, spoked wheels, side pipes, the grille and the lamps.
+What the code checks do within one run, for example the press:
+- parts passing through each other: 35 → 2;
+- plain boxes: 39 % → 0 %;
+- failed mechanical constraints: 11 → 0;
+- critic: 2 → 5.
 
-Silhouette IoU is necessary but not sufficient. Cycle 5 scored about the same (0.896), but looked worse,
-lumpier. So a render review must decide too, not only IoU; that is the next change to the loop.
+The press's plan lists what one view cannot fix, each with what would resolve it:
+- the machine's depth (plan and end views);
+- the real scale (a dimensioned drawing);
+- the drive train behind the cover (the patent text);
+- the blade mechanism cut off the sheet (the uncropped sheet).
+
+Every key dimension carries its provenance (measured, read, inferred, assumed or user). An engineer can correct a value
+by chat, and the same program re-runs without being rewritten.
+
+**These are not finished designs yet.** The critic scores 2-5 out of 10, and the cars are the weakest. The targets
+(IoU >= 0.95 per view on four-view drawings, 0 floating or overlapping parts, critic >= 9) are goals, not results. The
+earlier roadster cycles, measured with the shape-only score, are in
+[docs/ai_cad_runs](aether-lab/docs/ai_cad_runs/README.md).
 
 **Acceptance tests ([ACCEPTANCE.md](aether-lab/docs/ACCEPTANCE.md)): 14 / 14 through the chat API.**
 - A three-view jet built from the drawing: an aircraft, with no dedicated code.
@@ -135,6 +155,8 @@ patent mechanisms.
 cd aether-lab
 cad-worker\setup.ps1             # once: the pinned CAD kernel env (CadQuery 2.8 / OpenCascade)
 # put META_API=... in .env (repo root)
+python -m modal deploy modal_cad.py   # optional: CAD jobs on Modal CPU, parallel and cancellable
+                                 # (needs the Modal secret aether-meta with META_API; else the local CAD worker is used)
 start.bat                        # http://localhost:8765 — Demo menu: CAD car (recorded), D press, C gearbox
 ```
 

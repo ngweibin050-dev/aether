@@ -1,0 +1,145 @@
+{
+ "id": "PRESS",
+ "title": "1909 patent, one view → CAD that lists its unknowns",
+ "kind": "cad",
+ "source": "US Patent 929,594, Fig. 1 (public domain): one sectional view, no scale",
+ "recorded_at": "2026-11-04 17:38",
+ "parts": 67,
+ "size_mm": [
+  1100,
+  340,
+  760
+ ],
+ "steps": [
+  {
+   "who": "Muse Wonder",
+   "what": "plan: 67 components, 28 constraints, 10 unknowns",
+   "s": null
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 1: write / revise the CAD program",
+   "s": 51.5
+  },
+  {
+   "who": "OpenCascade + checks",
+   "what": "round 1: 67 parts; floating 0, stickers/slivers 0, box-like 26 (39 %), wrong overlaps 35, planned but missing 0, constraints failed 11 of 28",
+   "s": 4.7
+  },
+  {
+   "who": "Muse Spark critic",
+   "what": "round 1: 2 / 10",
+   "s": 76.2
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 2: write / revise the CAD program",
+   "s": 119.5
+  },
+  {
+   "who": "OpenCascade + checks",
+   "what": "round 2: 67 parts; floating 0, stickers/slivers 0, box-like 1 (1 %), wrong overlaps 11, planned but missing 0, constraints failed 2 of 28",
+   "s": 6.3
+  },
+  {
+   "who": "Muse Spark critic",
+   "what": "round 2: 3 / 10",
+   "s": 462.4
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 3: write / revise the CAD program",
+   "s": 97.0
+  },
+  {
+   "who": "OpenCascade + checks",
+   "what": "round 3: 67 parts; floating 0, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 2, planned but missing 0, constraints failed 0 of 28",
+   "s": 11.2
+  },
+  {
+   "who": "Muse Spark critic",
+   "what": "round 3: 5 / 10",
+   "s": 103.7
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 4: write / revise the CAD program",
+   "s": 70.6
+  },
+  {
+   "who": "OpenCascade + checks",
+   "what": "round 4: 67 parts; floating 3, stickers/slivers 0, box-like 0 (0 %), wrong overlaps 1, planned but missing 0, constraints failed 5 of 28",
+   "s": 11.1
+  },
+  {
+   "who": "Muse Spark critic",
+   "what": "round 4: 4 / 10",
+   "s": 108.0
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 5: write / revise the CAD program",
+   "s": 91.5
+  },
+  {
+   "who": "OpenCascade + checks",
+   "what": "round 5: 67 parts; floating 0, stickers/slivers 0, box-like 1 (1 %), wrong overlaps 1, planned but missing 0, constraints failed 0 of 28",
+   "s": 16.7
+  },
+  {
+   "who": "Muse Spark critic",
+   "what": "round 5: 4 / 10",
+   "s": 104.6
+  }
+ ],
+ "metrics": {
+  "solids_valid": "67 / 67",
+  "scale": "overall length assumed (the patent has no scale)",
+  "constraints": "all 28 verified on the geometry",
+  "critic": "5 / 10",
+  "note": "Real size ASSUMED: the patent has no scale and only one view, so depth and hidden parts are inferred (see the unknowns below). Nothing here is measured from a second view."
+ },
+ "step": "model.step.zip",
+ "program": "program.py",
+ "unknowns": [
+  "CRITICAL: Depth (Z width) of base_bed, headstock_block, cylinder_block, crank_housing and all panels — would resolve: Plan view and both end views, or a stated overall width dimension / photo of the real machine",
+  "CRITICAL: Exact overall length, height and all absolute dimensions / scale — would resolve: A dimensioned general-arrangement drawing or patent specification text with dimensions",
+  "CRITICAL: Drive train between drive_motor_shaft (7) and crankshaft (55) / crank_gear_flywheel — would resolve: Patent specification text, a section on a perpendicular plane, or an end view with cover removed",
+  "CRITICAL: Blade drive mechanism above cutting_blade (65/65x/85) — would resolve: Uncropped top of the sheet or a second view/section through the blade ram",
+  "Crank radius, crankshaft journal offset, connecting_rod length and piston stroke — would resolve: Dimension for stroke, or side/end views of crank at two positions",
+  "Internal passages labels 69,70,73 and function of work_chamber 27 (fluid, air, or workpiece) — would resolve: Patent specification description of operation, or a plan section showing ports",
+  "True function and identity of the machine (cutter, press, pump or engine) and of parts 1,26,27,29 — would resolve: Patent number / title page and specification text",
+  "Feed mechanism kinematics: feed_rod 8 drive, lever 42/43 pivot support bracket, and link 44/45 anchor points — would resolve: End view from the left, or an external (non-sectional) side elevation",
+  "Spring rate, blade thickness/material grade, bearing types, seal materials, motor power/speed — would resolve: Patent specification, parts list or materials schedule",
+  "Fastener sizes, counts and positions beyond those visible (15,22,58,67) — would resolve: Front external elevation (looking along -Z) and end views"
+ ],
+ "params": {
+  "length": "1100 mm · assumed · no scale on drawing, 1100mm estimate in plan",
+  "width": "340 mm · assumed · depth not shown in single sectional view",
+  "height": "760 mm · inferred · side outline proportions relative to length",
+  "base_height": "200 mm · inferred · hatched base block in side view",
+  "main_axis_z": "380 mm · inferred · piston axis centre of cylinder in side view",
+  "cylinder_bore": "152 mm · inferred · bore 28 proportions",
+  "panel_gap": "3.5 mm · assumed · shut line requirement",
+  "blade_thickness": "10 mm · assumed · thin vertical blade 65",
+  "crank_radius": "55 mm · inferred · crank circle 55/51 proportions"
+ },
+ "images": [
+  [
+   "drawing.png",
+   "The only evidence: one sectional view from 1909, no scale"
+  ],
+  [
+   "render_iso.jpg",
+   "The kept model: 67 OpenCascade solids"
+  ],
+  [
+   "render_round1.jpg",
+   "Round 1, before the code checks pushed it (35 overlaps, 39 % boxes, 11 failed constraints)"
+  ],
+  [
+   "render_side.jpg",
+   "Side view of the kept model"
+  ]
+ ]
+}

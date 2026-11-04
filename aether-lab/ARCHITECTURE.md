@@ -22,11 +22,22 @@ fails. No object type and no sentence has a built-in workflow. The audit behind 
  assistant.py ── Muse Spark: intent → plan → tool calls → read results → replan → answer (what ran, what was assumed)
    │
    ├─ CAD (any object)       build_cad / edit_cad ──▶ cad/codegen.py (in the CAD worker, CadQuery / OpenCascade)
-   │     1 measure    code: the drawing's views and outlines → profile functions (only where the sheet has the views)
-   │     2 write      Muse Wonder: a plan, then a CadQuery PROGRAM that builds every part as a named solid
-   │     3 run        sandbox: syntax-tree check, no imports / dunders / files, separate process, time limit
-   │     4 check      code: every solid passes BRepCheck; silhouette IoU per view vs the drawing; renders
-   │     5 revise     Muse Wonder sees overlays, scores, renders and errors, rewrites the program (a few rounds)
+   │     0 measure    code: the drawing's views and outlines → profile functions (only where the sheet has the views)
+   │     1 plan       Muse Wonder: the component list (every part, its parent, material, colour, CAD method)
+   │     2 write      Muse Wonder: a CadQuery PROGRAM that builds every planned part as a named solid, using the
+   │                  general building blocks (cad/sandbox_lib.py: smooth_loft, split_panels, recess, revolve_profile,
+   │                  sweep_tube, fillet_safe)
+   │     3 run        sandbox: syntax-tree check, no imports / dunders / files, separate process, time limit;
+   │                  OpenCascade shape repair before a part is given up
+   │     4 check      code (cad/quality.py): valid solids; floating parts, stickers, box-like share, wrong overlaps,
+   │                  planned-but-missing parts; silhouette IoU per view vs the drawing
+   │     5 review     real renders (cad/render_views.py: the app's three.js in headless Chrome) → Muse Spark critic
+   │                  scores them 0-10 against prompts/cad_critic.md and names defects with fixes
+   │     6 revise     Muse Wonder gets gates, IoU, overlays, renders and the critic's defects and rewrites the program
+   │     keep         clean gates first, IoU within 0.03 of the best, then the best critic score (never the writer's
+   │                  own confidence)
+   │     quality bar  prompts/cad_engineer.md (assemblies of real parts, shut lines, glass and lamps as parts,
+   │                  smooth surfaces, nothing floating) — an editable file, enforced by the gates and the critic
    │     → program.py (the model's editable source) + model.step + model.glb, one version folder per change
    ├─ drawings               make_drawing: orthographic views with hidden lines from the exact B-rep, SVG + PDF
    ├─ inspection / analysis  inspect, analyze (volume, area, mass, centre of mass), list_parts
@@ -49,6 +60,15 @@ fails. No object type and no sentence has a built-in workflow. The audit behind 
 - **Code checks, the model revises.** A result counts only after code has checked it: every solid must pass
   BRepCheck, and each view is compared with the drawing (IoU, never merged into one score). With a drawing,
   the kept round is the best checked one; a round can't win by regressing.
+- **Evidence, parameters and unknowns.** The plan lists every component's evidence (which views show it) and the
+  `unknowns`: what the evidence cannot determine, why, and what would resolve it. Programs declare `PARAMS`, each
+  key dimension with a value, a unit and a provenance (measured, read, inferred, assumed or user). Geometry reads
+  them with `P()`. `set_cad_param` corrects a value by re-running the same program, with no AI rewrite, and the new
+  version is kept only if every solid stays valid. A drawing is checked for critical gaps before it is built
+  (`intake.py`).
+- **Mechanical relations are verified, not just declared.** The plan's constraints are checked on the geometry by
+  `cad/quality.py`: coaxial (cylinder axes within 2° and 1 mm), contact, clearance with a value, and meshes. A
+  failed constraint is a hard gate failure.
 - **Measured vs estimated.** Outlines measured from the drawing are given to the program as functions. Every
   size the program takes from somewhere else is an estimate, and the plan says so. Sheets without a dimension
   have an assumed real size.
@@ -56,6 +76,19 @@ fails. No object type and no sentence has a built-in workflow. The audit behind 
   them, with materials for display only: glass is translucent, chrome is shiny.
 - **What is not there yet:** a general motion or collision solver. Asked to simulate, the AI says what it
   can and cannot compute.
+
+**Where it runs.**
+
+| what | where |
+|---|---|
+| Muse Spark, Muse Wonder, SAM 3.1 | Meta Model API |
+| CAD jobs: build, edit, parameter re-run (the sandbox, OpenCascade, gates, renders, STEP / GLB, meshes) | Modal CPU (`modal_cad.py`, app `aether-cad`) |
+| CAD jobs when the cloud app is not deployed | the local CAD worker, as a fallback |
+| hologram and eye physics | Modal GPU (`modal_app.py`) |
+
+Each cloud job runs in its own container with 8 cores, so jobs never queue, and Stop cancels the job. On the local
+worker, Stop ends the worker process, and a fresh worker starts on the next request. The Meta key reaches the cloud
+only as the Modal secret `aether-meta`. `cad_remote.py` routes every job.
 
 **The rule-based pipeline is no longer used.** `cad/vehicle.py`, `cad/planner.py` and `cad/pipeline.py` are
 the earlier car-only rules. Uploads no longer use them: `build_from_drawing` sends every drawing to
@@ -77,6 +110,8 @@ measured with them.
 | Script | What it checks |
 |---|---|
 | `tests/acceptance_ai.py` | the 14 acceptance tests of the AI orchestration, through the chat API (`docs/ACCEPTANCE.md`) |
+| `tests/cad_quality_bench.py` | the CAD quality benchmark: car sheet, CC0 roadster, a clamp and an engine from descriptions; critic scores, gates, IoU (`docs/CAD_QUALITY.md`) |
+| `tests/try_detail.py` | drives the app like a user (build, then "make it more detailed") and records every tool call |
 | `tests/e2e_story.py` | the whole workflow through the HTTP API, restart included (rule-based pipeline, before the change) |
 | `tests/baseline_spark.py` | plain Muse Spark compared with the CAD pipeline |
 | `tests/eval_refine.py`, `tests/eval_assistant.py` | refining by chat, and everyday chat requests |

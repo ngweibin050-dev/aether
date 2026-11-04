@@ -313,7 +313,8 @@ def _drawing_to_program(state, history, data_url, hint, out_dir, step):
     sheet = d / "sheet.png"
     sheet.write_bytes(base64.b64decode(data_url.split(",", 1)[1]))
     step({"stage": "tool", "tool": "build_cad"})
-    r = cad_client.call("program_build", sheet=str(sheet), out_dir=str(d), request=hint or "", rounds=4)
+    import cad_remote
+    r = cad_remote.program_job("program_build", sheet=str(sheet), out_dir=str(d), request=hint or "", rounds=3)
     step({"stage": "done", "tool": "build_cad", "error": not r.get("best")})
     tr = {"tool": "build_cad", "args": {"hint": hint}, "result": {k: r.get(k) for k in ("rounds", "best", "seconds")}}
     if not r.get("best"):

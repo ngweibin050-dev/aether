@@ -1,0 +1,52 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#0b1220}canvas{display:block}</style></head>
+<body>
+<script>
+// the import map: the lab's own three.js when it is installed (offline), the CDN otherwise (?lib=cdn)
+const local = new URLSearchParams(location.search).get("lib") !== "cdn";
+const base = local ? "/ui/node_modules/three/" : "https://cdn.jsdelivr.net/npm/three@0.160.0/";
+document.write(`<script type="importmap">{"imports": {"three": "${base}build/three.module.js", "three/addons/": "${base}examples/jsm/"}}<\/script>`);
+</script>
+<script type="module">
+// cad/render/render.html?glb=/path/model.glb&view=iso|side|front|rear|top|iso_rear|cockpit: one still per view
+// (cad/render_views.py drives it in headless Chrome for the CAD review loop)
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+const q = new URLSearchParams(location.search);
+const W = innerWidth || 1280, H = innerHeight || 720;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b1220);
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 6, 4); sun.castShadow = true; scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xdfefff, 0x202830, 0.6));
+const g = await new GLTFLoader().loadAsync(q.get("glb") || "model.glb");
+const m = g.scene; scene.add(m);
+m.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; o.material.side = THREE.DoubleSide; } });
+const box = new THREE.Box3().setFromObject(m), c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(50, 50), new THREE.ShadowMaterial({ opacity: 0.35 }));
+floor.rotation.x = -Math.PI / 2; floor.position.y = box.min.y; floor.receiveShadow = true; scene.add(floor);
+const L = Math.max(sz.x, sz.z), view = q.get("view") || "iso";
+const R = sz.length() / 2;                     // bounding sphere: frames any shape, long or tall
+const persp = !["side", "front", "rear", "top"].includes(view);
+let cam;
+if (persp) cam = new THREE.PerspectiveCamera(28, W / H, 0.01, 100);
+else { const h = R * 1.05; cam = new THREE.OrthographicCamera(-h * W / H, h * W / H, h, -h, 0.01, 100); }
+// the long axis of the car is x or z: find it
+const longX = sz.x >= sz.z;
+const fwd = longX ? new THREE.Vector3(-1, 0, 0) : new THREE.Vector3(0, 0, -1);   // nose direction guess (flip with &flip=1)
+if (q.get("flip")) fwd.negate();
+const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+const D = R / Math.sin(THREE.MathUtils.degToRad(14)) * 1.05;   // the sphere fits the 28 deg view
+const dirs = { side: right.clone(), front: fwd.clone(), rear: fwd.clone().negate(), top: new THREE.Vector3(0, 1, 0.0001),
+  iso: fwd.clone().multiplyScalar(0.8).add(right.clone().multiplyScalar(0.75)).add(new THREE.Vector3(0, 0.45, 0)),
+  iso_rear: fwd.clone().multiplyScalar(-0.8).add(right.clone().multiplyScalar(-0.75)).add(new THREE.Vector3(0, 0.5, 0)),
+  cockpit: fwd.clone().multiplyScalar(-0.35).add(right.clone().multiplyScalar(0.45)).add(new THREE.Vector3(0, 0.9, 0)) };
+cam.position.copy(c).add(dirs[view].normalize().multiplyScalar(view === "cockpit" ? D * 0.55 : D));
+cam.lookAt(c); cam.updateProjectionMatrix();
+renderer.render(scene, cam);
+document.title = "done";
+</script></body></html>

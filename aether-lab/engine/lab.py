@@ -417,6 +417,8 @@ def import_cad(state, meshes, groups, name, document_id, replace=False, provenan
                     "material": m.get("material")}
         if m.get("brep"):                                # a CAD-program part: its exact solid is its own .brep file
             p["eng"]["brep"] = m["brep"]
+        if m.get("assembly_parent") and m["assembly_parent"] not in ("-", "root"):
+            p["eng"]["assembly_parent"] = m["assembly_parent"]      # what it is mounted on (from the model's plan)
         p.update(looks.get(cid) or {})
         state["parts"].append(p)
     state["selected"] = g["id"]

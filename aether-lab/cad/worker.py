@@ -180,11 +180,31 @@ def cmd_program_build(a):
     """AI-written CAD program (cad/codegen.py): from a drawing, a description, or a change to an existing program.
     The result is a new program version in its own folder; a failed build leaves every earlier version untouched."""
     from cad import codegen as G
-    rep = G.build(a.get("sheet"), a["out_dir"], request=a.get("request") or "", rounds=int(a.get("rounds", 4)),
-                  base_program=a.get("base_program"), base_length_mm=a.get("base_length_mm"), log=_log)
-    out = {k: rep.get(k) for k in ("seconds", "best", "edit")}
+    base_plan = None
+    if a.get("base_plan") and os.path.exists(a["base_plan"]):
+        base_plan = json.load(open(a["base_plan"], encoding="utf-8"))
+    rep = G.build(a.get("sheet"), a["out_dir"], request=a.get("request") or "", rounds=int(a.get("rounds", 5)),
+                  base_program=a.get("base_program"), base_length_mm=a.get("base_length_mm"), base_plan=base_plan, log=_log)
+    out = {k: rep.get(k) for k in ("seconds", "best", "edit", "error")}
+    out["plan_components"] = len((rep.get("plan") or {}).get("components") or [])
+    out["unknowns"] = (rep.get("plan") or {}).get("unknowns") or []
     out["rounds"] = [{k: r.get(k) for k in ("round", "error", "iou", "mean_iou", "invalid", "object", "model_s", "run_s")}
-                     | {"parts": len(r.get("parts") or [])} for r in rep["rounds"]]
+                     | {"parts": len(r.get("parts") or []), "gates": (r.get("gates") or {}).get("summary"),
+                        "critic": (r.get("critic") or {}).get("overall"),
+                        "critic_defects": [d["part"] + ": " + d["problem"] for d in (r.get("critic") or {}).get("defects") or []][:6]}
+                     for r in rep["rounds"]]
+    if rep.get("best"):
+        out["meshes"] = cmd_program_meshes({"report": os.path.join(a["out_dir"], "report.json")})["meshes"]
+    return out
+
+
+def cmd_program_rerun(a):
+    """A parameter correction: the same program with overrides, no model call (cad/codegen.rerun)."""
+    from cad import codegen as G
+    rep = G.rerun(a["program_dir"], a["out_dir"], a.get("overrides") or {}, sheet=a.get("sheet"),
+                  length_mm=a.get("length_mm"), log=_log)
+    out = {k: rep.get(k) for k in ("error", "overrides")}
+    out["best"] = {k: v for k, v in (rep.get("best") or {}).items() if k != "parts"} if rep.get("best") else None
     if rep.get("best"):
         out["meshes"] = cmd_program_meshes({"report": os.path.join(a["out_dir"], "report.json")})["meshes"]
     return out
@@ -205,7 +225,8 @@ def cmd_program_meshes(a):
         E = T.edges(sh)
         out[p["id"]] = {"name": p["name"], "kind": "program_part", "parent": None, "colour": p["colour"],
                         "material": p["material"], "v": V.round(3).ravel().tolist(), "f": F.ravel().tolist(),
-                        "n": N.round(4).ravel().tolist(), "l": E.round(3).ravel().tolist(), "brep": p["brep"]}
+                        "n": N.round(4).ravel().tolist(), "l": E.round(3).ravel().tolist(), "brep": p["brep"],
+                        "assembly_parent": p.get("assembly_parent")}
     return {"meshes": out}
 
 
@@ -664,7 +685,7 @@ def cmd_remove_features(a):
     return {"ok": st["state"] == "ok", "removed": [f["id"] for f in gone], "seconds": round(time.time() - t, 1)}
 
 
-CMDS = {"program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
+CMDS = {"program_rerun": cmd_program_rerun, "program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
         "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "asm_build": cmd_asm_build,
         "asm_step": cmd_asm_step, "asm_step_status": cmd_asm_step_status, "asm_section": cmd_asm_section}
 

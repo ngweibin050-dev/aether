@@ -86,6 +86,18 @@ def available():
         return False
 
 
+def kill():
+    """End the worker now, whatever it is doing (Stop during a long CAD job). The next call starts a fresh worker."""
+    global _proc
+    p = _proc
+    _proc = None
+    if p is not None and p.poll() is None:
+        if os.name == "nt":                          # the venv launcher starts the real interpreter as a child: the tree
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+        else:
+            p.kill()
+
+
 def stop():
     global _proc
     if _proc is not None and _proc.poll() is None:

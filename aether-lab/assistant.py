@@ -73,6 +73,12 @@ HOW TO HANDLE EVERY MESSAGE (decide the intent first, silently):
    one option) only when a missing fact changes what gets built a lot (e.g. "a gearbox" with no ratio for a real
    machine); otherwise build with clear defaults and say what you assumed.
 6. Refine an existing model ("more detailed", "add lights, a number plate, mirrors, seats"): call inspect on it ONCE.
+   A "cad program" model: edit_cad, always (add_parts is refused for it).
+   An OLDER model (a CAD model from a three-view sheet, or a parametric model) asked for MUCH more detail or realism
+   ("a lot", "like a real car", "more attractive"): do not stick panels on its single body. Rebuild it with build_cad
+   from its drawing (the project file it was built from) and the user's request as `description`, so that it is made
+   of real separate parts. The new model goes beside the old one. Tell the user that, and that they can remove the old
+   one. Small additions to older models (one badge, one colour) can still use the steps below.
    It tells you what the model ALREADY has (parts, CAD features, named regions), its real size, and which side is its
    FRONT. What you add must look like it belongs to THIS model (same finish, on its real surface, real proportions),
    never toy blocks stuck on it. In this order of preference:
@@ -165,11 +171,17 @@ NEW_SCHEMAS = [
      "`file` for an attached drawing / blueprint, `description` for what to build or what the user wants (both if you "
      "have both). The program becomes the model's editable source. Prefer this for every new model.",
      {"description": {"type": "string"}, "file": {"type": "string"}, "name": {"type": "string"},
-      "rounds": {"type": "integer", "description": "revision rounds, 2-5 (default 4)"}}, []),
+      "rounds": {"type": "integer", "description": "revision rounds, 2-5 (default 3; each round takes several minutes)"}}, []),
     ("edit_cad", "Change a model built with build_cad by revising its CAD program (geometry: thicker walls, holes, more "
      "detail, other proportions, new parts...). The new version replaces the model only if every solid is valid; "
      "otherwise the model stays as it was. Colour / visibility / position changes are NOT geometry: use modify.",
      {"model": _TARGET, "instruction": {"type": "string"}, "rounds": {"type": "integer"}}, ["model", "instruction"]),
+    ("set_cad_param", "Correct named PARAMETERS of a build_cad model (inspect lists them with their value, provenance "
+     "and evidence): e.g. the user says the real wheelbase is 2400 mm, or the wall must be 3 mm. The same program is re-run "
+     "with the new values (no rewrite, seconds to a minute); if the values break the model it stays as it was. Use this "
+     "instead of edit_cad whenever the change is a value of an existing parameter.",
+     {"model": _TARGET, "values": {"type": "object", "description": "parameter name -> new value (in its unit)"}},
+     ["model", "values"]),
     ("create_model", "Create a NEW model from parametric parts (text-to-CAD). It is placed beside the existing models; "
      "nothing is removed. Aim for 6-25 parts that capture the real structure.",
      {"name": {"type": "string"}, "parts": {"type": "array", "items": _PART}}, ["name", "parts"]),
@@ -379,6 +391,21 @@ def _chat_call(payload, stopped, timeout=180):
     if "e" in box:
         raise box["e"]
     return box["r"]
+
+
+def _program_job(ctx, cmd, **args):
+    """A CAD-program job (build / edit / parameter re-run): on Modal CPU when deployed, else the local worker; Stop in
+    the chat cancels it either way (cad_remote.program_job)."""
+    import cad_remote
+    step = ctx.get("on_step") or (lambda e: None)
+    where = "Modal CPU (cloud)" if cad_remote.available() else "local CAD worker"
+    step({"stage": "tool", "tool": f"CAD job on {where}"})
+    try:
+        return cad_remote.program_job(cmd, stopped=ctx.get("stopped") or (lambda: False), **args)
+    except cad_remote.Stopped:
+        raise Stopped()
+    finally:
+        step({"stage": "done", "tool": f"CAD job on {where}"})
 
 
 def _cad_call(ctx, cmd, wait_s=480, **args):
@@ -650,6 +677,13 @@ def inspect(state, ctx, target):
                                "kind": (p.get("eng") or {}).get("kind")} for p in parts[:60]]}
         e = (root_of(state, m).get("eng") or {})
         if e.get("kind") == "cad program":              # its source: the program Muse wrote, its version and its checks
+            pf = Path(e["program"]).with_name("params.json")
+            info["parameters"] = json.loads(pf.read_text(encoding="utf-8")) if pf.exists() else {}
+            plf = Path(e["program"]).with_name("plan.json")
+            if plf.exists():                              # what the evidence cannot determine, and the declared relations
+                pl = json.loads(plf.read_text(encoding="utf-8"))
+                info["unknowns"] = pl.get("unknowns") or []
+                info["constraints"] = pl.get("constraints") or []
             info["cad_program"] = {"version": e.get("version"), "built_from": "drawing + request" if e.get("sheet") else "request",
                                    "request": e.get("request"), "length_mm": e.get("length_mm"),
                                    "program_excerpt": Path(e["program"]).read_text(encoding="utf-8")[:3000]}
@@ -931,9 +965,6 @@ def build_from_drawing(state, ctx, file, kind="auto", hint=None, answers=None, a
     """The gate (in code, not only in the prompt): a drawing is checked first (intake.assess). With a critical gap and
     the user not asked yet, nothing is built: the question goes to the user (ends the turn). After an answer (or
     "assume") the build runs with what the user said (a real length becomes the CAD document's decision)."""
-    if kind != "part":                                 # every drawing goes to the AI-written CAD program (no recipes)
-        return build_cad(state, ctx, description=" ".join(x for x in (hint, json.dumps(answers) if answers else "") if x)
-                         or None, file=file)
     import intake
     f = _file(ctx, file)
     url = ctx["data_url"](f)
@@ -961,6 +992,21 @@ def build_from_drawing(state, ctx, file, kind="auto", hint=None, answers=None, a
     if L:
         decisions = {"overall_length_mm": {"value": float(L), "provenance": "user", "note": "given by the user"}}
     hint = hint or rec["answers"].get("object") or (a or {}).get("object") or ""
+    if kind != "part":                                 # every drawing goes to the AI-written CAD program (no recipes)
+        facts = []
+        if L:
+            facts.append(f"The user says the real overall length is {float(L):.0f} mm (provenance 'user').")
+        for k_, v_ in rec["answers"].items():
+            if k_ != "overall_length_mm":
+                facts.append(f"The user says {k_}: {v_}.")
+        if a:
+            gaps = [g["what"] for g in a["missing"] if not (L and g["what"].lower().startswith(("size", "scale", "real", "dimension", "overall")))]
+            if gaps:
+                facts.append("The drawing check found these gaps; state them as unknowns or assumptions: " + "; ".join(gaps))
+        out = build_cad(state, ctx, description=" ".join(x for x in [hint] + facts if x) or None, file=file, _gated=True)
+        if a:
+            out["drawing_check"] = {"object": a.get("object"), "views": a.get("views"), "missing": [g["what"] for g in a["missing"]]}
+        return out
     measured = (a or {}).get("kind_measured")
     if START_CAD_JOB and (kind == "three_view" or (kind == "auto" and measured == "three_view")):
         # the CAD pipeline takes about 2 minutes: it runs in the background and the user keeps working meanwhile
@@ -1302,20 +1348,24 @@ def _program_dir(ctx, pid, version):
 
 def _program_result(r):
     """What the model is told about a program build: per round, what was built and how it checked."""
-    return {"rounds": r.get("rounds"), "kept": {k: (r.get("best") or {}).get(k) for k in ("round", "iou", "mean_iou", "object", "length_mm")},
+    return {"rounds": r.get("rounds"), "plan_components": r.get("plan_components"),
+            "kept": {k: (r.get("best") or {}).get(k) for k in ("round", "iou", "mean_iou", "object", "length_mm", "critic",
+                                                               "critic_scores", "gates")},
             "parts": [p["name"] for p in (r.get("best") or {}).get("parts") or []], "seconds": r.get("seconds")}
 
 
-def build_cad(state, ctx, description=None, file=None, name=None, rounds=4):
+def build_cad(state, ctx, description=None, file=None, name=None, rounds=3, _gated=False):
     """Muse writes a CadQuery program for the object (from an attached drawing, a description, or both), it runs in the
     sandbox, every solid is validated, and the program is revised against the drawing / its own renders. The kept
     model comes into the scene as exact B-rep parts; the program is its editable source."""
     if not description and not file:
         raise ValueError("build_cad needs a description, an attached drawing (file), or both")
+    if file and not _gated:                       # a drawing is checked first: what is missing, ask if critical
+        return build_from_drawing(state, ctx, file, kind="auto", hint=description)
     sheet = _file(ctx, file)["path"] if file else None
     pid = uuid.uuid4().hex[:8]
     out = _program_dir(ctx, pid, 1)
-    r = _cad_call(ctx, "program_build", wait_s=900, sheet=sheet, out_dir=str(out), request=description or "",
+    r = _program_job(ctx, "program_build", sheet=sheet, out_dir=str(out), request=description or "",
                   rounds=int(rounds))
     if not r.get("best"):
         return {"built": False, "why": "no round produced a program whose every solid is valid", **_program_result(r)}
@@ -1327,7 +1377,7 @@ def build_cad(state, ctx, description=None, file=None, name=None, rounds=4):
                                      "length_mm": r["best"]["length_mm"], "request": description or ""})
     agent._fit_to_desk(state, imp["id"])
     arrange(state)
-    return {"built": True, "model": nm, "id": imp["id"], **_program_result(r),
+    return {"built": True, "model": nm, "id": imp["id"], **_program_result(r), "unknowns": r.get("unknowns"),
             "source": "a CadQuery program written by Muse and run in the sandbox; every part is a valid OpenCascade solid"}
 
 
@@ -1343,9 +1393,9 @@ def edit_cad(state, ctx, model, instruction, rounds=3):
         raise ValueError(f"'{g['name']}' is not a CAD-program model (build it with build_cad first)")
     v = int(e["version"]) + 1
     out = _program_dir(ctx, e["program_id"], v)
-    r = _cad_call(ctx, "program_build", wait_s=900, sheet=e.get("sheet"), out_dir=str(out), request=instruction,
+    r = _program_job(ctx, "program_build", sheet=e.get("sheet"), out_dir=str(out), request=instruction,
                   rounds=int(rounds), base_program=Path(e["program"]).read_text(encoding="utf-8"),
-                  base_length_mm=e.get("length_mm"))
+                  base_length_mm=e.get("length_mm"), base_plan=str(Path(e["program"]).with_name("plan.json")))
     if not r.get("best"):
         return {"changed": False, "kept_version": e["version"], "why": "no revised program produced valid solids; the "
                 "model is unchanged", **_program_result(r)}
@@ -1356,7 +1406,33 @@ def edit_cad(state, ctx, model, instruction, rounds=3):
     return {"changed": True, "model": g["name"], "version": v, **_program_result(r)}
 
 
+def set_cad_param(state, ctx, model, values):
+    """Correct named parameters of a CAD-program model (an engineer's correction: "the wheelbase is 2400 mm"). The same
+    program is re-run with the new values, no model call; the new version replaces the model only if every solid is
+    valid, and every parameter keeps its provenance (a corrected one becomes 'user')."""
+    ms = resolve(state, model, prefer_models=True)
+    if len(ms) != 1:
+        raise Ambiguous(model, [m["name"] for m in ms])
+    g = root_of(state, ms[0]) if ms[0]["type"] != "group" else ms[0]
+    e = g.get("eng") or {}
+    if e.get("kind") != "cad program":
+        raise ValueError(f"'{g['name']}' is not a CAD-program model")
+    v = int(e["version"]) + 1
+    out = _program_dir(ctx, e["program_id"], v)
+    r = _program_job(ctx, "program_rerun", program_dir=str(Path(e["program"]).parent), out_dir=str(out),
+                  overrides={k: float(x) for k, x in values.items()}, sheet=e.get("sheet"), length_mm=e.get("length_mm"))
+    if not r.get("best"):
+        return {"changed": False, "kept_version": e["version"], "why": r.get("error")}
+    lab.import_cad(state, r["meshes"], [], g["name"], g["eng"]["cad_document"],
+                   provenance={**e, "version": v, "program": str(out / "program.py"), "report": str(out / "report.json"),
+                               "step": str(out / "model.step"), "glb": str(out / "model.glb"), "previous": e.get("program")})
+    return {"changed": True, "version": v, "values": values, "checks": {k: r["best"].get(k) for k in ("gates", "iou", "proportion_error")},
+            "params": r["best"].get("params")}
+
+
 def run_tool(state, ctx, name, args):
+    if name == "set_cad_param":
+        return set_cad_param(state, ctx, **args)
     if name == "build_cad":
         return build_cad(state, ctx, **args)
     if name == "edit_cad":

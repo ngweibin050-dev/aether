@@ -39,6 +39,7 @@ Real products are made of separate components that are made separately and fitte
 - Curved surfaces are lofts through **smooth** section wires (`smooth_loft`, or `.spline()` / `.ellipse()`
   wires) with `ruled=False`, using 8-16 sections. Never polyline sections, and never boxes for curved parts.
 - Round the edges a real part would have rounded (`fillet_safe`, small radii).
+- Prefer robust constructions. A screw thread is a revolved ribbed profile (`revolve_profile`), not a helix sweep. A hole is a cut cylinder. A fillet goes on before any cut that would break it (or use small radii).
 - Proportions come from the drawing's measured outlines wherever it shows them. Everything else is an engineering
   estimate, and the plan says so.
 
