@@ -4,8 +4,8 @@
 
 **Meta Global AI Developer Hackathon 2026 · Indie Developer track · Theme: Push the Frontier · Ng Wei Bin (solo)**
 
-▶ **[3-minute demo video](#)** _(link added on submission)_ &nbsp;·&nbsp;
-🔍 **[Hosted replay, no setup](https://aether-lab-delta.vercel.app/replay.html)** &nbsp;·&nbsp;
+▶ **[3-minute demo video](#)** _(https://www.youtube.com/watch?v=Dm65Gm77UqA)_ &nbsp;·&nbsp;
+🔍 **[Hosted replay, no setup](https://aether-docs-flax.vercel.app/replay.html)** &nbsp;·&nbsp;
 📏 **[Ground truth](aether-lab/docs/GROUND_TRUTH.md)** &nbsp;·&nbsp;
 ✅ **[Acceptance tests](aether-lab/docs/ACCEPTANCE.md)** &nbsp;·&nbsp;
 🧾 **[Provenance](AETHER_HACKATHON_PROVENANCE.md)**

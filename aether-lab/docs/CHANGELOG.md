@@ -27,7 +27,8 @@ done (Malaysia time); see `BUILT_DURING_EVENT.md` for the commits.
   before / after close-ups render the same parts; the cloud job survives a short network drop while polling.
 - Verification: `pytest tests/test_physics.py` 32 passed; the assembly build, topology, connections, assembly
   drawing and chat tool tested on the 1909 press and the roadster; the roadster windshield edit re-run on the real
-  model (plan: change `windshield_glass` only, 3 checks; result recorded in the commit).
+  model (plan: change `windshield_glass` only, 3 checks; result recorded in the commit). Acceptance on the final code:
+  13 / 14 (`docs/ACCEPTANCE.md`; test 6 failed on wording, see the note there).
 
 ## 2026-11-04
 

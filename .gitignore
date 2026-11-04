@@ -26,4 +26,7 @@ Meta Global AI Developer Hackathon 2026 Rules.txt
 # the demo video plan (a production note, not part of the submission)
 VIDEO_PLAN.md
 VOICE_SCRIPT.md
+voice.m4a# the demo video and its voice recording (uploaded separately)
+*.mp4
 voice.m4a
+AETHER_Lab_demo.mp4

@@ -4,6 +4,8 @@
 
 **13 / 14 pass.**
 
+> **About test 6 ("Simulate the movement of the current assembly").** The check failed on wording, not on behaviour: the AI built the B-rep assembly (52 valid solids, contacts and interferences measured) and answered that the model is a static display model, not a mechanism, so there is nothing to turn or slide. The test's word list ("cannot", "no solver", ...) did not include that phrasing. The result is reported as run; the checker was not changed after the fact.
+
 | # | test | request | tools the AI called | check | result | s |
 |---|---|---|---|---|---|---|
 | 1 | Unfamiliar drawing -> 3D model | Create a 3D model from this engineering drawing. | build_cad | 1 build call(s), 1 built (a failed first attempt the AI retried counts only if the retry built); program models in scene=1; kept={'round': 3, 'iou': {}, 'mean_iou': None, 'object': 'Douglas X-3 Stiletto supersonic resear | PASS | 754.2 |
