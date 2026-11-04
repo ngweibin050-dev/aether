@@ -94,13 +94,47 @@ PROGRESS = {"running": False, "steps": []}
 LAST_STEPS = []                                  # the last finished run's steps, for the build report
 # the demo inputs (public domain, docs/INPUTS.md); real sizes are not on the drawings: assumed, and labelled so
 DEMOS = {"D": ("tests/inputs/US929594_fig1.png", "machine", 300, "Metal drawing press", "US Patent 929,594, Fig. 1 (public domain)"),
-         "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)")}
+         "C": ("tests/inputs/heldout/US1770035_fig1.png", "machine", 300, "Speed-reduction gearbox", "US Patent 1,770,035, Fig. 1 (public domain)"),
+         "CAR": ("tests/inputs/heldout/CC0_Cobra_four_view.png", "three_view", 4000, "Roadster four-view sheet → CAD written by Muse",
+                 "Shelby Cobra blueprint, Igor Križanovskij, CC0 (Wikimedia Commons)")}
+DEMOS = {"CAR": DEMOS.pop("CAR"), **DEMOS}       # the CAD demo first
 REC = OUT / "recorded"                           # the last successful live demo runs, replayed ONLY with a "recorded" label
+CAD_FILES = ("model.aethercad", "sheet.png", "report.json", "model.step", "model.glb")   # a recorded CAD run's folder
 
 
 def _recorded(demo_id):
     f = REC / f"{demo_id}.json"
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+
+def _record_cad(demo_id, reply, steps):
+    """A successful live CAD demo: keep the CAD folder (document, sheet, report, STEP, overlays) as its recorded run."""
+    import shutil
+    d = REC / demo_id
+    d.mkdir(parents=True, exist_ok=True)
+    for f in list(CAD_FILES) + [f.name for f in CAD_DIR.glob("reproject_*.png")]:
+        if (CAD_DIR / f).exists():
+            shutil.copy2(CAD_DIR / f, d / f)
+    (REC / f"{demo_id}.json").write_text(json.dumps({"recorded_at": time.strftime("%Y-%m-%d %H:%M"), "reply": reply,
+                                                       "steps": steps, "cad_dir": demo_id}, default=str), encoding="utf-8")
+
+
+def _play_cad(demo_id, rec):
+    """Replay a recorded CAD run: its folder becomes the open CAD document (recomputed from the stored model answers,
+    no model call) and the model is added to the scene as one undo step."""
+    import shutil
+    import cad_client
+    src = REC / rec["cad_dir"]
+    CAD_DIR.mkdir(parents=True, exist_ok=True)
+    for f in src.iterdir():
+        shutil.copy2(f, CAD_DIR / f.name)
+    cad_client.call("open", path=str(CAD_DIR / "model.aethercad"), sheet=str(CAD_DIR / "sheet.png"), out_dir=str(CAD_DIR))
+    with LOCK:
+        before = history.snapshot(STATE)
+        imp, doc = _cad_import(f"{DEMOS[demo_id][3]} (recorded)")
+        _record(before, f"demo: {DEMOS[demo_id][3]} (recorded run)", "build")
+    DIRTY.set()
+    return {**{k: v for k, v in rec.items() if k != "cad_dir"}, "document": _doc_brief(doc), "state": lean(STATE)}
 
 
 def _fresh_ids(parts, taken):
@@ -234,6 +268,28 @@ class Handler(BaseHTTPRequestHandler):
             rec = _recorded(demo_id)
             if not rec:
                 return self._send(404, {"error": f"no recorded run of demo {demo_id} yet"})
+            if rec.get("program_report"):                # a recorded CAD-program run: its kept parts, as exact B-rep
+                try:
+                    import cad_client
+                    ms = cad_client.call("program_meshes", report=rec["program_report"])["meshes"]
+                    with LOCK:
+                        before = history.snapshot(STATE)
+                        imp = lab.import_cad(STATE, ms, [], f"{DEMOS[demo_id][3]} (recorded)", f"program:recorded-{demo_id}",
+                                             provenance={"kind": "cad program", **rec["provenance"]})
+                        agent._fit_to_desk(STATE, imp["id"])
+                        assistant.arrange(STATE)
+                        _record(before, f"demo: {DEMOS[demo_id][3]} (recorded run)", "build")
+                    DIRTY.set()
+                    return self._send(200, {**{k: v for k, v in rec.items() if k not in ("provenance",)}, "state": lean(STATE)})
+                except Exception as e:
+                    traceback.print_exc()
+                    return self._send(500, {"error": f"recorded CAD-program run could not be opened: {type(e).__name__}: {e}"})
+            if rec.get("cad_dir"):
+                try:
+                    return self._send(200, _play_cad(demo_id, rec))
+                except Exception as e:
+                    traceback.print_exc()
+                    return self._send(500, {"error": f"recorded CAD run could not be opened: {type(e).__name__}: {e}"})
             # the recorded machine is ADDED beside the user's models (replacing the scene wiped their work, with no undo),
             # standing on the desk, as one undo step
             with LOCK:
@@ -454,7 +510,10 @@ class Handler(BaseHTTPRequestHandler):
                             LAST_STEPS[:] = [dict(x) for x in PROGRESS["steps"]]
                     out = {"reply": reply, "trace": trace, "images": images, "state": lean(STATE), "gpu": compute.status,
                            **({"extras": extras} if extras else {})}
-                    if body.get("demo_id") in DEMOS and not any((t.get("result") or {}).get("error") for t in trace):
+                    if (body.get("demo_id") in DEMOS and DEMOS[body["demo_id"]][1] == "three_view"
+                            and not any((t.get("result") or {}).get("error") for t in trace)):
+                        _record_cad(body["demo_id"], reply, [dict(x) for x in PROGRESS["steps"]])
+                    elif body.get("demo_id") in DEMOS and not any((t.get("result") or {}).get("error") for t in trace):
                         REC.mkdir(parents=True, exist_ok=True)       # a successful live demo run: kept as the fallback
                         (REC / f"{body['demo_id']}.json").write_text(json.dumps(
                             {"recorded_at": time.strftime("%Y-%m-%d %H:%M"), "reply": reply, "trace": trace, "images": images,

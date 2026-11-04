@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AETHER Lab</title>
-<meta name="description" content="One paper machine drawing in, a working 3D assembly out — completed by Meta's models and checked on a simulated holographic desk.">
+<meta name="description" content="Engineering drawings to editable, verified OpenCascade CAD with Meta's models, then keep engineering by conversation.">
 <style>
 :root { --bg: #070d16; --panel: #0d1726; --line: #1d2a3d; --text: #e6edf6; --muted: #93a4ba; --accent: #5fe1ff; --warn: #ffb547; }
 * { box-sizing: border-box; }
@@ -36,57 +36,62 @@ footer { padding: 28px 0 48px; color: var(--muted); font-size: 14px; }
 <body>
 <div class="wrap">
 <header>
-  <div class="kicker">Meta AI Builders Hackathon 2026 · built Oct 26 – Nov 4</div>
-  <h1>One paper drawing in.<br>A working 3D machine out.</h1>
-  <p class="lede">AETHER Lab reads a single page of a mechanical drawing — a century-old patent figure with no scale and no
-    second view — and Meta's models turn it into a 3D assembly whose gears mesh, explain it part by part, and check
-    how sharp it would look on a holographic workbench. <b>The workbench is simulated, not built.</b></p>
+  <div class="kicker">Meta Global AI Developer Hackathon 2026 · Indie track · built Oct 26 – Nov 4</div>
+  <h1>The AI is the engineer.<br>OpenCascade is the instrument.</h1>
+  <p class="lede">AETHER Lab turns a three-view drawing into <b>parametric OpenCascade B-rep CAD</b> and checks it against
+    every view of the drawing. You then keep engineering by chat: refine it, cut a section, add a real B-rep pocket,
+    export STEP. Every change is a recorded feature, and you can undo it even after a restart.</p>
   <div class="cta">
-    <a class="primary" href="replay.html">Replay the demos</a>
-    <a href="replay.html?demo=C">Gearbox (held out)</a>
-    <a href="HOLOGRAPHY_ROADMAP.md">Holography roadmap</a>
-    <a href="RESULTS.md">All measured results</a>
+    <a class="primary" href="replay.html?demo=CAR">Open the CAD demo</a>
+    <a href="replay.html?demo=D">Patent mechanism (inferred)</a>
+    <a href="https://github.com/ngweibin050-dev/aether/blob/main/aether-lab/docs/EVIDENCE.md">All measured results</a>
   </div>
 </header>
 
 <section>
+  <h2>Why not just ask Muse Spark?</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Same car sheet, same scoring</th><th>IoU side</th><th>IoU top</th><th>IoU end</th></tr>
+    <tr><td>AETHER (CAD pipeline)</td><td><b>0.974</b></td><td><b>0.988</b></td><td><b>0.978</b></td></tr>
+    <tr><td>plain Muse Spark, answer 1</td><td>0.861</td><td>0.927</td><td>0.922</td></tr>
+    <tr><td>plain Muse Spark, answer 2</td><td>0.412</td><td>0.928</td><td>0.880</td></tr>
+    <tr><td>plain Muse Spark, answer 3</td><td>0.324</td><td>0.918</td><td>0.909</td></tr>
+  </table></div>
+  <p>In 2 of 3 answers plain Spark drew the body as a flat profile that never stood up, and nothing in an answer says which
+    one is right. AETHER measures the sheet and checks every view.</p>
+</section>
+
+<section>
   <h2>How it works</h2>
   <div class="steps">
-    <div class="step"><b>1 · Muse Spark reads</b>The whole sheet and four close-ups, each twice; a part is kept only when both readings agree or the drawing confirms it.</div>
-    <div class="step"><b>2 · Muse Wonder completes</b>Depth, planes, the hidden shafts and bearings, which gears mesh — each added part with its engineering reason.</div>
-    <div class="step"><b>3 · The engine rebuilds</b>Involute gears that mesh, pins through the stack, plates with their holes; GLB and STL export.</div>
-    <div class="step"><b>4 · Muse Spark explains</b>Step by step, highlighting each part; every part id and number is checked against the model in code.</div>
-    <div class="step"><b>5 · The desk checks</b>A wave-optics eye model scores every part on the AETHER Desk (simulation).</div>
+    <div class="step"><b>1 · Measure</b>Computer vision on the ink: the views, silhouettes and sections. No model is involved.</div>
+    <div class="step"><b>2 · Understand</b>Muse Spark, Muse Wonder and SAM 3.1 label parts and regions. Answers are schema-checked JSON, stored, never executed.</div>
+    <div class="step"><b>3 · Build</b>A parametric .aethercad document recomputes into OpenCascade B-rep. Every value is tagged measured / inferred / assumed.</div>
+    <div class="step"><b>4 · Verify</b>The B-rep is projected back into every view, every solid passes BRepCheck, and STEP is re-read in a fresh process.</div>
+    <div class="step"><b>5 · Converse</b>Muse Spark runs each chat turn as a tool loop over the same document: refine, section, pocket, export, undo.</div>
   </div>
 </section>
 
 <section>
-  <h2>Meta models used</h2>
+  <h2>Measured</h2>
   <div class="tablewrap"><table>
-    <tr><th>Model</th><th>What it does</th><th>Measured</th></tr>
-    <tr><td>Muse Spark</td><td>Reads the drawing; writes the grounded explanation; runs the design agent</td><td>reading 30–42 s; explanation 12–15 s, 6 steps, 0 rejected</td></tr>
-    <tr><td>Muse Wonder</td><td>Engineer's completion of the views the drawing does not show</td><td>35–75 s per run, a reason for every added part</td></tr>
-    <tr><td>Muse Image</td><td>One concept illustration, labelled "not the measured model"</td><td>9–20 s, in parallel</td></tr>
-    <tr><td>Muse Voice Transcribe</td><td>Voice commands, "Explain this machine"</td><td>a spoken request transcribed word for word</td></tr>
-    <tr><td>SAM 3.1</td><td>Cuts a part out of a photo for the rebuild</td><td>gear found, 12 teeth counted, 4.4 s</td></tr>
+    <tr><th>What</th><th>Result</th></tr>
+    <tr><td>Car sheet → B-rep, IoU vs the drawing</td><td>side 0.980 · top 0.991 · front 0.975 · rear 0.975</td></tr>
+    <tr><td>CC0 roadster: CAD program written by Muse (the demo)</td><td>IoU side 0.865 · top 0.962 · ends 0.885 / 0.873; 44 / 44 valid solids: open cockpit, seats, windscreen + glass, roll bar, spoked wheels (the earlier car-only rules: 9 solids, ends 0.78)</td></tr>
+    <tr><td>AI orchestration acceptance tests</td><td>14 / 14 through the chat API: build from an unfamiliar drawing, edit by chat, blueprint, explain, hologram, analysis, exports, a clamp from a description</td></tr>
+    <tr><td>Solids valid · STEP round trip</td><td>11 / 11 · 11 / 11</td></tr>
+    <tr><td>Whole workflow through the app's API</td><td>8 / 8 steps, restart and undo included</td></tr>
+    <tr><td>Exports opened outside AETHER</td><td>9 / 9 GLB / STL / 3MF, size within 0.004 mm</td></tr>
+    <tr><td>Single patent view → mechanism</td><td>79–86 % of drawn lines built; 60–72 % of built outline on the ink (inferred)</td></tr>
   </table></div>
+  <p class="honest">The sheets carry no dimension, so the real size is assumed and labelled until the user gives one. A single
+    patent view cannot show depth: those mechanisms are inferred and are labelled as inferred. The long-term holographic desk
+    is research. Every optical number is a simulation, and no display has been built.</p>
 </section>
 
-<section>
-  <h2>Results (live runs, real API)</h2>
-  <div class="tablewrap"><table>
-    <tr><th>Input</th><th>Measure</th><th>Result</th></tr>
-    <tr><td>D press</td><td>full run incl. explanation</td><td>108.9 s / 110.5 s</td></tr>
-    <tr><td>C gearbox, held out</td><td>full run incl. explanation</td><td>121.1 s / 161.4 s</td></tr>
-    <tr><td>B, D, C</td><td>recall / parts precision (replayed)</td><td>76.3/62.9 · 72.3/77.8 · 73.6/80.4 %</td></tr>
-  </table></div>
-  <p class="honest">Honest misses: precision on the densest drawing is 62.9 % (target 70); a full run takes 100–160 s
-    (target 90); patent drawings have no scale, so sizes are model scale. No holographic display has been built:
-    every optical number is a simulation.</p>
-</section>
-
-<footer>AETHER Lab · Ng Wei Bin · MIT licence. Inputs: public-domain US patents and NASA graphics; NASA does not endorse this project.
-  This page and the replay are static files: no API key, no live AI call.</footer>
+<footer>AETHER Lab · Ng Wei Bin · MIT licence. Inputs: public-domain US patents, NASA graphics and a CC0 car sheet
+  (Igor Križanovskij, Wikimedia Commons). NASA does not endorse this project. This page and the replay are static files:
+  no API key, no live AI call.</footer>
 </div>
 </body>
 </html>

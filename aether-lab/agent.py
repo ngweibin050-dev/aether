@@ -9,6 +9,7 @@ import time
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 
@@ -300,6 +301,36 @@ ON_CAD_DETAIL = None                             # set by the server: starts the
 LAST_IMAGE = {}                                  # the drawing the current machine was built from (Explain shows it to Muse Spark)
 
 
+def _drawing_to_program(state, history, data_url, hint, out_dir, step):
+    """A drawing -> a CAD program written by Muse (cad/codegen.py, in the CAD worker), checked against the drawing,
+    imported as exact B-rep parts. No object-specific rules."""
+    import base64
+    import uuid
+    import cad_client
+    pid = uuid.uuid4().hex[:8]
+    d = Path(out_dir) / "programs" / pid / "v1"
+    d.mkdir(parents=True, exist_ok=True)
+    sheet = d / "sheet.png"
+    sheet.write_bytes(base64.b64decode(data_url.split(",", 1)[1]))
+    step({"stage": "tool", "tool": "build_cad"})
+    r = cad_client.call("program_build", sheet=str(sheet), out_dir=str(d), request=hint or "", rounds=4)
+    step({"stage": "done", "tool": "build_cad", "error": not r.get("best")})
+    tr = {"tool": "build_cad", "args": {"hint": hint}, "result": {k: r.get(k) for k in ("rounds", "best", "seconds")}}
+    if not r.get("best"):
+        return ("No round of the CAD program produced valid solids, so nothing was added. Rounds: "
+                + "; ".join(f"{x['round']}: {x.get('error') or x.get('iou')}" for x in r["rounds"]), [tr], {}, history)
+    b = r["best"]
+    imp = lab.import_cad(state, r["meshes"], [], b["object"] or "CAD model", f"program:{pid}",
+                         provenance={"kind": "cad program", "program_id": pid, "version": 1, "program": str(d / "program.py"),
+                                     "report": str(d / "report.json"), "step": str(d / "model.step"), "glb": str(d / "model.glb"),
+                                     "sheet": str(sheet), "length_mm": b["length_mm"], "request": hint or ""})
+    _fit_to_desk(state, imp["id"])
+    reply = (f"Built {b['object']} as {len(b['parts'])} exact solids from a CAD program Muse Wonder wrote and revised "
+             f"{b['round']} time(s) against the drawing" + (f" (silhouette IoU per view: {b['iou']})" if b.get("iou") else "")
+             + f". Real size assumed: {b['length_mm']:.0f} mm long (the sheet states no dimension).")
+    return reply, [tr], {}, history
+
+
 def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".", on_step=None, mode="interpret",
                     kind="auto", decisions=None):
     """An upload -> a 3D model, routed by what it IS:
@@ -324,10 +355,10 @@ def photo_to_design(state, history, data_url, prompt, size_mm=80.0, out_dir=".",
     def first(out):
         reply, trace, images, hist = out
         return reply, [route] + trace, images, hist
-    if kind == "three_view":
+    if kind in ("three_view", "machine"):
         import cad_client
-        if cad_client.available():
-            return first(_sheet_to_cad(state, history, data_url, (hints or ["object"])[0], out_dir, step, decisions))
+        if cad_client.available():                     # any drawing: Muse writes the CAD program (cad/codegen.py)
+            return first(_drawing_to_program(state, history, data_url, ", ".join(hints), out_dir, step))
         return first(("The three-view CAD pipeline needs the CAD environment (aether-lab/cad-worker/.venv: Python 3.12 + "
                       "CadQuery). Create it with cad-worker/setup, or set AETHER_CAD_PYTHON. Nothing was built: I will not "
                       "silently substitute the visual-hull preview for CAD.",

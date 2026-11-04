@@ -1,0 +1,98 @@
+{
+ "id": "CAR",
+ "title": "Roadster four-view sheet → CAD written by Muse",
+ "kind": "cad",
+ "source": "Shelby Cobra blueprint, Igor Križanovskij, CC0 (Wikimedia Commons)",
+ "recorded_at": "2026-11-04 15:00",
+ "parts": 44,
+ "size_mm": [
+  3960,
+  1700,
+  1250
+ ],
+ "steps": [
+  {
+   "who": "AETHER code",
+   "what": "measure the drawing's four views (outlines as profile functions)",
+   "s": 9
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 1: write / revise the CAD program",
+   "s": 70.5
+  },
+  {
+   "who": "OpenCascade (sandbox)",
+   "what": "round 1: run it, validate 44 solids, compare views (mean IoU 0.8778)",
+   "s": 17.2
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 2: write / revise the CAD program",
+   "s": 54.6
+  },
+  {
+   "who": "OpenCascade (sandbox)",
+   "what": "round 2: run it, validate 44 solids, compare views (mean IoU 0.9051)",
+   "s": 9.7
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 3: write / revise the CAD program",
+   "s": 96.7
+  },
+  {
+   "who": "OpenCascade (sandbox)",
+   "what": "round 3: run it, validate 44 solids, compare views (mean IoU 0.9093)",
+   "s": 118.0
+  },
+  {
+   "who": "Muse Wonder",
+   "what": "round 4: write / revise the CAD program",
+   "s": 112.0
+  },
+  {
+   "who": "OpenCascade (sandbox)",
+   "what": "round 4: run it, validate 44 solids, compare views (mean IoU 0.8961)",
+   "s": 53.7
+  }
+ ],
+ "metrics": {
+  "iou": {
+   "side": 0.8645,
+   "top": 0.9618,
+   "front/rear A": 0.8854,
+   "front/rear B": 0.8726
+  },
+  "solids_valid": "44 / 44",
+  "scale": "overall length 3960 mm, estimated by Muse"
+ },
+ "step": "model.step.zip",
+ "program": "program.py",
+ "images": [
+  [
+   "render_iso.jpg",
+   "The B-rep (44 solids), built by the CadQuery program Muse Wonder wrote"
+  ],
+  [
+   "render_cockpit.jpg",
+   "Open cockpit: seats, steering wheel, roll bar, windscreen frame with glass"
+  ],
+  [
+   "sheet.png",
+   "The input: a CC0 four-view sheet (no dimensions)"
+  ],
+  [
+   "check_side.jpg",
+   "Side view checked by code: grey = drawn and built, red = drawn not built, magenta = built not drawn"
+  ],
+  [
+   "check_top.jpg",
+   "Top view check"
+  ],
+  [
+   "check_end_a.jpg",
+   "End view check"
+  ]
+ ]
+}

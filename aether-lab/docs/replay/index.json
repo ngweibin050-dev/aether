@@ -1,5 +1,12 @@
 [
  {
+  "id": "CAR",
+  "title": "Roadster four-view sheet → CAD written by Muse",
+  "source": "Shelby Cobra blueprint, Igor Križanovskij, CC0 (Wikimedia Commons)",
+  "kind": "cad",
+  "recorded_at": "2026-11-04 15:00"
+ },
+ {
   "id": "D",
   "title": "Metal drawing press",
   "source": "US Patent 929,594, Fig. 1 (public domain)",

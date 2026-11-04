@@ -415,6 +415,8 @@ def import_cad(state, meshes, groups, name, document_id, replace=False, provenan
             p["color"] = retina.hex_color(m["colour"])
         p["eng"] = {"kind": m["kind"], "cad_document": document_id, "cad_component": cid, "dims": {}, "joints": [],
                     "material": m.get("material")}
+        if m.get("brep"):                                # a CAD-program part: its exact solid is its own .brep file
+            p["eng"]["brep"] = m["brep"]
         p.update(looks.get(cid) or {})
         state["parts"].append(p)
     state["selected"] = g["id"]

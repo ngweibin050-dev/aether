@@ -176,6 +176,39 @@ def cmd_set_param(a):
     return {"status": st, "seconds": round(time.time() - t, 2), "document_status": doc.data["status"]}
 
 
+def cmd_program_build(a):
+    """AI-written CAD program (cad/codegen.py): from a drawing, a description, or a change to an existing program.
+    The result is a new program version in its own folder; a failed build leaves every earlier version untouched."""
+    from cad import codegen as G
+    rep = G.build(a.get("sheet"), a["out_dir"], request=a.get("request") or "", rounds=int(a.get("rounds", 4)),
+                  base_program=a.get("base_program"), base_length_mm=a.get("base_length_mm"), log=_log)
+    out = {k: rep.get(k) for k in ("seconds", "best", "edit")}
+    out["rounds"] = [{k: r.get(k) for k in ("round", "error", "iou", "mean_iou", "invalid", "object", "model_s", "run_s")}
+                     | {"parts": len(r.get("parts") or [])} for r in rep["rounds"]]
+    if rep.get("best"):
+        out["meshes"] = cmd_program_meshes({"report": os.path.join(a["out_dir"], "report.json")})["meshes"]
+    return out
+
+
+def cmd_program_meshes(a):
+    """Display meshes of a program model's kept parts (tessellated from their B-rep files)."""
+    from OCP.BRep import BRep_Builder
+    from OCP.BRepTools import BRepTools
+    from OCP.TopoDS import TopoDS_Shape
+    from cad import tessellate as T
+    rep = json.load(open(a["report"], encoding="utf-8"))
+    out = {}
+    for p in rep["best"]["parts"]:
+        sh = TopoDS_Shape()
+        BRepTools.Read_s(sh, p["brep"], BRep_Builder())
+        V, F, N, fid = T.mesh(sh, 1.0, 0.25)
+        E = T.edges(sh)
+        out[p["id"]] = {"name": p["name"], "kind": "program_part", "parent": None, "colour": p["colour"],
+                        "material": p["material"], "v": V.round(3).ravel().tolist(), "f": F.ravel().tolist(),
+                        "n": N.round(4).ravel().tolist(), "l": E.round(3).ravel().tolist(), "brep": p["brep"]}
+    return {"meshes": out}
+
+
 def cmd_meshes(a):
     from cad import tessellate as T
     doc = _need()
@@ -394,7 +427,7 @@ def _scene_shapes(parts, cad_brep_dir):
         if p["type"] != "cad":
             continue
         cid = (p.get("eng") or {}).get("cad_component")
-        f = os.path.join(cad_brep_dir, f"{cid}.brep")
+        f = (p.get("eng") or {}).get("brep") or os.path.join(cad_brep_dir, f"{cid}.brep")   # program parts: own file
         if not cid or not os.path.isfile(f):
             left_out.append({"name": p["name"], "why": "its CAD document's B-rep is not on disk"})
             continue
@@ -631,7 +664,7 @@ def cmd_remove_features(a):
     return {"ok": st["state"] == "ok", "removed": [f["id"] for f in gone], "seconds": round(time.time() - t, 1)}
 
 
-CMDS = {"ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
+CMDS = {"program_build": cmd_program_build, "program_meshes": cmd_program_meshes, "ping": cmd_ping, "add_feature": cmd_add_feature, "remove_features": cmd_remove_features, "detail": cmd_detail, "export_parts": cmd_export_parts, "import_step": cmd_import_step, "build": cmd_build, "open": cmd_open, "document": cmd_document, "set_param": cmd_set_param,
         "meshes": cmd_meshes, "export": cmd_export, "finalize": cmd_finalize, "asm_build": cmd_asm_build,
         "asm_step": cmd_asm_step, "asm_step_status": cmd_asm_step_status, "asm_section": cmd_asm_section}
 

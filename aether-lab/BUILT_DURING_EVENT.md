@@ -2,7 +2,7 @@
 
 **Builder:** Ng Wei Bin (individual submission)  
 **Event build window in the participant's saved rules:** 26 October – 4 November 2026  
-**Repository snapshot covered by this timeline:** `0d38f31b69cb7f21c585f3a4b5ab5a9ba53fd7c2` — 1 November 2026, 21:31 MYT
+**Repository snapshot covered by this timeline:** up to 4 November 2026 (see the last rows of the table)
 
 > **Scope note:** This file records the AETHER Lab software work. The repository also contains earlier AETHER background research and a historical AETHER Window prototype. Not every file in the repository was first created during the event. See the root-level `HACKATHON_PROVENANCE.md` for the explicit separation.
 
@@ -17,6 +17,15 @@ GitHub API timestamps are stored in UTC; the Malaysia times below are UTC+8.
 | 30 Oct, 15:55 | [`b26d0a3`](https://github.com/ngweibin050-dev/aether/commit/b26d0a37b1a30aa9845f449ff9a857022637ce0d) | Third generation: React/Three.js interface, wave-optics/retina work, 3D reconstruction and rebuild path, three-view processing, segmentation integration and live Meta API test. |
 | 31 Oct | See commits and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Input routing, stable two-pass drawing reads and reconciliation, parameter validation, Modal engine fingerprint/redeploy handling, reference-run harness and recorded evaluation outputs. |
 | 1 Nov, through the snapshot above | See commits and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Explanation player and validation, Muse Image concept illustrations, Muse Wonder completion, gear-pair handling, plausibility filtering, three-view fixes, GLB/STL export, build report, demo menu and clearly labelled recorded fallback. |
+
+| 1 Nov, 19:42 – 2 Nov, 08:35 | [`a0de429`](https://github.com/ngweibin050-dev/aether/commit/a0de429) … [`cb4c771`](https://github.com/ngweibin050-dev/aether/commit/cb4c771) (branch `feature/true-cad-kernel`, merged as PR #1) | **True CAD kernel:** a three-view sheet now becomes a parametric OpenCascade B-rep (`cad/`). This added the pinned CadQuery/OCP worker, the `.aethercad` document with its feature history and provenance, the AI stages S1–S8, the region features (imprints and pockets), STEP export with a fresh-process round trip, per-view reprojection, and the CAD test suite. |
+| 2 Nov – 4 Nov, 00:31 | [`ca2c985`](https://github.com/ngweibin050-dev/aether/commit/ca2c985) … [`8033c6d`](https://github.com/ngweibin050-dev/aether/commit/8033c6d) | CAD became the main path. Machines rebuilt from patent figures now become exact solids (`cad/assembly.py`). Added the chat assistant (`assistant.py`) and projects with autosave (`projects.py`). |
+| 4 Nov, 09:29 | [`2e41fa8`](https://github.com/ngweibin050-dev/aether/commit/2e41fa8) | Intake questions (`intake.py`), refinement placed on the real surface (`refine.py`), an undo history that survives a restart (`history.py`); evidence page (`docs/EVIDENCE.md`, `python -m tests.evidence`), plain-Muse-Spark baseline, external export checks, the end-to-end story test (`docs/STORY.md`), and car body surface fairing. |
+| 4 Nov (after 09:29) | this commit | View detection fix (a straight body side inside a plan view is no longer read as a ground line), a CC0 car sheet as a new test input, the recorded CAD demo, and README / architecture rewritten around the CAD workflow. |
+| 4 Nov, afternoon | this commit | **AI-written CAD and one orchestrator.**
+- `cad/codegen.py`: Muse Wonder plans and writes a CadQuery program for any object; it is run in a sandbox, checked against the drawing view by view, and revised.
+- New chat tools `build_cad` and `edit_cad`; every drawing upload is routed to them, and the car-only rules are retired.
+- Tests and records: the audit (`docs/AI_ORCHESTRATION_AUDIT.md`), 14 / 14 acceptance tests (`tests/acceptance_ai.py`, `docs/ACCEPTANCE.md`), and the roadster cycles (`docs/ai_cad_runs/`). |
 
 Only completed work up to the snapshot date is listed. Later work must be added with its actual date after it is completed.
 

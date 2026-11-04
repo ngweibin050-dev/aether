@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AETHER Lab replay</title>
-<meta name="description" content="Recorded runs of AETHER Lab: a patent drawing to a working 3D assembly with Meta's models. Static replay, no live AI.">
+<meta name="description" content="Recorded runs of AETHER Lab: engineering drawings to editable OpenCascade CAD with Meta's models. Static replay, no live AI.">
 <style>
 :root { --bg: #070d16; --panel: #0d1726; --line: #1d2a3d; --text: #e6edf6; --muted: #93a4ba; --accent: #5fe1ff; --warn: #ffb547; --ok: #4ade80; }
 * { box-sizing: border-box; }
@@ -52,7 +52,7 @@ figcaption { color: var(--warn); font-size: 11px; line-height: 1.3; margin-top: 
     <div id="viewbar">
       <button class="btn" data-cam="front">Front</button><button class="btn" data-cam="top">Top</button>
       <button class="btn" data-cam="iso">3/4</button><button class="btn" id="explodeBtn">Explode</button>
-      <a class="btn" id="glb" download>Download GLB</a>
+      <a class="btn" id="glb" download>Download GLB</a><a class="btn" id="step" download hidden>Download STEP</a><a class="btn" id="prog" download hidden>CAD program (.py)</a>
     </div>
   </section>
   <aside style="display:grid;gap:16px;align-content:start;min-width:0">
@@ -149,18 +149,25 @@ async function load(id) {
   $("rec").textContent = `RECORDED ${data.recorded_at} · not live`;
   $("meta").textContent = `${data.parts} parts · ${data.size_mm.join(" × ")} mm on the desk`;
   const m = data.metrics || {}, s = [];
+  if (m.iou) s.push(...Object.entries(m.iou).map(([k, v]) => [`IoU ${k} vs drawing`, v.toFixed(3)]));
+  if (m.solids_valid) s.push(["valid B-rep solids", m.solids_valid]);
+  if (m.step_roundtrip) s.push(["STEP re-read", m.step_roundtrip]);
   if (m.view_match_pct) s.push(...Object.entries(m.view_match_pct).map(([k, v]) => [`view match ${k}`, v + " %"]));
   if (m.recall_pct != null) s.push(["recall: drawn lines built", m.recall_pct + " %"], ["parts precision", m.parts_precision_pct + " %"]);
   if (data.desk) s.push(["desk: parts ≥ 80 % sharp", `${data.desk.parts_ok}/${data.desk.parts}`]);
   $("stats").innerHTML = s.map(([k, v]) => `<div class="stat"><span class="label">${k}</span><b>${v}</b></div>`).join("");
-  $("scale").textContent = `Model scale, real size unknown (${m.scale || "assumed"}). Desk numbers are simulated.`;
+  $("scale").textContent = data.kind === "cad" ? `Real size ASSUMED (${m.scale}): the sheet has no dimension. Outlines are measured; size is not.`
+    : `Model scale, real size unknown (${m.scale || "assumed"}). Desk numbers are simulated.`;
   $("steps").innerHTML = data.steps.map((x) => `<tr><td class="who">${x.who}</td><td>${x.what}</td><td class="s">${x.s} s</td></tr>`).join("")
     + (data.explain ? `<tr><td class="who">Muse Spark</td><td>explanation</td><td class="s">${data.explain.timing?.spark_s} s</td></tr>` : "")
     + (data.explain?.illustration_s ? `<tr><td class="who">Muse Image</td><td>illustration</td><td class="s">${data.explain.illustration_s} s</td></tr>` : "");
-  $("imgs").innerHTML = [[data.check_image, data.kind === "machine" ? "Built vs drawing (cyan: built, red: drawn but not built)" : "Blue: the model seen from each view; red: drawn but not built"],
-    [data.reading_image, "What Muse Spark read (boxes and axes)"]].filter(([f]) => f)
+  $("imgs").innerHTML = (data.images || [[data.check_image, data.kind === "machine" ? "Built vs drawing (cyan: built, red: drawn but not built)" : "Blue: the model seen from each view; red: drawn but not built"],
+    [data.reading_image, "What Muse Spark read (boxes and axes)"]]).filter(([f]) => f)
     .map(([f, c]) => `<figure style="width:auto"><img src="replay/${id}/${f}" alt="${c}"><figcaption style="color:var(--muted)">${c}</figcaption></figure>`).join("");
   $("glb").href = `replay/${id}/model.glb`; $("glb").setAttribute("download", `aether-${id}.glb`);
+  $("prog").hidden = !data.program; if (data.program) { $("prog").href = `replay/${id}/${data.program}`; $("prog").setAttribute("download", `aether-${id}-program.py`); }
+  $("step").hidden = !data.step; if (data.step) { $("step").href = `replay/${id}/${data.step}`; $("step").setAttribute("download", `aether-${id}.${data.step.endsWith(".zip") ? "step.zip" : "step"}`); }
+  $("imglabel").textContent = data.kind === "cad" ? "What was built, and how code checked it against the drawing" : "The drawing and what was built";
   if (model) scene.remove(model);
   const g = await new GLTFLoader().loadAsync(`replay/${id}/model.glb`);
   model = g.scene; meshes = [];

@@ -28,7 +28,7 @@ export default function EmptyDesk() {
     ["sparkle", "Or describe what to build", "Muse Spark builds it from parametric parts, beside anything already on the desk.",
      "Make a simple robot arm", () => focusChat("Make a simple robot arm with a base, two links and a gripper")],
     ["layers", "Then refine, inspect, export", "Ask for changes (\"make the windows blue\"), \"explain this machine\", a technical drawing, or a GLB / STEP file.",
-     "Try a recorded demo", () => st.playRecorded("D")],
+     "Try the recorded CAD demo", () => st.playRecorded("CAR")],
   ];
   return (
     <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center">

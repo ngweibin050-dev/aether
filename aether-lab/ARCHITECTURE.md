@@ -1,10 +1,97 @@
-# AETHER 2.1 — Architecture
+# AETHER Lab — Architecture
 
-AETHER is a design desk for a no-headset holographic display. You build a 3D model with a
-mouse and keyboard, with your hands, or by asking Muse Spark. AETHER then calculates the real
-phase hologram for it and simulates what an eye would see.
+AETHER Lab turns engineering drawings into editable CAD. You then keep working on that CAD by talking to it.
 
-Everything below is a simulation. No physical holographic display has been built.
+- **Part A** (this section) is the product: drawing → OpenCascade B-rep → chat edits → STEP. The measured results
+  are in [docs/EVIDENCE.md](docs/EVIDENCE.md).
+- **Part B** (sections 1–6 below it) is the long-term holographic-desk research: the viewer, the hand mode and
+  the wave-optics engine. All of Part B is simulation. No holographic display has been built.
+
+## A. The AI is the engineer, AETHER's tools are the instruments
+
+Every request goes to one orchestrator, `assistant.py`: one Muse Spark tool loop per user turn. The model reads the
+scene summary, chooses tools from a structured registry, calls them, reads their results, and replans when a tool
+fails. No object type and no sentence has a built-in workflow. The audit behind this design is in
+[docs/AI_ORCHESTRATION_AUDIT.md](docs/AI_ORCHESTRATION_AUDIT.md); the acceptance tests are in
+[docs/ACCEPTANCE.md](docs/ACCEPTANCE.md).
+
+```
+ user request (+ drawing / file)
+   │
+   ▼
+ assistant.py ── Muse Spark: intent → plan → tool calls → read results → replan → answer (what ran, what was assumed)
+   │
+   ├─ CAD (any object)       build_cad / edit_cad ──▶ cad/codegen.py (in the CAD worker, CadQuery / OpenCascade)
+   │     1 measure    code: the drawing's views and outlines → profile functions (only where the sheet has the views)
+   │     2 write      Muse Wonder: a plan, then a CadQuery PROGRAM that builds every part as a named solid
+   │     3 run        sandbox: syntax-tree check, no imports / dunders / files, separate process, time limit
+   │     4 check      code: every solid passes BRepCheck; silhouette IoU per view vs the drawing; renders
+   │     5 revise     Muse Wonder sees overlays, scores, renders and errors, rewrites the program (a few rounds)
+   │     → program.py (the model's editable source) + model.step + model.glb, one version folder per change
+   ├─ drawings               make_drawing: orthographic views with hidden lines from the exact B-rep, SVG + PDF
+   ├─ inspection / analysis  inspect, analyze (volume, area, mass, centre of mass), list_parts
+   ├─ explanation            explain_machine: the Explain panel, every part id and number checked against the model
+   ├─ holography             make_hologram, propagate, focus_sweep, eye_view, speckle_compare ... (engine/, compute.py)
+   ├─ scene                  modify (colour, visibility, pose), set_view (section, explode, x-ray), open_panel
+   ├─ export                 export_model: STEP from the B-rep; GLB / STL / 3MF tessellated from it
+   └─ history                every changing turn is an undo step (history.py); projects survive a restart
+```
+
+**Main rules in the code:**
+
+- **The program is the model's source.** A CAD model built by `build_cad` is a CadQuery program. Each change
+  is a new version in its own folder. A version replaces the model only if every solid is valid, so a failed
+  edit never corrupts the last valid model.
+- **Model-written programs run only in a sandbox.** This replaces the earlier rule that no model output is
+  ever executed. Before running, the program's syntax tree is checked: no imports, no names or attributes that
+  start with an underscore, no `exec`, `eval`, `open` or similar. It then runs in a separate process with only
+  `cq`, `math` and the measured profile functions in scope, without the API key, under a time limit.
+- **Code checks, the model revises.** A result counts only after code has checked it: every solid must pass
+  BRepCheck, and each view is compared with the drawing (IoU, never merged into one score). With a drawing,
+  the kept round is the best checked one; a round can't win by regressing.
+- **Measured vs estimated.** Outlines measured from the drawing are given to the program as functions. Every
+  size the program takes from somewhere else is an estimate, and the plan says so. Sheets without a dimension
+  have an assumed real size.
+- **Exports come from the B-rep.** STEP is written from the solids. GLB, STL and 3MF are tessellated from
+  them, with materials for display only: glass is translucent, chrome is shiny.
+- **What is not there yet:** a general motion or collision solver. Asked to simulate, the AI says what it
+  can and cannot compute.
+
+**The rule-based pipeline is no longer used.** `cad/vehicle.py`, `cad/planner.py` and `cad/pipeline.py` are
+the earlier car-only rules. Uploads no longer use them: `build_from_drawing` sends every drawing to
+`build_cad`. They stay in the repository only because the earlier evidence in `docs/EVIDENCE.md` §1–2 was
+measured with them.
+
+**Where each Meta model is used**
+
+| Model | Where | What it decides |
+|---|---|---|
+| Muse Spark | `intake.py`, `cad/ai.py`, `assistant.py`, `agent.py`, `explain.py` | what a sheet shows and what is missing; labels and part names; every chat turn's tool calls; grounded explanations |
+| Muse Wonder | `cad/codegen.py`, `agent.py` | writes and revises the CAD program for any object; the engineer's completion of unseen views |
+| SAM 3.1 | `cad/ai.py`, `vision.py` | regions on the drawing (lights, glass, intakes); a part cut out of a photo |
+| Muse Image | `explain.py` | one concept illustration, always labelled as *not* the measured model |
+| Muse Voice Transcribe | `agent.py` | hold-to-talk commands |
+
+**Tests for Part A:**
+
+| Script | What it checks |
+|---|---|
+| `tests/acceptance_ai.py` | the 14 acceptance tests of the AI orchestration, through the chat API (`docs/ACCEPTANCE.md`) |
+| `tests/e2e_story.py` | the whole workflow through the HTTP API, restart included (rule-based pipeline, before the change) |
+| `tests/baseline_spark.py` | plain Muse Spark compared with the CAD pipeline |
+| `tests/eval_refine.py`, `tests/eval_assistant.py` | refining by chat, and everyday chat requests |
+| `tests/check_exports.py` | exported files opened by an outside library |
+| `tests/test_history.py` | undo and redo |
+
+`python -m tests.evidence` rebuilds [docs/EVIDENCE.md](docs/EVIDENCE.md) from the saved results.
+
+---
+
+# Part B — the holographic desk (research, simulation only)
+
+Part B is a design desk for a no-headset holographic display. You build a 3D model with a mouse and keyboard,
+with your hands, or by asking Muse Spark. AETHER then calculates the real phase hologram for it and simulates
+what an eye would see.
 
 ```
  Browser (React + Vite + Tailwind + three.js)                 Python physics server

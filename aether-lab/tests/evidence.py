@@ -4,6 +4,7 @@
 
 Sources (each produced by its own script, named in the page):
   output/cad/current/report.json        the three-view CAD build: B-rep validity, STEP round trip, reprojection
+  output/cad/cobra/report.json          the same pipeline on the public CC0 car sheet (tests/inputs/heldout/CC0_Cobra_four_view.png)
   output/baseline/results.json          tests/baseline_spark.py: AETHER vs plain Muse Spark on the same drawing
   output/reference/<input>/run<k>/      tests/run_reference.py: drawing -> mechanism runs (recall, precision, time)
   output/eval_refine.json               tests/eval_refine.py: refining a model by chat (car, machine, ask first)
@@ -31,8 +32,8 @@ def _load(p):
         return None
 
 
-def cad_section():
-    r = _load(OUT / "cad" / "current" / "report.json") or {}
+def cad_section(folder="current"):
+    r = _load(OUT / "cad" / folder / "report.json") or {}
     comps = (r.get("validation") or {}).get("components") or {}
     valid = sum(1 for c in comps.values() if c.get("brepcheck_valid"))
     rt = (r.get("step_roundtrip") or {}).get("components") or {}
@@ -68,6 +69,7 @@ def machine_rows():
 
 def main():
     cad = cad_section()
+    cobra = cad_section("cobra")
     base = _load(OUT / "baseline" / "results.json") or {}
     refine = _load(OUT / "eval_refine.json") or []
     assist = _load(OUT / "eval_assistant.json") or []
@@ -84,6 +86,10 @@ def main():
                  + " / ".join(f"{v} {cad['iou'][v]:.3f}" for v in cad["iou"]) + "; boundary "
                  + " / ".join(f"{cad['mm'][v]:.0f}" for v in cad["mm"] if cad["mm"][v] is not None)
                  + f" mm mean | the drawing's own views |")
+        if cobra["iou"]:
+            L.append(f"| The same pipeline on the public CC0 car sheet (Shelby Cobra four-view), first full run | silhouette IoU "
+                     + " / ".join(f"{v} {cobra['iou'][v]:.3f}" for v in cobra["iou"]) + f"; solids valid {cobra['valid']} / "
+                     f"{cobra['solids']}; STEP round trip {cobra['rt_ok']} / {cobra['rt_n']} | the drawing's own views |")
         L.append(f"| Solids valid (BRepCheck) | {cad['valid']} / {cad['solids']} | OpenCascade |")
         L.append(f"| STEP round trip (re-read in a fresh process) | {cad['rt_ok']} / {cad['rt_n']} valid, volume within "
                  f"{cad['vol_diff']:.1e} | the written model |")
@@ -124,6 +130,22 @@ def main():
         L += [f"| {v} | {cad['iou'][v]:.4f} | {cad['mm'][v]} |" for v in cad["iou"]]
         L += ["", f"Maturity reached: `{cad['maturity']}`. Parameters by provenance: {cad['prov']} (assumed values are "
                   "listed and editable; the sheet has no dimension, so the real size is assumed until the user gives one)."]
+    if cobra["iou"]:
+        L += ["", "### 1b. A public sheet anyone can rerun: CC0 car four-view", "",
+              "Source: `output/cad/cobra/report.json`. Input: `tests/inputs/heldout/CC0_Cobra_four_view.png` (CC0, Wikimedia "
+              "Commons; conversion and history in `docs/INPUTS.md`). The car sheet above is third-party and not "
+              "redistributed; this one is in the repository. Its first run stopped at view detection; two general fixes "
+              "in `cad/observations.py` followed (they change nothing measured on the car sheet above); these are the "
+              "numbers of the first full run after them.", "",
+              "| view | silhouette IoU | boundary distance mm (mean) |", "|---|---|---|"]
+        L += [f"| {v} | {cobra['iou'][v]:.4f} | {cobra['mm'][v]} |" for v in cobra["iou"]]
+        L += ["", f"Solids valid {cobra['valid']} / {cobra['solids']}; STEP round trip {cobra['rt_ok']} / {cobra['rt_n']}; "
+                  f"maturity `{cobra['maturity']}`. Parameters by provenance: {cobra['prov']}.", "",
+              "**Why lower than the car sheet above (a known miss, not tuned away):** this car is an open roadster. The "
+              "vehicle module (`cad/vehicle.py`) assumes a closed body, so it covers the open cockpit with a roof-like "
+              "skin (built, not drawn) and builds neither the windscreen nor the roll bar (drawn, not built). That costs "
+              "most of the side IoU and, with the windscreen frame, most of the end views' IoU "
+              "(`output/cad/cobra/reproject_*.png`). Open-top bodies need their own cockpit model."]
     L += ["", "## 2. Why not just ask Muse Spark?", "",
           "`tests/baseline_spark.py`: the same car sheet given to plain Muse Spark (no tools) with the same part vocabulary "
           "and frame AETHER uses; 3 answers. Both models are scored against the DRAWING the same way: each view's silhouette "
@@ -178,6 +200,8 @@ def main():
           "`python -m tests.run_reference` | the Meta API key |", "",
           "## Limits (said plainly)", "",
           "- The drawings carry no dimension: real sizes are assumed and labelled until the user gives one.",
+          "- The car sheet of sections 1, 2, 6 and 7 is a third-party drawing, used for measurement and not redistributed; the CC0 sheet of section 1b is the public input.",
+          "- The CAD pipeline is implemented for vehicles (cad/vehicle.py); other object classes need their own interpretation module.",
           "- Silhouette agreement is necessary, not sufficient: cross-sections between the views are inferred.",
           "- A drawn car body is one solid (no cabin): interior parts sit inside the solid, shown by the section view.",
           "- All optics are simulations; no holographic display has been built."]

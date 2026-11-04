@@ -75,12 +75,24 @@ def find_views(g, ink):
     {box: [x0, y0, x1, y1], ground_v: row or None} ordered top-to-bottom, left-to-right."""
     H, W = ink.shape
     grounds = _long_rows(ink, 0.35)
-    m = ink.copy()
-    for y, a, b in grounds:
-        m[max(0, y - 1):y + 2, a:b] = False
-    m = ndi.binary_opening(m, np.ones((2, 2)))               # stipple noise
-    big = ndi.binary_dilation(m, np.ones((15, 15)))
-    lab, n = ndi.label(big)
+
+    def _label(gr):
+        m = ink.copy()
+        for y, a, b in gr:
+            m[max(0, y - 1):y + 2, a:b] = False
+        m = ndi.binary_opening(m, np.ones((2, 2)))           # stipple noise
+        lab, n = ndi.label(ndi.binary_dilation(m, np.ones((15, 15))))
+        return m, lab, n
+
+    m, lab, n = _label(grounds)
+    # a ground line lies UNDER a view; a long straight row running through a view's own height is one of its edges (the
+    # straight body sides of a plan view): keep it as ink, or removing it cuts that view into pieces
+    sl = ndi.find_objects(lab)
+    inner = [(y, a, b) for y, a, b in grounds
+             if any(s is not None and s[0].start + 12 < y < s[0].stop - 13 and s[1].start < b and a < s[1].stop for s in sl)]
+    if inner:
+        grounds = [g_ for g_ in grounds if g_ not in inner]
+        m, lab, n = _label(grounds)
     out = []
     areas = ndi.sum(m, lab, range(1, n + 1))
     for k in range(1, n + 1):
@@ -97,6 +109,14 @@ def find_views(g, ink):
             if box[3] - 3 <= y <= box[3] + 12 and a <= box[0] + 5 and b >= box[2] - 5:
                 gv = y if gv is None else min(gv, y)
         out.append({"box": box, "ground_v": gv, "ink_px": int(sub.sum())})
+    # a drawing that lies wholly inside another view's box (a cockpit drawn with a gap to the plan view's outline) is
+    # part of that view, not a view of its own
+    inside = lambda p, q: q["box"][0] <= p["box"][0] and q["box"][1] <= p["box"][1] and p["box"][2] <= q["box"][2] and p["box"][3] <= q["box"][3]
+    for p in sorted(out, key=lambda v: v["ink_px"]):
+        host = next((q for q in out if q is not p and inside(p, q)), None)
+        if host:
+            host["ink_px"] += p["ink_px"]
+            out.remove(p)
     out.sort(key=lambda v: (round(v["box"][1] / 40), v["box"][0]))
     return out
 

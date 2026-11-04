@@ -285,9 +285,16 @@ def glb(components, extras_doc=None, linear=0.4, angular=0.3):
             pos = add(conv(V), 34962, 5126, "VEC3", True)
             nrm = add(np.c_[N[:, 0], N[:, 2], -N[:, 1]].astype(np.float32), 34962, 5126, "VEC3")
             ind = add(F.astype(np.uint32).ravel(), 34963, 5125, "SCALAR")
-            mats.append({"name": c["id"], "pbrMetallicRoughness": {"baseColorFactor": _rgb(c.get("colour")) + [1.0],
-                                                                   "metallicFactor": 0.35 if c.get("material") == "metal" else 0.1,
-                                                                   "roughnessFactor": 0.85 if c.get("material") == "rubber" else 0.35}})
+            # the component's material decides how it looks (display only; the B-rep is the same): glass is
+            # see-through, chrome and metal shine, rubber is matte
+            mt = c.get("material")
+            mat = {"name": c["id"], "pbrMetallicRoughness": {
+                "baseColorFactor": _rgb(c.get("colour")) + [0.3 if mt == "glass" else 1.0],
+                "metallicFactor": {"chrome": 1.0, "metal": 0.6}.get(mt, 0.1),
+                "roughnessFactor": {"rubber": 0.85, "chrome": 0.12, "glass": 0.05, "metal": 0.3, "leather": 0.6}.get(mt, 0.35)}}
+            if mt == "glass":
+                mat.update(alphaMode="BLEND", doubleSided=True)
+            mats.append(mat)
             fm = c.get("face_materials")
             base_mi = len(mats) - 1
             if fm:                                          # one primitive per material group (glass, lights, paint)
@@ -300,7 +307,9 @@ def glb(components, extras_doc=None, linear=0.4, angular=0.3):
                     mi = base_mi
                     if m:
                         mats.append({"name": f"{c['id']} {m}", "pbrMetallicRoughness": {
-                            "baseColorFactor": _rgb(MATERIALS[m]) + [1.0], "metallicFactor": 0.0 if m == "glass" else 0.05,
+                            # lamps keep their own region name (headlight, tail light): lamp colour, tail lights red
+                            "baseColorFactor": _rgb(MATERIALS.get(m) or ("#b3261e" if "tail" in m else MATERIALS["light"])) + [1.0],
+                            "metallicFactor": 0.0 if m == "glass" else 0.05,
                             "roughnessFactor": 0.08 if m == "glass" else 0.3}})
                         mi = len(mats) - 1
                     prims.append({"attributes": {"POSITION": pos, "NORMAL": nrm},
